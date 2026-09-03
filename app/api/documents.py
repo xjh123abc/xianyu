@@ -1,0 +1,2 @@
+"""Document management API routes."""
+

@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+qdrant-client
+python-dotenv
+openai
+rank-bm25
+pytest
+httpx
+sentence-transformers

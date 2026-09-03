@@ -1,0 +1,16 @@
+E-commerce customer service ingestion test document.
+这是一行 UTF-8 中文文本，用于验证加载器不会丢失原始字符。
+This file is intentionally long enough to produce multiple deterministic chunks.
+The loader must read every character from this UTF-8 text file without changing it.
+The source path must travel with the document so later RAG steps can cite the origin.
+The chunker will split this content by a fixed character length only.
+It will not infer topics, sentences, paragraphs, or semantic boundaries.
+Each generated chunk should contain text and retain the same source path.
+This example represents a small collection of ordinary store policy notes.
+Customers can ask about shipping, refunds, exchanges, delivery, or order status.
+The current ingestion implementation does not answer these questions yet.
+It only prepares complete source content and fixed-size pieces for later retrieval.
+Keeping this behavior deterministic makes the first ingestion tests easy to verify.
+The concatenation of all chunk contents must be exactly the original file content.
+No characters should be lost, duplicated, translated, or reordered during splitting.
+This final line ensures that the test input is comfortably longer than the chunk size.
