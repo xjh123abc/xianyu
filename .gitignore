@@ -1,0 +1,4 @@
+.env
+.rag_ingestion_manifest.json
+__pycache__/
+.pytest_cache/

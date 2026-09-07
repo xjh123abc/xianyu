@@ -1,19 +1,41 @@
 """Project settings loaded from environment variables."""
 
 try:
-    from pydantic_settings import BaseSettings
+    from pydantic_settings import BaseSettings, SettingsConfigDict
 
     class Settings(BaseSettings):
+        model_config = SettingsConfigDict(
+            env_file=".env",
+            env_file_encoding="utf-8",
+            extra="ignore",
+        )
+
         deepseek_api_key: str = ""
         deepseek_base_url: str = "https://api.deepseek.com"
         deepseek_model: str = "deepseek-chat"
+        deepseek_timeout: float = 60.0
+        deepseek_temperature: float = 0.2
+        deepseek_max_tokens: int = 512
         qdrant_url: str = "http://localhost:6333"
         qdrant_collection: str = "ecommerce_documents"
-        embedding_model_path: str = (
-            r"D:\local_models\huggingface\hub\models--Qwen--Qwen3-Embedding-0.6B"
-            r"\snapshots\97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
+        knowledge_base_path: str = (
+            "data/ecommerce_rag_test_data/ecommerce_rag_test_data/knowledge_base"
         )
+        knowledge_base_chunk_size: int = 500
+        embedding_model_path: str = ""
+        reranker_model_path: str = ""
+        dense_top_k: int = 5
+        bm25_top_k: int = 5
+        rrf_k: int = 60
+        reranker_top_k: int = 5
+        ingestion_manifest_path: str = ".rag_ingestion_manifest.json"
+        answer_reliability_threshold: float = 0.5
+
+
+
 
     settings = Settings()
 except ImportError:  # Keeps the scaffold usable before dependencies are installed.
+
+
     settings = None

@@ -1,5 +1,6 @@
 """Qdrant client and collection infrastructure."""
 
+from pathlib import Path
 from typing import Sequence
 from uuid import NAMESPACE_URL, uuid5
 
@@ -7,6 +8,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from app.ingestion.chunker import Chunk
+from app.ingestion.loader import canonical_source, configured_knowledge_base_path
 from config.settings import settings
 
 
@@ -57,13 +59,16 @@ class QdrantStore:
         chunks: Sequence[Chunk],
         vectors: Sequence[Sequence[float]],
     ) -> None:
-        """Create the collection when needed and write all chunk points."""
+        """Create the collection and replace legacy formal-KB points."""
         points = self.build_points(chunks, vectors)
         if not points:
+            if self.client.collection_exists(self.collection_name):
+                self._remove_existing_knowledge_base_points()
             return
 
         vector_size = len(points[0].vector)
-        if not self.client.collection_exists(self.collection_name):
+        collection_exists = self.client.collection_exists(self.collection_name)
+        if not collection_exists:
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(
@@ -77,3 +82,51 @@ class QdrantStore:
             points=points,
             wait=True,
         )
+        if collection_exists:
+            self._remove_existing_knowledge_base_points(
+                excluded_ids={str(point.id) for point in points}
+            )
+
+    def _remove_existing_knowledge_base_points(
+        self,
+        *,
+        excluded_ids: set[str] | None = None,
+    ) -> None:
+        """Delete existing points belonging to the configured knowledge base."""
+        knowledge_base_path = configured_knowledge_base_path()
+        excluded_ids = excluded_ids or set()
+        legacy_point_ids: list[str] = []
+        offset = None
+        while True:
+            records, offset = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for record in records:
+                if str(record.id) in excluded_ids:
+                    continue
+                source = (record.payload or {}).get("source")
+                if not isinstance(source, str):
+                    continue
+                if not Path(source).is_absolute() and Path(source).suffix.lower() in {".md", ".txt"}:
+                    legacy_point_ids.append(str(record.id))
+                    continue
+                try:
+                    logical_source = canonical_source(source, knowledge_base_path)
+                except ValueError:
+                    continue
+                if Path(logical_source).suffix.lower() in {".md", ".txt"}:
+                    legacy_point_ids.append(str(record.id))
+
+            if offset is None:
+                break
+
+        if legacy_point_ids:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=legacy_point_ids,
+                wait=True,
+            )

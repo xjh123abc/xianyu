@@ -26,7 +26,11 @@ class EmbeddingService:
         if settings is None:
             raise RuntimeError("Project settings are unavailable")
 
-        self.model_path = Path(settings.embedding_model_path)
+        configured_path = str(settings.embedding_model_path).strip()
+        if not configured_path:
+            raise FileNotFoundError("Embedding model path is not configured")
+
+        self.model_path = Path(configured_path)
         if not self.model_path.is_dir():
             raise FileNotFoundError(f"Embedding model path not found: {self.model_path}")
 

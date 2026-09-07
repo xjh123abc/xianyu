@@ -1,0 +1,58 @@
+{"id": "order_001", "question": "下单以后还能修改收货地址吗？", "expected_sources": ["01_order.md"], "expected_keywords": ["修改订单信息", "收货地址", "联系客服"], "answerable": true}
+{"id": "order_002", "question": "订单提交后还能取消吗？", "expected_sources": ["01_order.md"], "expected_keywords": ["取消订单", "未发货", "已发货"], "answerable": true}
+{"id": "order_003", "question": "订单显示已关闭或超时取消是什么意思？", "expected_sources": ["10_errors.md"], "expected_keywords": ["订单已关闭", "超时关闭", "不可继续支付"], "answerable": true}
+{"id": "order_004", "question": "订单状态有哪些？分别是什么意思？", "expected_sources": ["01_order.md"], "expected_keywords": ["订单状态", "待付款", "待发货", "已完成"], "answerable": true}
+{"id": "payment_001", "question": "平台支持哪些支付方式？", "expected_sources": ["04_payment.md"], "expected_keywords": ["支付方式", "微信支付", "支付宝", "银行卡快捷支付"], "answerable": true}
+{"id": "payment_002", "question": "支付失败一般是什么原因？", "expected_sources": ["04_payment.md"], "expected_keywords": ["支付失败", "余额不足", "风控拦截", "支付额度"], "answerable": true}
+{"id": "payment_003", "question": "付款成功了，但是订单还是显示未支付怎么办？", "expected_sources": ["04_payment.md"], "expected_keywords": ["支付成功", "待付款", "同步延迟", "不要重复支付"], "answerable": true}
+{"id": "payment_004", "question": "同一个订单出现重复扣款怎么办？", "expected_sources": ["04_payment.md"], "expected_keywords": ["重复扣款", "支付记录", "联系客服", "原路退回"], "answerable": true}
+{"id": "shipping_001", "question": "我的快递一直没更新怎么办？", "expected_sources": ["02_shipping.md"], "expected_keywords": ["物流状态", "48 小时", "没有更新", "客服"], "answerable": true}
+{"id": "shipping_002", "question": "订单发货后在哪里查看物流信息？", "expected_sources": ["02_shipping.md"], "expected_keywords": ["查看物流", "物流状态", "物流公司", "运单号"], "answerable": true}
+{"id": "shipping_003", "question": "快递显示已签收，但是我没有收到商品怎么办？", "expected_sources": ["02_shipping.md"], "expected_keywords": ["已签收", "没有收到", "配送员", "物流核查"], "answerable": true}
+{"id": "shipping_004", "question": "一般下单后多久会发货？", "expected_sources": ["02_shipping.md"], "expected_keywords": ["发货时间", "24 小时", "预售商品", "预计发货时间"], "answerable": true}
+{"id": "after_sales_001", "question": "收到商品后发现破损，可以申请售后吗？", "expected_sources": ["09_after_sales.md"], "expected_keywords": ["商品破损", "保留包装", "照片或视频", "售后"], "answerable": true}
+{"id": "after_sales_002", "question": "申请退款以后一般多久能到账？", "expected_sources": ["03_refund_return.md"], "expected_keywords": ["退款到账时间", "1-3 个工作日", "微信支付", "银行卡"], "answerable": true}
+{"id": "after_sales_003", "question": "商品不喜欢可以申请退货吗？", "expected_sources": ["03_refund_return.md"], "expected_keywords": ["七天无理由退货", "签收后 7 天", "不支持", "定制类商品"], "answerable": true}
+{"id": "after_sales_004", "question": "退货时运费由谁承担？", "expected_sources": ["03_refund_return.md"], "expected_keywords": ["退货运费", "商家责任", "用户承担", "运费险"], "answerable": true}
+{"id": "account_001", "question": "忘记登录密码应该怎么办？", "expected_sources": ["08_account.md"], "expected_keywords": ["忘记密码", "绑定手机号", "邮箱验证", "重置密码"], "answerable": true}
+{"id": "account_002", "question": "怎么修改账号绑定的手机号码？", "expected_sources": ["08_account.md"], "expected_keywords": ["修改手机号", "身份验证", "账号安全", "联系客服"], "answerable": true}
+{"id": "account_003", "question": "账号可以注销吗？", "expected_sources": ["08_account.md"], "expected_keywords": ["账号注销", "未完成订单", "售后", "账户余额"], "answerable": true}
+{"id": "account_004", "question": "登录时一直收不到验证码怎么办？", "expected_sources": ["08_account.md"], "expected_keywords": ["收不到验证码", "手机信号", "运营商网络延迟", "1-2 分钟"], "answerable": true}
+{"id": "promotion_001", "question": "优惠券有哪些使用条件？", "expected_sources": ["05_coupon.md"], "expected_keywords": ["最低消费金额", "可用商品范围", "有效期", "优惠叠加"], "answerable": true}
+{"id": "promotion_002", "question": "优惠券可以和满减活动一起使用吗？", "expected_sources": ["05_coupon.md"], "expected_keywords": ["优惠券", "满减", "叠加", "活动规则"], "answerable": true}
+{"id": "promotion_003", "question": "优惠券过期以后还能用吗？", "expected_sources": ["05_coupon.md"], "expected_keywords": ["优惠券已过期", "无法使用", "有效期"], "answerable": true}
+{"id": "promotion_004", "question": "满减优惠是按什么规则计算的？", "expected_sources": ["05_coupon.md"], "expected_keywords": ["满减优惠", "实际订单金额", "活动规则", "优惠金额"], "answerable": true}
+{"id": "vague_001", "question": "怎么还没到啊？", "expected_sources": ["02_shipping.md"], "expected_keywords": ["配送时效", "物流状态", "延迟", "物流高峰"], "answerable": true}
+{"id": "vague_002", "question": "这个还能退不？", "expected_sources": ["03_refund_return.md"], "expected_keywords": ["七天无理由退货", "退货条件", "签收后 7 天"], "answerable": true}
+{"id": "colloquial_001", "question": "我钱都扣了，咋还说我没付款？", "expected_sources": ["04_payment.md"], "expected_keywords": ["已扣款", "待付款", "同步延迟", "支付凭证"], "answerable": true}
+{"id": "colloquial_002", "question": "快递好几天不动窝了，咋整？", "expected_sources": ["02_shipping.md"], "expected_keywords": ["物流状态", "48 小时", "没有更新", "客服"], "answerable": true}
+{"id": "keyword_001", "question": "退款 到账 时间", "expected_sources": ["03_refund_return.md"], "expected_keywords": ["退款到账时间", "微信支付", "支付宝", "银行卡"], "answerable": true}
+{"id": "keyword_002", "question": "优惠券 叠加 满减", "expected_sources": ["05_coupon.md"], "expected_keywords": ["优惠券", "叠加优惠", "满减活动", "活动规则"], "answerable": true}
+{"id": "unanswerable_order_001", "question": "帮我查一下订单 202609070001 现在是什么状态。", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_order_002", "question": "我刚刚那个订单为什么被系统风控取消了？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_payment_001", "question": "帮我确认一下我刚才那笔 299 元的微信支付到底成功没有。", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_payment_002", "question": "我的退款具体几点能到银行卡？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_shipping_001", "question": "我的快递现在具体到哪个网点了？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_shipping_002", "question": "帮我查一下运单号 SF1234567890 现在在哪。", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_after_sales_001", "question": "我昨天提交的售后申请审核通过了吗？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_after_sales_002", "question": "帮我看看客服为什么拒绝了我的退款申请。", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_account_001", "question": "你能告诉我我的账号为什么被封禁了吗？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "unanswerable_promotion_001", "question": "为什么别人有满 200 减 50 的优惠券，我的账号没有？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_001", "question": "北京今天天气怎么样？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_002", "question": "明天上证指数会涨还是跌？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_003", "question": "红烧肉怎么做比较好吃？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_004", "question": "帮我写一个 Python 快速排序。", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_005", "question": "国庆节去云南旅游五天怎么安排？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_006", "question": "湖人队今年夺冠概率有多大？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_007", "question": "帮我把人工智能正在改变世界翻译成日语。", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_008", "question": "世界上最高的山是哪一座？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_009", "question": "给我推荐一部好看的科幻电影。", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "out_of_domain_010", "question": "1 加到 100 等于多少？", "expected_sources": [], "expected_keywords": [], "answerable": false}
+{"id": "membership_001", "question": "购物获得的积分一般什么时候到账？", "expected_sources": ["06_membership.md"], "expected_keywords": ["积分到账", "订单确认收货", "发放"], "answerable": true}
+{"id": "membership_002", "question": "积分会过期吗？过期以后还能恢复吗？", "expected_sources": ["06_membership.md"], "expected_keywords": ["积分有效期", "过期积分", "无法恢复"], "answerable": true}
+{"id": "invoice_001", "question": "电子发票一般多久能开出来？", "expected_sources": ["07_invoice.md"], "expected_keywords": ["电子发票", "开具时间", "1-3 个工作日"], "answerable": true}
+{"id": "invoice_002", "question": "发票已经开具以后还可以修改吗？", "expected_sources": ["07_invoice.md"], "expected_keywords": ["发票已经开具", "红冲", "作废", "重新开具"], "answerable": true}
+{"id": "customer_service_001", "question": "联系人工客服处理支付问题需要准备什么信息？", "expected_sources": ["11_customer_service.md"], "expected_keywords": ["订单号", "问题描述", "支付时间", "支付流水"], "answerable": true}
+{"id": "customer_service_002", "question": "普通工单一般多久会回复？", "expected_sources": ["11_customer_service.md"], "expected_keywords": ["普通工单", "1-2 个工作日", "回复"], "answerable": true}
+{"id": "product_stock_001", "question": "商品缺货以后什么时候会补货？", "expected_sources": ["12_product_stock.md"], "expected_keywords": ["缺货", "到货通知", "补货时间", "无法保证"], "answerable": true}
+{"id": "product_stock_002", "question": "商品降价以后可以申请保价吗？", "expected_sources": ["12_product_stock.md"], "expected_keywords": ["保价", "价格保护", "差价", "审核通过"], "answerable": true}
