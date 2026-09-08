@@ -16,6 +16,11 @@ ORDER_SYSTEM_PROMPT = """你是订单查询助手。下面的数据来自本地�
 运单号为空时说明暂无运单号，不输出字面量 null。
 回答中明确标识“本地模拟订单数据”。"""
 
+COMBINED_SYSTEM_PROMPT = """你是电商平台客服助手。
+只能依据下面的订单数据和知识库资料回答用户问题，不得编造订单状态或平台规则。
+MCP 数据是订单事实，RAG 资料是平台规则；请把两者组织成一个简洁、直接的回答。
+如果资料不足以确定答案，应明确说明无法确认并建议转人工客服。"""
+
 
 def build_messages(query: str, context: str) -> list[dict[str, str]]:
     """Build the query/context messages sent to DeepSeek."""
@@ -54,5 +59,32 @@ def build_order_messages(
 {order_data_json}"""
     return [
         {"role": "system", "content": ORDER_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def build_combined_messages(
+    query: str,
+    rag_result: Mapping[str, Any],
+    mcp_result: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    """Build one prompt from MCP order facts and RAG rule evidence."""
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("query must not be empty")
+    if not isinstance(rag_result, Mapping):
+        raise ValueError("rag_result must be a mapping")
+    if not isinstance(mcp_result, Mapping):
+        raise ValueError("mcp_result must be a mapping")
+
+    user_prompt = f"""用户问题：
+{query.strip()}
+
+MCP 订单事实：
+{json.dumps(dict(mcp_result), ensure_ascii=False)}
+
+RAG 知识库资料：
+{json.dumps(dict(rag_result), ensure_ascii=False, default=str)}"""
+    return [
+        {"role": "system", "content": COMBINED_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ]

@@ -53,6 +53,7 @@ class Response(BaseModel):
     next_step: str | None = None
     reliability: ReliabilityResponse | None = None
     results: list[RetrievedResult] = Field(default_factory=list)
+    route: str | None = None
 
 
 @router.post(
