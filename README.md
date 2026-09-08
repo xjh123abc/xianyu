@@ -8,6 +8,8 @@
 - `config/`：配置
 - `data/raw/`：原始业务文档
 - `eval/`：评测数据与评测脚本
+- `mcp_servers/`：独立 MCP Server 入口与模拟订单工具
+- `scripts/`：MCP 端到端 smoke 脚本
 - `tests/`：测试
 
 ## 快速开始
@@ -21,3 +23,18 @@ uvicorn app.main:app --reload
 
 当前文件为项目骨架；请继续实现各模块中的业务逻辑，并将真实政策文档放入 `data/raw/`。
 
+## MCP 模拟订单
+
+当前 MCP 部分只提供本地模拟订单，不接数据库、淘宝、物流平台或聊天链路。
+
+使用目标 Conda 环境执行真实协议 smoke test：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" -m scripts.smoke_order_mcp
+```
+
+独立启动 MCP Server（stdio 模式，通常由 MCP Client 启动）：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" mcp_servers\order_server.py
+```
