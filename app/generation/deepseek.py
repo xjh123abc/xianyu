@@ -5,11 +5,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from app.generation.prompt import (
-    build_combined_messages,
-    build_messages,
-    build_order_messages,
-)
+from app.generation.prompt import build_messages, build_order_messages
 from config.settings import settings
 
 
@@ -32,17 +28,6 @@ class DeepSeekGenerator:
         """Use the existing DeepSeek client flow with an order-specific prompt."""
 
         return self._generate_messages(build_order_messages(query, order_data))
-
-    def generate_combined(
-        self,
-        query: str,
-        rag_result: Any,
-        mcp_result: Mapping[str, Any],
-    ) -> str:
-        """Generate one final answer from RAG evidence and MCP data."""
-        return self._generate_messages(
-            build_combined_messages(query, rag_result, mcp_result)
-        )
 
     def _generate_messages(self, messages: list[dict[str, str]]) -> str:
         if settings is None:

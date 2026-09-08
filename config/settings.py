@@ -16,7 +16,6 @@ try:
         deepseek_timeout: float = 60.0
         deepseek_temperature: float = 0.2
         deepseek_max_tokens: int = 512
-        route: str = "auto"
         qdrant_url: str = "http://localhost:6333"
         qdrant_collection: str = "ecommerce_documents"
         knowledge_base_path: str = (
