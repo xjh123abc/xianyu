@@ -1,10 +1,11 @@
 """DeepSeek answer generation through the OpenAI-compatible API."""
 
+from collections.abc import Mapping
 from typing import Any
 
 from openai import OpenAI
 
-from app.generation.prompt import build_messages
+from app.generation.prompt import build_messages, build_order_messages
 from config.settings import settings
 
 
@@ -17,10 +18,21 @@ class DeepSeekGenerator:
 
     def generate(self, query: str, context: str) -> str:
         """Send query and context to DeepSeek and return its answer text."""
+        return self._generate_messages(build_messages(query, context))
+
+    def generate_order(
+        self,
+        query: str,
+        order_data: Mapping[str, Any],
+    ) -> str:
+        """Use the existing DeepSeek client flow with an order-specific prompt."""
+
+        return self._generate_messages(build_order_messages(query, order_data))
+
+    def _generate_messages(self, messages: list[dict[str, str]]) -> str:
         if settings is None:
             raise RuntimeError("Project settings are unavailable")
 
-        messages = build_messages(query, context)
         client = self.client or self._build_client()
         response = client.chat.completions.create(
             model=settings.deepseek_model,

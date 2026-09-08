@@ -1,15 +1,21 @@
 """Minimal chat service implementation."""
 
+import logging
 import re
 from typing import Literal
 
+from app.generation.deepseek import DeepSeekGenerator
 from app.ingestion.loader import load_configured_knowledge_base
+from app.infrastructure.order_mcp_client import get_order_via_mcp
 from app.rag.pipeline import RAGPipeline
 from app.retrieval.bm25 import BM25Search
 from app.retrieval.hybrid_search import HybridSearch
 from app.retrieval.reranker import Reranker
 from app.retrieval.vector_search import VectorSearch
 from config.settings import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 Route = Literal["rag", "order", "missing_order_id", "unsupported_action"]
@@ -95,6 +101,7 @@ class ChatService:
         bm25_search: BM25Search | None = None,
         reranker: Reranker | None = None,
         rag_pipeline: RAGPipeline | None = None,
+        generator: DeepSeekGenerator | None = None,
     ) -> None:
         if isinstance(vector_search, (BM25Search, HybridSearch)) and bm25_search is None:
             self.vector_search = None
@@ -106,6 +113,97 @@ class ChatService:
             self.hybrid_search = None
         self.reranker = reranker
         self.rag_pipeline = rag_pipeline
+        self.generator = generator
+
+    async def chat_async(self, query: str) -> dict[str, object]:
+        """Route a request, awaiting MCP only for the concrete order branch."""
+
+        route, order_id = route_query(query)
+        if route == "rag":
+            return self.chat(query)
+        if route == "missing_order_id":
+            return self._non_rag_response(
+                query,
+                "请提供订单号，并重新发送完整问题，例如：帮我查订单 TEST1001。",
+                can_answer=False,
+            )
+        if route == "unsupported_action":
+            return self._non_rag_response(
+                query,
+                "本版本暂不支持取消订单、退款或修改地址等操作，仅支持订单状态查询。",
+                can_answer=False,
+            )
+
+        if order_id is None:
+            return self._non_rag_response(
+                query,
+                "请提供订单号，并重新发送完整问题，例如：帮我查订单 TEST1001。",
+                can_answer=False,
+            )
+        return await self._chat_order(query, order_id)
+
+    async def _chat_order(self, query: str, order_id: str) -> dict[str, object]:
+        try:
+            order_data = await get_order_via_mcp(order_id)
+        except Exception:
+            logger.exception("Order MCP lookup failed for order_id=%s", order_id)
+            return self._non_rag_response(
+                query,
+                "本次订单查询失败，请稍后重试。",
+                can_answer=False,
+            )
+
+        if not order_data.get("found"):
+            actual_order_id = order_data.get("order_id") or order_id
+            return self._non_rag_response(
+                query,
+                f"未查询到模拟订单 {actual_order_id}，请核对订单号。",
+                can_answer=True,
+            )
+
+        try:
+            answer = self._get_generator().generate_order(query, order_data)
+            if not isinstance(answer, str) or not answer.strip():
+                raise RuntimeError("DeepSeek returned an empty order answer")
+        except Exception:
+            logger.exception("Order answer generation failed for order_id=%s", order_id)
+            return self._non_rag_response(
+                query,
+                "本次订单查询回答失败，请稍后重试。",
+                can_answer=False,
+            )
+
+        return self._non_rag_response(query, answer.strip(), can_answer=True)
+
+    def _get_generator(self) -> DeepSeekGenerator:
+        if self.generator is not None:
+            return self.generator
+
+        if self.rag_pipeline is not None:
+            pipeline_generator = getattr(self.rag_pipeline, "generator", None)
+            if pipeline_generator is not None:
+                self.generator = pipeline_generator
+                return self.generator
+
+        self.generator = DeepSeekGenerator()
+        return self.generator
+
+    @staticmethod
+    def _non_rag_response(
+        query: str,
+        answer: str,
+        *,
+        can_answer: bool,
+    ) -> dict[str, object]:
+        return {
+            "query": query,
+            "answer": answer,
+            "sources": [],
+            "results": [],
+            "reliability": None,
+            "next_step": None,
+            "can_answer": can_answer,
+        }
 
     def chat(self, query: str) -> dict[str, object]:
         """Return the original query and top five retrieved chunks."""
@@ -171,7 +269,7 @@ class ChatService:
         )
 
         if self.rag_pipeline is None:
-            self.rag_pipeline = RAGPipeline()
+            self.rag_pipeline = RAGPipeline(generator=self.generator)
         pipeline_result = self.rag_pipeline.run(query, reranked_results)
 
         return {

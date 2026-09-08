@@ -60,7 +60,7 @@ class Response(BaseModel):
     response_model=Response,
     response_model_exclude_unset=True,
 )
-def chat(request: ChatRequest) -> Response:
+async def chat(request: ChatRequest) -> Response:
     """Receive a question and return the grounded pipeline result."""
-    service_response = chat_service.chat(request.query)
+    service_response = await chat_service.chat_async(request.query)
     return Response(**service_response)

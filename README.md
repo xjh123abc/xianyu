@@ -18,14 +18,14 @@
 python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env
-uvicorn app.main:app --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 当前文件为项目骨架；请继续实现各模块中的业务逻辑，并将真实政策文档放入 `data/raw/`。
 
 ## MCP 模拟订单
 
-当前 MCP 部分只提供本地模拟订单，不接数据库、淘宝、物流平台或聊天链路。
+当前 MCP 部分提供本地模拟订单，不接真实数据库、淘宝或物流平台；订单查询已经通过简单分流接回 `/chat`，普通知识问题仍走原有 RAG。
 
 使用目标 Conda 环境执行真实协议 smoke test：
 
@@ -37,4 +37,13 @@ uvicorn app.main:app --reload
 
 ```powershell
 & "D:\conda_envs\rag-customer-service\python.exe" mcp_servers\order_server.py
+```
+
+通过 `/chat` 查询模拟订单：
+
+```powershell
+$body = @{ query = "帮我查订单 TEST1001 发货了吗？" } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 ```

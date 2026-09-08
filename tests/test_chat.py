@@ -10,14 +10,14 @@ client = TestClient(app)
 
 
 def test_chat_post_returns_retrieval_response(monkeypatch) -> None:
-    service_chat = Mock(return_value={"query": "我的订单什么时候发货？", "results": []})
+    service_chat = Mock(return_value={"query": "订单一般多久发货？", "results": []})
     monkeypatch.setattr(chat_api.chat_service, "chat", service_chat)
 
-    response = client.post("/chat", json={"query": "我的订单什么时候发货？"})
+    response = client.post("/chat", json={"query": "订单一般多久发货？"})
 
     assert response.status_code == 200
     assert response.json() == {
-        "query": "我的订单什么时候发货？",
+        "query": "订单一般多久发货？",
         "results": [],
     }
 
