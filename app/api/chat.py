@@ -53,6 +53,8 @@ class Response(BaseModel):
     next_step: str | None = None
     reliability: ReliabilityResponse | None = None
     results: list[RetrievedResult] = Field(default_factory=list)
+    rag_result: dict[str, Any] | None = None
+    mcp_result: dict[str, Any] | None = None
 
 
 @router.post(
