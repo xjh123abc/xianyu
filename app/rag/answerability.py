@@ -108,13 +108,6 @@ class AnswerReliability:
             return self._insufficient("missing_rerank_score")
         return self._insufficient("no_valid_content")
 
-    def check(
-        self,
-        rerank_results: Sequence[Mapping[str, Any]] | None,
-    ) -> ReliabilityResult:
-        """Alias for ``evaluate`` for callers that use gate terminology."""
-        return self.evaluate(rerank_results)
-
     def _insufficient(self, reason: ReliabilityReason) -> ReliabilityResult:
         return {
             "can_answer": False,

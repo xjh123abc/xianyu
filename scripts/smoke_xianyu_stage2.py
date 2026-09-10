@@ -1,4 +1,4 @@
-"""Real local Stage 2 smoke test without external model generation."""
+"""Real local unified item-context smoke test without external model generation."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ CASES = (
     (
         {
             "query": "这个商品多少钱？",
-            "scenario": "xianyu",
+            "chat_id": "qa_item_price_001",
             "item_id": "DEMO_ITEM_001",
         },
         {"action": "reply", "item_id": "DEMO_ITEM_001", "answer_contains": "1280.00"},
@@ -39,7 +39,7 @@ CASES = (
     (
         {
             "query": "这个商品还有吗？",
-            "scenario": "xianyu",
+            "chat_id": "qa_item_status_002",
             "item_id": "DEMO_ITEM_002",
         },
         {"action": "reply", "item_id": "DEMO_ITEM_002", "answer_contains": "已售出"},
@@ -47,19 +47,19 @@ CASES = (
     (
         {
             "query": "这个商品状态如何？",
-            "scenario": "xianyu",
+            "chat_id": "qa_item_status_003",
             "item_id": "DEMO_ITEM_003",
         },
         {"action": "handoff", "item_id": "DEMO_ITEM_003", "answer_contains": "未知"},
     ),
     (
-        {"query": "这个东西有什么配件？", "scenario": "xianyu"},
+        {"query": "这个东西有什么配件？", "chat_id": "qa_item_missing"},
         {"action": "clarify", "answer_contains": "商品编号"},
     ),
     (
         {
             "query": "这个商品多少钱，带哪些配件？",
-            "scenario": "xianyu",
+            "chat_id": "qa_item_combined_001",
             "item_id": "DEMO_ITEM_001",
         },
         {

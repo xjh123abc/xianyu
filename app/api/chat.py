@@ -15,7 +15,12 @@ class ChatRequest(BaseModel):
     """Request body for a chat question."""
 
     query: str
-    scenario: Literal["ecommerce", "xianyu"] = "ecommerce"
+    chat_id: str = Field(min_length=1)
+    scenario: Literal["ecommerce", "xianyu"] | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated compatibility field; business routing no longer depends on it.",
+    )
     item_id: str | None = None
 
 
@@ -78,6 +83,7 @@ class Response(BaseModel):
     reliability: ReliabilityResponse | None = None
     results: list[RetrievedResult] = Field(default_factory=list)
     route: str | None = None
+    chat_id: str | None = None
     mcp_result: OrderResponse | None = None
     action: str | None = None
     item_id: str | None = None
@@ -91,13 +97,9 @@ class Response(BaseModel):
 )
 async def chat(request: ChatRequest) -> Response:
     """Receive a question and return the grounded pipeline result."""
-    if request.scenario == "ecommerce" and request.item_id is None:
-        # Keep the original call shape for existing integrations and tests.
-        service_response = await chat_service.chat_async(request.query)
-    else:
-        service_response = await chat_service.chat_async(
-            request.query,
-            scenario=request.scenario,
-            item_id=request.item_id,
-        )
+    service_response = await chat_service.chat_async(
+        request.query,
+        request.chat_id,
+        item_id=request.item_id,
+    )
     return Response(**service_response)

@@ -4,13 +4,14 @@ import asyncio
 import logging
 import re
 from collections.abc import Mapping, Sequence
-from typing import Literal
+from typing import Any, Literal
 
 from app.generation.deepseek import DeepSeekGenerator
 from app.infrastructure.order_mcp_client import get_order_via_mcp
 from app.services.mcp_service import MCPService
 from app.services.rag_service import RAGService
 from app.services.item_service import ItemService
+from app.services.session_manager import SessionManager
 from app.rag.pipeline import RAGPipeline
 from app.retrieval.bm25 import BM25Search
 from app.retrieval.hybrid_search import HybridSearch
@@ -106,6 +107,30 @@ _XIANYU_KNOWLEDGE_TERMS = (
     "shipping",
     "repair",
 )
+_XIANYU_ITEM_CONTEXT_TERMS = (
+    "这个商品",
+    "这件商品",
+    "这个东西",
+    "这件",
+    "它",
+    "配件",
+    "成色",
+    "瑕疵",
+    "磕碰",
+    "维修",
+    "拆修",
+    "改装",
+    "标价",
+    "售价",
+    "多少钱",
+    "在售",
+    "售出",
+    "卖出",
+    "有货",
+    "accessory",
+    "condition",
+    "repair",
+)
 _XIANYU_FACT_QUERY_PATTERNS = (
     re.compile(r"价格(?:是|为)?多少(?:元)?", re.IGNORECASE),
     re.compile(r"(?:多少钱|标价|售价|多少元|price|cost)", re.IGNORECASE),
@@ -131,26 +156,93 @@ def _is_order_query(query: str, order_id: str | None) -> bool:
     if _EXPLICIT_ORDER_LOOKUP_PATTERN.search(query):
         return True
 
+    if order_id is not None and any(term in query for term in ("查", "查询", "查看")):
+        return True
+
     mentions_order_detail = any(term in query for term in _ORDER_QUERY_TERMS)
     has_personal_order = any(term in query for term in _PERSONAL_ORDER_TERMS)
     return mentions_order_detail and (order_id is not None or has_personal_order)
 
 
-def _is_combined_query(query: str, order_id: str | None) -> bool:
-    """Identify an order question that also asks about a platform rule."""
-    return order_id is not None and any(term in query for term in _COMBINED_RULE_TERMS)
+def _session_order_id(session_state: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(session_state, Mapping):
+        return None
+    order_id = session_state.get("order_id")
+    return str(order_id).strip().upper() if order_id else None
 
 
-def route_query(query: str) -> RouteResult:
+def _history_order_id(history: Sequence[Mapping[str, Any]] | None) -> str | None:
+    if not history:
+        return None
+    for item in reversed(history):
+        if not isinstance(item, Mapping):
+            continue
+        order_id = _extract_order_id(str(item.get("content", "")))
+        if order_id:
+            return order_id
+    return None
+
+
+def _is_contextual_followup(query: str, session_order_id: str | None) -> bool:
+    return session_order_id is not None and any(
+        term in query for term in ("它", "这个订单", "这笔", "那", "现在", "当前", "超时")
+    )
+
+
+def _is_combined_query(
+    query: str,
+    order_id: str | None,
+    session_order_id: str | None,
+) -> bool:
+    if order_id is None:
+        return False
+    asks_for_rule = any(term in query for term in _COMBINED_RULE_TERMS)
+    asks_for_current_order = any(
+        term in query for term in ("现在", "当前", "状态", "已经", "是否", "超时")
+    )
+    return asks_for_rule and asks_for_current_order or (
+        session_order_id is not None and "超时" in query
+    )
+
+
+def _is_rule_followup(query: str, remembered_order_id: str | None) -> bool:
+    """Keep a policy-only follow-up on the RAG path."""
+    return remembered_order_id is not None and any(
+        term in query for term in _COMBINED_RULE_TERMS
+    ) and not any(term in query for term in ("现在", "当前", "状态", "已经", "是否", "超时"))
+
+
+def _requires_item_context(query: str) -> bool:
+    """Return whether the question cannot be answered without a concrete item."""
+
+    lowered_query = str(query or "").casefold()
+    return any(term in lowered_query for term in _XIANYU_ITEM_CONTEXT_TERMS)
+
+
+def route_query(
+    query: str,
+    history: Sequence[Mapping[str, Any]] | None = None,
+    session_state: Mapping[str, Any] | None = None,
+) -> RouteResult:
     """Route a query to RAG, MCP, or the minimal combined workflow."""
 
     normalized_query = query.strip() if isinstance(query, str) else ""
     if _is_unsupported_action(normalized_query):
         return "unsupported_action", None
 
-    order_id = _extract_order_id(normalized_query)
-    if _is_combined_query(normalized_query, order_id):
+    current_order_id = _extract_order_id(normalized_query)
+    remembered_order_id = _session_order_id(session_state) or _history_order_id(history)
+    order_id = current_order_id or (
+        remembered_order_id
+        if _is_contextual_followup(normalized_query, remembered_order_id)
+        else None
+    )
+
+    if _is_combined_query(normalized_query, order_id, remembered_order_id):
         return "rag_mcp", order_id
+
+    if current_order_id is None and _is_rule_followup(normalized_query, remembered_order_id):
+        return "rag", None
 
     if _is_order_query(normalized_query, order_id):
         if order_id is None:
@@ -172,6 +264,7 @@ class ChatService:
         generator: DeepSeekGenerator | None = None,
         rag_service: RAGService | None = None,
         mcp_service: MCPService | None = None,
+        session_manager: SessionManager | None = None,
         xianyu_rag_service: RAGService | None = None,
         item_service: ItemService | None = None,
     ) -> None:
@@ -186,60 +279,154 @@ class ChatService:
             reranker_cls=Reranker,
         )
         self.mcp_service = mcp_service or MCPService(order_lookup=get_order_via_mcp)
+        self.session_manager = session_manager or SessionManager()
         self.xianyu_rag_service = xianyu_rag_service
         self.item_service = item_service or ItemService()
 
-        # Preserve the old dependency attributes for existing callers/tests.
-        self.vector_search = self.rag_service.vector_search
-        self.bm25_search = self.rag_service.bm25_search
-        self.hybrid_search = self.rag_service.hybrid_search
-        self.reranker = self.rag_service.reranker
         self.rag_pipeline = getattr(self.rag_service, "rag_pipeline", rag_pipeline)
         self.generator = generator or getattr(self.rag_service, "generator", None)
 
     async def chat_async(
         self,
         query: str,
+        chat_id: str | None = None,
         *,
-        scenario: str = "ecommerce",
         item_id: str | None = None,
     ) -> dict[str, object]:
-        """Route a request to RAG, MCP, or both services."""
+        """Resolve session item context, then route to existing capabilities."""
 
-        if scenario not in {"ecommerce", "xianyu"}:
-            raise ValueError("scenario must be either ecommerce or xianyu")
-        if scenario == "xianyu":
-            return await self._chat_xianyu(query, item_id)
-        route, order_id = route_query(query)
+        resolved_chat_id, session = self.session_manager.get_or_create(chat_id)
+        history, session_state = self.session_manager.read_context(session)
+        current_item_id = self.session_manager.get_current_item_id(resolved_chat_id)
+        item, resolution_response = await self._resolve_current_item(
+            query,
+            item_id,
+            current_item_id,
+        )
+        if resolution_response is not None:
+            self.session_manager.append_turn(
+                resolved_chat_id,
+                query,
+                str(resolution_response.get("answer") or ""),
+                last_intent="item_clarification",
+            )
+            if chat_id is not None:
+                resolution_response["chat_id"] = resolved_chat_id
+            return resolution_response
+
+        if item is not None:
+            self.session_manager.set_current_item_id(
+                resolved_chat_id,
+                str(item["item_id"]),
+            )
+
+        route, order_id = route_query(query, history, session_state)
         if route == "rag":
-            return self.chat(query)
-        if route == "rag_mcp":
-            return await self._chat_rag_mcp(query, order_id)
-        if route == "missing_order_id":
-            return self._non_rag_response(
+            if item is not None:
+                response = await self._chat_xianyu(
+                    query,
+                    str(item["item_id"]),
+                    item=item,
+                )
+            elif _requires_item_context(query) and not _is_rule_followup(
+                query,
+                _session_order_id(session_state),
+            ):
+                response = self._xianyu_clarification(query)
+            else:
+                response = self.chat(query)
+        elif route == "rag_mcp":
+            response = await self._chat_rag_mcp(query, order_id, history)
+        elif route == "missing_order_id":
+            response = self._non_rag_response(
                 query,
                 "请提供订单号，并重新发送完整问题，例如：帮我查订单 TEST1001。",
                 can_answer=False,
             )
-        if route == "unsupported_action":
-            return self._non_rag_response(
+        elif route == "unsupported_action":
+            response = self._non_rag_response(
                 query,
                 "本版本暂不支持取消订单、退款或修改地址等操作，仅支持订单状态查询。",
                 can_answer=False,
             )
+        else:
+            assert order_id is not None
+            response = await self._chat_order(query, order_id)
 
-        if order_id is None:
-            return self._non_rag_response(
+        remembered_order_id = order_id or session_state.get("order_id")
+        self.session_manager.append_turn(
+            resolved_chat_id,
+            query,
+            str(response.get("answer") or ""),
+            order_id=remembered_order_id,
+            last_intent=self._intent_for_route(route),
+        )
+        if chat_id is not None:
+            response["chat_id"] = resolved_chat_id
+        return response
+
+    async def _resolve_current_item(
+        self,
+        query: str,
+        structured_item_id: str | None,
+        current_item_id: str | None,
+    ) -> tuple[Mapping[str, object] | None, dict[str, object] | None]:
+        """Resolve and confirm one item without falling back after a bad switch."""
+
+        explicit_item_id = str(structured_item_id or "").strip().upper() or None
+        text_item_ids = self.item_service.resolve_item_ids(query)
+        if len(text_item_ids) > 1:
+            return None, self._item_conflict_response(
                 query,
-                "请提供订单号，并重新发送完整问题，例如：帮我查订单 TEST1001。",
-                can_answer=False,
+                "问题里出现了多个商品，请明确本次要咨询的一个商品编号。",
             )
-        return await self._chat_order(query, order_id)
+        text_item_id = text_item_ids[0] if text_item_ids else None
+        if (
+            explicit_item_id is not None
+            and text_item_id is not None
+            and explicit_item_id != text_item_id
+        ):
+            return None, self._item_conflict_response(
+                query,
+                "请求中的商品编号与问题文字提到的商品不一致，请确认本次要咨询哪一件。",
+            )
+
+        candidate_id = explicit_item_id or text_item_id
+        has_new_candidate = candidate_id is not None
+        if candidate_id is None:
+            candidate_id = current_item_id
+        if candidate_id is None:
+            return None, None
+
+        try:
+            item = await self.mcp_service.get_item_info(candidate_id)
+        except Exception:
+            logger.exception("Item MCP lookup failed for item_id=%s", candidate_id)
+            response = self._non_rag_response(
+                query,
+                "商品资料查询暂时失败，请稍后重试或转人工客服。",
+                can_answer=False,
+                route="xianyu",
+                action="handoff",
+                item_id=candidate_id,
+            )
+            response["next_step"] = "human_handoff"
+            return None, response
+        if not item.get("found"):
+            message = (
+                f"未找到商品 {candidate_id}，请核对商品编号。"
+                if has_new_candidate
+                else "当前会话关联的商品已无法确认，请重新提供商品编号。"
+            )
+            return None, self._item_conflict_response(query, message, item_id=candidate_id)
+        return item, None
 
     async def _chat_xianyu(
         self,
         query: str,
         item_id: str | None,
+        *,
+        item: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
         """Answer a demo Xianyu item question with MCP facts plus scoped RAG."""
 
@@ -252,22 +439,23 @@ class ChatService:
                 return await self._chat_xianyu_common(query)
             return self._xianyu_clarification(query)
 
-        try:
-            item = await self.mcp_service.get_item_info(resolved_item_id)
-        except Exception:
-            logger.exception("Item MCP lookup failed for item_id=%s", resolved_item_id)
-            response = self._non_rag_response(
-                query,
-                "商品资料查询暂时失败，请稍后重试或转人工客服。",
-                can_answer=False,
-                route="xianyu",
-                action="handoff",
-                item_id=resolved_item_id,
-            )
-            response["next_step"] = "human_handoff"
-            return response
-        if not item.get("found"):
-            return self._xianyu_clarification(query, item_id=resolved_item_id)
+        if item is None:
+            try:
+                item = await self.mcp_service.get_item_info(resolved_item_id)
+            except Exception:
+                logger.exception("Item MCP lookup failed for item_id=%s", resolved_item_id)
+                response = self._non_rag_response(
+                    query,
+                    "商品资料查询暂时失败，请稍后重试或转人工客服。",
+                    can_answer=False,
+                    route="xianyu",
+                    action="handoff",
+                    item_id=resolved_item_id,
+                )
+                response["next_step"] = "human_handoff"
+                return response
+            if not item.get("found"):
+                return self._xianyu_clarification(query, item_id=resolved_item_id)
 
         lowered_query = query.casefold()
         asks_price = any(term in lowered_query for term in _XIANYU_PRICE_TERMS)
@@ -519,6 +707,24 @@ class ChatService:
         return response
 
     @staticmethod
+    def _item_conflict_response(
+        query: str,
+        answer: str,
+        *,
+        item_id: str | None = None,
+    ) -> dict[str, object]:
+        response = ChatService._non_rag_response(
+            query,
+            answer,
+            can_answer=False,
+            route="xianyu",
+            action="clarify",
+            item_id=item_id,
+        )
+        response["next_step"] = "clarify_question"
+        return response
+
+    @staticmethod
     def _xianyu_handoff(
         query: str,
         answer: str,
@@ -552,12 +758,13 @@ class ChatService:
     async def _chat_rag_mcp(
         self,
         query: str,
-        order_id: str | None,
+        order_id: str,
+        history: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, object]:
         """Run RAG and MCP concurrently, then make one final model call."""
         rag_result, mcp_result = await asyncio.gather(
             asyncio.to_thread(self.rag_service.prepare, query),
-            self.mcp_service.get_order(order_id) if order_id else self._missing_order_result(),
+            self.mcp_service.get_order(order_id),
             return_exceptions=True,
         )
 
@@ -596,11 +803,16 @@ class ChatService:
             )
 
         try:
-            answer = self._get_generator().generate_combined(
-                query,
-                rag_result,
-                mcp_result,
-            )
+            generator = self._get_generator()
+            if history:
+                answer = generator.generate_combined(
+                    query,
+                    rag_result,
+                    mcp_result,
+                    history=history,
+                )
+            else:
+                answer = generator.generate_combined(query, rag_result, mcp_result)
             if not isinstance(answer, str) or not answer.strip():
                 raise RuntimeError("DeepSeek returned an empty combined answer")
         except Exception:
@@ -626,8 +838,14 @@ class ChatService:
         }
 
     @staticmethod
-    async def _missing_order_result() -> dict[str, object]:
-        return {"found": False, "order_id": None, "error": "missing_order_id"}
+    def _intent_for_route(route: Route) -> str:
+        if route == "order":
+            return "order_query"
+        if route == "rag_mcp":
+            return "rag_mcp"
+        if route == "rag":
+            return "rag_query"
+        return route
 
     async def _chat_order(self, query: str, order_id: str) -> dict[str, object]:
         try:

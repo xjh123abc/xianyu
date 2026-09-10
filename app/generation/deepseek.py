@@ -1,6 +1,6 @@
 """DeepSeek answer generation through the OpenAI-compatible API."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from openai import OpenAI
@@ -38,10 +38,12 @@ class DeepSeekGenerator:
         query: str,
         rag_result: Mapping[str, Any],
         mcp_result: Mapping[str, Any],
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
     ) -> str:
         """Generate the final answer from both independent service results."""
         return self._generate_messages(
-            build_combined_messages(query, rag_result, mcp_result)
+            build_combined_messages(query, rag_result, mcp_result, history)
         )
 
     def _generate_messages(self, messages: list[dict[str, str]]) -> str:

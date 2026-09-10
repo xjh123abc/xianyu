@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,14 @@ PUBLIC_ITEM_FIELDS = (
     "sale_status",
     "data_source",
     "updated_at",
+)
+_ITEM_ID_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])DEMO_ITEM_[A-Za-z0-9_-]+(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
+_LABELED_ITEM_ID_PATTERN = re.compile(
+    r"(?:商品编号|商品ID|item_id)\s*[:：]?\s*([A-Za-z][A-Za-z0-9_-]{2,})",
+    re.IGNORECASE,
 )
 
 
@@ -76,16 +85,25 @@ class ItemService:
     def resolve_item_id(self, text: str) -> str | None:
         """Resolve an unambiguous item ID or title mentioned in user text."""
 
-        normalized_text = str(text or "").strip().casefold()
-        if not normalized_text:
-            return None
-        matches = [
-            item["item_id"]
-            for item in self.list_items()
-            if item["item_id"].casefold() in normalized_text
-            or item["title"].casefold() in normalized_text
-        ]
+        matches = self.resolve_item_ids(text)
         return matches[0] if len(matches) == 1 else None
+
+    def resolve_item_ids(self, text: str) -> list[str]:
+        """Return every configured item explicitly identified by ID or title."""
+
+        raw_text = str(text or "").strip()
+        normalized_text = raw_text.casefold()
+        if not normalized_text:
+            return []
+
+        matches = [match.group(0).upper() for match in _ITEM_ID_PATTERN.finditer(raw_text)]
+        matches.extend(
+            match.group(1).upper() for match in _LABELED_ITEM_ID_PATTERN.finditer(raw_text)
+        )
+        for item in self.list_items():
+            if item["title"].casefold() in normalized_text:
+                matches.append(item["item_id"])
+        return list(dict.fromkeys(matches))
 
     @staticmethod
     def _normalize_id(item_id: str) -> str:

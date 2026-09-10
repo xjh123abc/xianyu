@@ -213,12 +213,13 @@ def test_chat_api_serializes_order_branch_with_minimal_response(
 
     response = TestClient(app).post(
         "/chat",
-        json={"query": "帮我查订单 TEST1003"},
+        json={"query": "帮我查订单 TEST1003", "chat_id": "chat_order_001"},
     )
 
     assert response.status_code == 200
     assert response.json() == {
         "query": "帮我查订单 TEST1003",
+        "chat_id": "chat_order_001",
         "answer": "根据本地模拟订单数据，订单 TEST1003 已签收。",
         "sources": [],
         "can_answer": True,

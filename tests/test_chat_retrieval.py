@@ -76,11 +76,15 @@ def test_chat_retrieval_chain_returns_top_five_results(monkeypatch) -> None:
             ),
         )
 
-        response = client.post("/chat", json={"query": "退款一般多久才能到账？"})
+        response = client.post(
+            "/chat",
+            json={"query": "退款一般多久才能到账？", "chat_id": "chat_rag_001"},
+        )
 
         assert response.status_code == 200
         body = response.json()
         assert body["query"] == "退款一般多久才能到账？"
+        assert body["chat_id"] == "chat_rag_001"
         assert body["answer"] == "基于检索资料生成的测试答案"
         assert body["can_answer"] is True
         assert body["next_step"] == "complete"

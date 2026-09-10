@@ -1,4 +1,4 @@
-"""Stage 2 acceptance checks for the isolated Xianyu chat scenario."""
+"""Checks for item facts, scoped knowledge, and unified item context."""
 
 from __future__ import annotations
 
@@ -110,7 +110,6 @@ def test_price_uses_readonly_mcp_without_rag() -> None:
     result = asyncio.run(
         _service(rag).chat_async(
             "这个商品价格是多少？",
-            scenario="xianyu",
             item_id="DEMO_ITEM_001",
         )
     )
@@ -125,7 +124,6 @@ def test_combined_price_and_item_details_use_mcp_and_scoped_rag() -> None:
     result = asyncio.run(
         _service(rag).chat_async(
             "这个商品多少钱，带哪些配件？",
-            scenario="xianyu",
             item_id="DEMO_ITEM_001",
         )
     )
@@ -144,7 +142,6 @@ def test_combined_price_and_unsupported_detail_keeps_fact_and_handoffs() -> None
     result = asyncio.run(
         _service(rag).chat_async(
             "这个商品多少钱，有完整维修记录吗？",
-            scenario="xianyu",
             item_id="DEMO_ITEM_001",
         )
     )
@@ -162,7 +159,6 @@ def test_combined_price_and_status_use_structured_facts_without_rag() -> None:
     result = asyncio.run(
         _service(rag).chat_async(
             "这个商品多少钱，是否已经售出？",
-            scenario="xianyu",
             item_id="DEMO_ITEM_002",
         )
     )
@@ -173,25 +169,37 @@ def test_combined_price_and_status_use_structured_facts_without_rag() -> None:
     assert rag.item_ids == []
 
 
-def test_item_independent_question_uses_common_rules_only() -> None:
-    rag = FakeRag()
-    result = asyncio.run(_service(rag).chat_async("通常多久发货？", scenario="xianyu"))
-    assert result["action"] == "reply"
+def test_item_independent_question_uses_existing_rag_without_item_lookup() -> None:
+    scoped_rag = FakeRag()
+    service = _service(scoped_rag)
+    ordinary_rag = Mock()
+    ordinary_rag.chat.return_value = {
+        "query": "通常多久发货？",
+        "answer": "按现有通用规则回答",
+        "results": [],
+    }
+    service.rag_service = ordinary_rag
+
+    result = asyncio.run(service.chat_async("通常多久发货？"))
+
+    assert result["answer"] == "按现有通用规则回答"
     assert result.get("item_id") is None
-    assert rag.item_ids == [None]
+    ordinary_rag.chat.assert_called_once_with("通常多久发货？")
+    assert scoped_rag.item_ids == []
+    service.mcp_service.get_item_info.assert_not_awaited()
 
 
 def test_unknown_item_is_clarified_and_items_do_not_cross_talk() -> None:
     rag = FakeRag()
     service = _service(rag)
-    missing = asyncio.run(service.chat_async("这个东西多少钱？", scenario="xianyu"))
+    missing = asyncio.run(service.chat_async("这个东西多少钱？"))
     assert missing["action"] == "clarify"
 
     first = asyncio.run(
-        service.chat_async("配件有哪些？", scenario="xianyu", item_id="DEMO_ITEM_001")
+        service.chat_async("配件有哪些？", item_id="DEMO_ITEM_001")
     )
     second = asyncio.run(
-        service.chat_async("配件有哪些？", scenario="xianyu", item_id="DEMO_ITEM_002")
+        service.chat_async("配件有哪些？", item_id="DEMO_ITEM_002")
     )
     assert first["item_id"] == "DEMO_ITEM_001"
     assert second["item_id"] == "DEMO_ITEM_002"
@@ -206,7 +214,6 @@ def test_insufficient_item_documents_handoff() -> None:
     result = asyncio.run(
         _service(FakeRag(can_answer=False)).chat_async(
             "维修历史是什么？",
-            scenario="xianyu",
             item_id="DEMO_ITEM_001",
         )
     )
@@ -214,7 +221,7 @@ def test_insufficient_item_documents_handoff() -> None:
     assert result["can_answer"] is False
 
 
-def test_chat_api_accepts_xianyu_fields(monkeypatch) -> None:
+def test_chat_api_accepts_unified_item_fields_without_mode(monkeypatch) -> None:
     fake_service = Mock()
     fake_service.chat_async = AsyncMock(
         return_value={
@@ -234,12 +241,230 @@ def test_chat_api_accepts_xianyu_fields(monkeypatch) -> None:
             "/chat",
             json={
                 "query": "价格？",
-                "scenario": "xianyu",
+                "chat_id": "buyer_chat_001",
                 "item_id": "DEMO_ITEM_001",
             },
         )
     assert response.status_code == 200
     assert response.json()["item_id"] == "DEMO_ITEM_001"
     fake_service.chat_async.assert_awaited_once_with(
-        "价格？", scenario="xianyu", item_id="DEMO_ITEM_001"
+        "价格？", "buyer_chat_001", item_id="DEMO_ITEM_001"
     )
+
+
+def test_chat_openapi_marks_mode_as_deprecated_compatibility() -> None:
+    request_schema = app.openapi()["components"]["schemas"]["ChatRequest"]
+
+    assert {"query", "chat_id", "item_id"} <= request_schema["properties"].keys()
+    assert {"query", "chat_id"} <= set(request_schema["required"])
+    assert request_schema["properties"]["scenario"]["deprecated"] is True
+
+
+def test_legacy_mode_is_accepted_but_not_forwarded_to_business_service(monkeypatch) -> None:
+    fake_service = Mock()
+    fake_service.chat_async = AsyncMock(return_value={"query": "价格？", "results": []})
+    monkeypatch.setattr(chat_api, "chat_service", fake_service)
+
+    response = TestClient(app).post(
+        "/chat",
+        json={
+            "query": "价格？",
+            "chat_id": "legacy_chat_001",
+            "scenario": "xianyu",
+            "item_id": "DEMO_ITEM_001",
+        },
+    )
+
+    assert response.status_code == 200
+    fake_service.chat_async.assert_awaited_once_with(
+        "价格？", "legacy_chat_001", item_id="DEMO_ITEM_001"
+    )
+
+
+def test_text_item_id_is_confirmed_and_saved_for_same_chat_followup() -> None:
+    service = _service()
+
+    first = asyncio.run(
+        service.chat_async("DEMO_ITEM_001 的价格是多少？", "buyer_chat_001")
+    )
+    second = asyncio.run(service.chat_async("那它多少钱？", "buyer_chat_001"))
+
+    assert first["item_id"] == second["item_id"] == "DEMO_ITEM_001"
+    assert first["chat_id"] == second["chat_id"] == "buyer_chat_001"
+    assert service.mcp_service.get_item_info.await_count == 2
+    assert [call.args[0] for call in service.mcp_service.get_item_info.await_args_list] == [
+        "DEMO_ITEM_001",
+        "DEMO_ITEM_001",
+    ]
+
+
+def test_chat_api_restores_current_item_for_same_chat(monkeypatch) -> None:
+    service = _service()
+    monkeypatch.setattr(chat_api, "chat_service", service)
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/chat",
+            json={
+                "query": "这个多少钱？",
+                "chat_id": "test_memory_001",
+                "item_id": "DEMO_ITEM_001",
+            },
+        )
+        second = client.post(
+            "/chat",
+            json={"query": "那它多少钱？", "chat_id": "test_memory_001"},
+        )
+
+    assert first.status_code == second.status_code == 200
+    assert second.json()["item_id"] == "DEMO_ITEM_001"
+    assert service.session_manager.get_current_item_id("test_memory_001") == "DEMO_ITEM_001"
+
+
+def test_chat_api_new_item_overwrites_current_item_for_same_chat(monkeypatch) -> None:
+    service = _service()
+    monkeypatch.setattr(chat_api, "chat_service", service)
+
+    with TestClient(app) as client:
+        client.post(
+            "/chat",
+            json={
+                "query": "这个多少钱？",
+                "chat_id": "test_memory_switch",
+                "item_id": "DEMO_ITEM_001",
+            },
+        )
+        client.post(
+            "/chat",
+            json={
+                "query": "这个多少钱？",
+                "chat_id": "test_memory_switch",
+                "item_id": "DEMO_ITEM_002",
+            },
+        )
+        followup = client.post(
+            "/chat",
+            json={"query": "那它多少钱？", "chat_id": "test_memory_switch"},
+        )
+
+    assert followup.status_code == 200
+    assert followup.json()["item_id"] == "DEMO_ITEM_002"
+    assert service.session_manager.get_current_item_id("test_memory_switch") == "DEMO_ITEM_002"
+
+
+def test_chat_api_current_items_are_isolated_by_chat_id(monkeypatch) -> None:
+    service = _service()
+    monkeypatch.setattr(chat_api, "chat_service", service)
+
+    with TestClient(app) as client:
+        client.post(
+            "/chat",
+            json={
+                "query": "这个多少钱？",
+                "chat_id": "buyer_A",
+                "item_id": "DEMO_ITEM_001",
+            },
+        )
+        client.post(
+            "/chat",
+            json={
+                "query": "这个多少钱？",
+                "chat_id": "buyer_B",
+                "item_id": "DEMO_ITEM_002",
+            },
+        )
+        buyer_a = client.post(
+            "/chat",
+            json={"query": "那它多少钱？", "chat_id": "buyer_A"},
+        )
+        buyer_b = client.post(
+            "/chat",
+            json={"query": "那它多少钱？", "chat_id": "buyer_B"},
+        )
+
+    assert buyer_a.status_code == buyer_b.status_code == 200
+    assert buyer_a.json()["item_id"] == "DEMO_ITEM_001"
+    assert buyer_b.json()["item_id"] == "DEMO_ITEM_002"
+
+
+def test_structured_and_text_item_conflict_requires_clarification() -> None:
+    service = _service()
+
+    result = asyncio.run(
+        service.chat_async(
+            "我问的是 DEMO_ITEM_002",
+            "buyer_chat_conflict",
+            item_id="DEMO_ITEM_001",
+        )
+    )
+
+    assert result["action"] == "clarify"
+    assert result["can_answer"] is False
+    assert "不一致" in str(result["answer"])
+    service.mcp_service.get_item_info.assert_not_awaited()
+
+
+def test_multiple_text_items_require_clarification() -> None:
+    service = _service()
+
+    result = asyncio.run(
+        service.chat_async(
+            "比较 DEMO_ITEM_001 和 DEMO_ITEM_002 的价格",
+            "buyer_chat_multiple",
+        )
+    )
+
+    assert result["action"] == "clarify"
+    assert "多个商品" in str(result["answer"])
+    service.mcp_service.get_item_info.assert_not_awaited()
+
+
+def test_valid_item_switch_replaces_old_item_without_cross_session_leak() -> None:
+    service = _service()
+
+    asyncio.run(
+        service.chat_async("多少钱？", "buyer_chat_a", item_id="DEMO_ITEM_001")
+    )
+    switched = asyncio.run(
+        service.chat_async("多少钱？", "buyer_chat_a", item_id="DEMO_ITEM_002")
+    )
+    followup = asyncio.run(service.chat_async("那它多少钱？", "buyer_chat_a"))
+    other_chat = asyncio.run(service.chat_async("这个多少钱？", "buyer_chat_b"))
+
+    assert switched["item_id"] == followup["item_id"] == "DEMO_ITEM_002"
+    assert "560.00" in str(followup["answer"])
+    assert other_chat["action"] == "clarify"
+    assert other_chat.get("item_id") is None
+
+
+def test_unknown_explicit_item_does_not_fall_back_to_remembered_item() -> None:
+    service = _service()
+    asyncio.run(
+        service.chat_async("多少钱？", "buyer_chat_missing", item_id="DEMO_ITEM_001")
+    )
+
+    result = asyncio.run(
+        service.chat_async("这个多少钱？", "buyer_chat_missing", item_id="XXX999")
+    )
+
+    assert result["action"] == "clarify"
+    assert result["item_id"] == "XXX999"
+    assert "未找到商品 XXX999" in str(result["answer"])
+
+
+def test_unknown_text_item_id_does_not_fall_back_to_remembered_item() -> None:
+    service = _service()
+    asyncio.run(
+        service.chat_async("多少钱？", "buyer_chat_text_missing", item_id="DEMO_ITEM_001")
+    )
+
+    result = asyncio.run(
+        service.chat_async(
+            "请查商品编号 XXX999 的价格",
+            "buyer_chat_text_missing",
+        )
+    )
+
+    assert result["action"] == "clarify"
+    assert result["item_id"] == "XXX999"
+    assert "未找到商品 XXX999" in str(result["answer"])

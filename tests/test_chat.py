@@ -13,11 +13,15 @@ def test_chat_post_returns_retrieval_response(monkeypatch) -> None:
     service_chat = Mock(return_value={"query": "订单一般多久发货？", "results": []})
     monkeypatch.setattr(chat_api.chat_service, "chat", service_chat)
 
-    response = client.post("/chat", json={"query": "订单一般多久发货？"})
+    response = client.post(
+        "/chat",
+        json={"query": "订单一般多久发货？", "chat_id": "chat_general_001"},
+    )
 
     assert response.status_code == 200
     assert response.json() == {
         "query": "订单一般多久发货？",
+        "chat_id": "chat_general_001",
         "results": [],
     }
 
@@ -26,15 +30,28 @@ def test_chat_calls_chat_service(monkeypatch) -> None:
     service_chat = Mock(return_value={"query": "订单状态是什么？", "results": []})
     monkeypatch.setattr(chat_api.chat_service, "chat", service_chat)
 
-    response = client.post("/chat", json={"query": "订单状态是什么？"})
+    response = client.post(
+        "/chat",
+        json={"query": "订单状态是什么？", "chat_id": "chat_general_002"},
+    )
 
     assert response.status_code == 200
-    assert response.json() == {"query": "订单状态是什么？", "results": []}
+    assert response.json() == {
+        "query": "订单状态是什么？",
+        "chat_id": "chat_general_002",
+        "results": [],
+    }
     service_chat.assert_called_once_with("订单状态是什么？")
 
 
 def test_chat_requires_query() -> None:
     response = client.post("/chat", json={})
+
+    assert response.status_code == 422
+
+
+def test_chat_requires_chat_id() -> None:
+    response = client.post("/chat", json={"query": "订单一般多久发货？"})
 
     assert response.status_code == 422
 

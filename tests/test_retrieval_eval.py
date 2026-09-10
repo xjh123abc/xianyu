@@ -6,7 +6,6 @@ import pytest
 
 from app.ingestion.chunker import Chunk
 from app.retrieval.bm25 import BM25Search
-from app.retrieval.reranker import Reranker
 from config.settings import settings
 from eval.retrieval_eval import run_evaluation
 

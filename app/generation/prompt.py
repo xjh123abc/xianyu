@@ -1,7 +1,7 @@
 """Prompt templates for grounded customer-service responses."""
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
@@ -67,6 +67,7 @@ def build_combined_messages(
     query: str,
     rag_result: Mapping[str, Any],
     mcp_result: Mapping[str, Any],
+    history: Sequence[Mapping[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """Build one prompt from MCP order facts and RAG rule evidence."""
     if not isinstance(query, str) or not query.strip():
@@ -76,9 +77,18 @@ def build_combined_messages(
     if not isinstance(mcp_result, Mapping):
         raise ValueError("mcp_result must be a mapping")
 
-    user_prompt = f"""用户问题：
-{query.strip()}
+    history_text = ""
+    if history:
+        history_lines = [
+            f"{item.get('role', 'unknown')}: {item.get('content', '')}"
+            for item in history
+            if isinstance(item, Mapping) and str(item.get("content", "")).strip()
+        ]
+        if history_lines:
+            history_text = "\n历史对话：\n" + "\n".join(history_lines) + "\n"
 
+    user_prompt = f"""用户问题：
+{query.strip()}{history_text}
 MCP 订单事实：
 {json.dumps(dict(mcp_result), ensure_ascii=False)}
 

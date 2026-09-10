@@ -23,7 +23,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 当前项目保留原电商 RAG/MCP 链路，并增加了本地闲鱼示例商品问答。
 
-## 闲鱼阶段二本地问答
+## 统一商品问答
 
 三件示例商品位于 `data/xianyu/`。先同步独立的闲鱼知识域：
 
@@ -37,12 +37,12 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 & "D:\conda_envs\rag-customer-service\python.exe" -m scripts.smoke_xianyu_stage2
 ```
 
-调用已启动服务中的闲鱼场景：
+调用已启动服务；商品上下文由 `chat_id` 和 `item_id` 确定，不需要模式参数：
 
 ```powershell
 $body = @{
   query = "这个商品多少钱，带哪些配件？"
-  scenario = "xianyu"
+  chat_id = "qa_item_001"
   item_id = "DEMO_ITEM_001"
 } | ConvertTo-Json
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
@@ -69,7 +69,10 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
 通过 `/chat` 查询模拟订单：
 
 ```powershell
-$body = @{ query = "帮我查订单 TEST1001 发货了吗？" } | ConvertTo-Json
+$body = @{
+  query = "帮我查订单 TEST1001 发货了吗？"
+  chat_id = "qa_order_001"
+} | ConvertTo-Json
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
   -ContentType "application/json; charset=utf-8" `
   -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
