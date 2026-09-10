@@ -1,4 +1,4 @@
-"""Read-only public item facts for the local Xianyu scenario."""
+"""Read-only public item facts for the local Xianyu catalog."""
 
 from __future__ import annotations
 

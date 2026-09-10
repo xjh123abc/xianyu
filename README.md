@@ -9,7 +9,7 @@
 - `data/raw/`：原始业务文档
 - `eval/`：评测数据与评测脚本
 - `mcp_servers/`：独立 MCP Server 入口与模拟订单工具
-- `scripts/`：MCP 端到端 smoke 脚本
+- `scripts/`：MCP 与统一 `/chat` 端到端验收脚本
 - `tests/`：测试
 
 ## 快速开始
@@ -31,10 +31,11 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 & "D:\conda_envs\rag-customer-service\python.exe" -m app.ingestion.pipeline --scenario xianyu
 ```
 
-运行阶段二真实本地 smoke。该命令经过 FastAPI、只读 MCP、Qdrant、Embedding 和 Reranker，使用本地校验生成器，不调用 DeepSeek，也不连接或发送闲鱼消息：
+运行自动化测试和真实 MCP 协议 smoke（覆盖三件商品及不存在编号）：
 
 ```powershell
-& "D:\conda_envs\rag-customer-service\python.exe" -m scripts.smoke_xianyu_stage2
+& "D:\conda_envs\rag-customer-service\python.exe" -m pytest
+& "D:\conda_envs\rag-customer-service\python.exe" -m scripts.smoke_order_mcp
 ```
 
 调用已启动服务；商品上下文由 `chat_id` 和 `item_id` 确定，不需要模式参数：
@@ -48,6 +49,12 @@ $body = @{
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
   -ContentType "application/json; charset=utf-8" `
   -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+```
+
+服务启动后，运行 A01—A14 统一验收。脚本只调用正在运行的真实 `/chat`，不替换 ChatService、MCP、检索、Reranker 或模型，不读取 Cookie、不发闲鱼消息，也不修改商品和知识库。结果写入 `eval/results/`；标记为“阻塞”的开放式回答必须对照真实资料人工复核，不能当作自动通过：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" -m scripts.smoke_unified_chat --base-url http://127.0.0.1:8000
 ```
 
 ## MCP 模拟订单

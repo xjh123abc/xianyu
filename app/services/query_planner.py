@@ -30,6 +30,9 @@ _NON_ITEM_STATUS_TERMS = ("订单状态", "物流状态", "快递状态", "发�
 _SELLER_SCOPE_TERMS = ("你们店", "店里", "本店", "卖家", "这件商品", "这个商品")
 _STATUS_TERMS = (
     "在吗",
+    "能买吗",
+    "还能买",
+    "可买吗",
     "还有吗",
     "在售",
     "卖出",
@@ -38,6 +41,11 @@ _STATUS_TERMS = (
     "状态",
     "available",
     "sold",
+)
+
+COMMON_KNOWLEDGE_RETRIEVAL_HINT = (
+    "卖家通用规则 售后与边界 二手商品 成色 瑕疵 配件 "
+    "双方确认 争议 附加条件 单独确认 不自行承诺"
 )
 _COMMON_KNOWLEDGE_TERMS = (
     "售后",

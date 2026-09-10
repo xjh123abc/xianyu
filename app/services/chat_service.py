@@ -12,6 +12,7 @@ from app.services.mcp_service import MCPService
 from app.services.rag_service import RAGService
 from app.services.item_service import ItemService
 from app.services.query_planner import (
+    COMMON_KNOWLEDGE_RETRIEVAL_HINT,
     QuestionPlan,
     build_question_plan,
     common_knowledge_query,
@@ -619,6 +620,10 @@ class ChatService:
                 remove_facts=remove_facts,
                 item_title=str(item["title"]) if need["scope"] == "item" else "",
             )
+            if need["scope"] == "common":
+                retrieval_query = (
+                    f"{retrieval_query} {COMMON_KNOWLEDGE_RETRIEVAL_HINT}"
+                ).strip()
             try:
                 prepared = await asyncio.to_thread(
                     rag_service.prepare,
@@ -683,12 +688,14 @@ class ChatService:
     async def _chat_xianyu_common(self, query: str) -> dict[str, object]:
         """Answer an item-independent question from common seller rules only."""
 
+        prepared: Mapping[str, object] | None = None
         try:
             rag_service = self._get_xianyu_rag_service()
             warm_up = getattr(rag_service, "warm_up", None)
             if callable(warm_up):
                 warm_up()
-            prepared = await asyncio.to_thread(rag_service.prepare, query)
+            retrieval_query = f"{query} {COMMON_KNOWLEDGE_RETRIEVAL_HINT}".strip()
+            prepared = await asyncio.to_thread(rag_service.prepare, retrieval_query)
             context = prepared.get("context")
             knowledge_sources = self._valid_knowledge_sources(prepared)
             if (
@@ -722,14 +729,27 @@ class ChatService:
             }
         except Exception:
             logger.exception("Common Xianyu RAG failed")
+            has_prepared_evidence = prepared is not None and bool(
+                self._valid_knowledge_sources(prepared)
+            )
             response = self._non_rag_response(
                 query,
-                "现有卖家通用规则没有覆盖这个问题，请转人工客服。",
+                "卖家规则回答生成失败，请转人工客服。"
+                if has_prepared_evidence
+                else "卖家通用规则检索暂时失败，请转人工客服。",
                 can_answer=False,
                 route="xianyu",
                 action="handoff",
             )
             response["next_step"] = "human_handoff"
+            if has_prepared_evidence and prepared is not None:
+                response.update(
+                    {
+                        "sources": self._valid_knowledge_sources(prepared),
+                        "results": prepared.get("results", []),
+                        "reliability": prepared.get("reliability"),
+                    }
+                )
             return response
 
     def _get_xianyu_rag_service(self) -> RAGService:
@@ -906,6 +926,7 @@ class ChatService:
                 "item_id": item["item_id"],
                 "item_info": dict(item),
                 "next_step": "human_handoff",
+                "sources": [ChatService._item_source(item)],
             }
         )
         if prepared is not None:

@@ -47,6 +47,24 @@ EXPECTED_MISSING_ORDER = {
     "tracking_no": None,
 }
 
+EXPECTED_ITEMS = {
+    "DEMO_ITEM_001": {
+        "found": True,
+        "listed_price_cents": 128000,
+        "sale_status": "listed",
+    },
+    "DEMO_ITEM_002": {
+        "found": True,
+        "listed_price_cents": 56000,
+        "sale_status": "sold",
+    },
+    "DEMO_ITEM_003": {
+        "found": True,
+        "listed_price_cents": 98000,
+        "sale_status": "unknown",
+    },
+}
+
 
 async def run_smoke_test() -> None:
     """Exercise tools/list and tools/call through a real subprocess."""
@@ -74,10 +92,21 @@ async def run_smoke_test() -> None:
             )
         print(json.dumps(actual_missing, ensure_ascii=False))
 
-        item = await _call_item_tool(client, "DEMO_ITEM_001")
-        if item["found"] is not True or item["item_id"] != "DEMO_ITEM_001":
-            raise AssertionError(f"Unexpected item response: {item!r}")
-        print(json.dumps(item, ensure_ascii=False))
+        for item_id, expected_fields in EXPECTED_ITEMS.items():
+            item = await _call_item_tool(client, item_id)
+            if item.get("item_id") != item_id or any(
+                item.get(key) != value for key, value in expected_fields.items()
+            ):
+                raise AssertionError(f"Unexpected item response for {item_id}: {item!r}")
+            print(json.dumps(item, ensure_ascii=False))
+
+        missing_item = await _call_item_tool(client, "XXX999")
+        if (
+            missing_item.get("found") is not False
+            or missing_item.get("item_id") != "XXX999"
+        ):
+            raise AssertionError(f"Unexpected missing item response: {missing_item!r}")
+        print(json.dumps(missing_item, ensure_ascii=False))
 
 
 def main() -> None:

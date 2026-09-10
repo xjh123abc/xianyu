@@ -83,6 +83,10 @@ def test_logistics_status_is_not_misclassified_as_item_sale_status() -> None:
     assert "sale_status" not in plan["item_fields"]
 
 
+def test_can_still_buy_is_classified_as_item_sale_status() -> None:
+    assert build_question_plan("这个商品还能买吗？")["item_fields"] == ["sale_status"]
+
+
 def test_seller_general_question_uses_common_knowledge_without_mcp() -> None:
     rag = EvidenceRag()
     service = _service(rag)
@@ -95,6 +99,36 @@ def test_seller_general_question_uses_common_knowledge_without_mcp() -> None:
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     assert rag.item_ids == [None]
     service.mcp_service.get_item_info.assert_not_awaited()
+
+
+def test_unconfirmed_return_promise_uses_current_common_corpus() -> None:
+    rag = EvidenceRag()
+    service = _service(rag)
+
+    result = asyncio.run(
+        service.chat_async("你们店支持七天无理由退货吗？", "stage3_old_promise")
+    )
+
+    assert result["route"] == "xianyu"
+    assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
+    assert "卖家通用规则" in rag.queries[0]
+    service.mcp_service.get_item_info.assert_not_awaited()
+
+
+def test_unknown_status_handoff_keeps_mcp_source() -> None:
+    service = _service(EvidenceRag())
+
+    result = asyncio.run(
+        service.chat_async(
+            "这个商品还在售吗？",
+            "stage3_unknown_status_source",
+            item_id="DEMO_ITEM_003",
+        )
+    )
+
+    assert result["sources"] == [
+        {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"}
+    ]
 
 
 def test_mcp_failure_keeps_independent_common_knowledge_answer() -> None:
@@ -260,6 +294,21 @@ def test_knowledge_without_a_valid_source_cannot_make_a_positive_promise() -> No
     assert result["can_answer"] is False
     assert result["next_step"] == "human_handoff"
     assert "不足以可靠回答" in str(result["answer"])
+
+
+def test_common_generation_failure_keeps_retrieved_evidence() -> None:
+    rag = EvidenceRag()
+    service = _service(rag)
+    service.generator.generate.side_effect = RuntimeError("empty answer")
+
+    result = asyncio.run(
+        service.chat_async("你们店售后怎么处理？", "stage3_common_failure")
+    )
+
+    assert result["can_answer"] is False
+    assert result["next_step"] == "human_handoff"
+    assert "回答生成失败" in str(result["answer"])
+    assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
 
 
 def test_explicit_item_routes_unlisted_damage_question_to_item_knowledge() -> None:
