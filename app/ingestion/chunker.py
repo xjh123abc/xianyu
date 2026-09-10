@@ -11,6 +11,8 @@ class Chunk:
 
     content: str
     source: str
+    scope: str | None = None
+    item_id: str | None = None
 
 
 def chunk_document(document: Document, chunk_size: int = 500) -> list[Chunk]:
@@ -22,6 +24,8 @@ def chunk_document(document: Document, chunk_size: int = 500) -> list[Chunk]:
         Chunk(
             content=document.content[start : start + chunk_size],
             source=document.source,
+            scope=document.scope,
+            item_id=document.item_id,
         )
         for start in range(0, len(document.content), chunk_size)
     ]

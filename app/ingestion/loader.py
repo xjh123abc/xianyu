@@ -16,6 +16,8 @@ class Document:
 
     content: str
     source: str
+    scope: str | None = None
+    item_id: str | None = None
 
 
 def canonical_source(file_path: str | Path, knowledge_base_path: str | Path) -> str:
@@ -34,6 +36,8 @@ def load_txt(
     file_path: str | Path,
     *,
     source_root: str | Path | None = None,
+    scope: str | None = None,
+    item_id: str | None = None,
 ) -> Document:
     """Load UTF-8 text and optionally store a canonical logical source path."""
     path = Path(file_path)
@@ -44,6 +48,8 @@ def load_txt(
             if source_root is not None
             else str(path)
         ),
+        scope=scope,
+        item_id=item_id,
     )
 
 
@@ -64,6 +70,17 @@ def load_configured_knowledge_base() -> list["Chunk"]:
         raise RuntimeError("Project settings are unavailable")
 
     knowledge_base_path = configured_knowledge_base_path()
+    return load_knowledge_base(knowledge_base_path)
+
+
+def load_knowledge_base(
+    knowledge_base_path: str | Path,
+    *,
+    scoped: bool = False,
+) -> list["Chunk"]:
+    """Load and chunk a specific corpus, optionally deriving Xianyu scopes."""
+
+    knowledge_base_path = Path(knowledge_base_path).resolve()
     if not knowledge_base_path.is_dir():
         raise FileNotFoundError(
             f"Configured knowledge base directory does not exist: {knowledge_base_path}"
@@ -73,12 +90,53 @@ def load_configured_knowledge_base() -> list["Chunk"]:
     from app.ingestion.chunker import chunk_document
 
     chunks: list["Chunk"] = []
-    for path in sorted(knowledge_base_path.iterdir(), key=lambda item: item.name):
-        if path.is_file() and path.suffix.lower() in {".md", ".txt"}:
-            chunks.extend(
-                chunk_document(
-                    load_txt(path, source_root=knowledge_base_path),
-                    chunk_size=settings.knowledge_base_chunk_size,
+    paths = sorted(
+        (path for path in knowledge_base_path.rglob("*") if path.is_file()),
+        key=lambda item: item.as_posix(),
+    )
+    for path in paths:
+        if path.suffix.lower() not in {".md", ".txt"}:
+            continue
+        scope = None
+        item_id = None
+        source = canonical_source(path, knowledge_base_path)
+        if scoped:
+            parts = Path(source).parts
+            if len(parts) >= 2 and parts[0] == "common":
+                scope = "common"
+            elif len(parts) == 2 and parts[0] == "items":
+                scope = "item"
+                item_id = Path(parts[1]).stem
+            if scope is None or (scope == "item" and not item_id):
+                raise ValueError(
+                    "Scoped Xianyu knowledge files must be under common/ or items/<item_id>.md"
                 )
+        chunks.extend(
+            chunk_document(
+                load_txt(
+                    path,
+                    source_root=knowledge_base_path,
+                    scope=scope,
+                    item_id=item_id,
+                ),
+                chunk_size=settings.knowledge_base_chunk_size,
             )
+        )
     return chunks
+
+
+def configured_xianyu_knowledge_base_path() -> Path:
+    """Resolve the configured Xianyu knowledge corpus."""
+
+    if settings is None:
+        raise RuntimeError("Project settings are unavailable")
+    path = Path(settings.xianyu_knowledge_base_path)
+    if not path.is_absolute():
+        path = Path(__file__).parents[2] / path
+    return path.resolve()
+
+
+def load_xianyu_knowledge_base() -> list["Chunk"]:
+    """Load only the seller-confirmed Xianyu corpus with scope metadata."""
+
+    return load_knowledge_base(configured_xianyu_knowledge_base_path(), scoped=True)

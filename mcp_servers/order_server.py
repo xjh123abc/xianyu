@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.services.item_service import ItemService
 from mcp.server import MCPServer
 from pydantic import BaseModel
 
@@ -59,6 +65,30 @@ def get_order(order_id: str) -> OrderResult:
         return OrderResult(found=False, order_id=normalized_id)
 
     return OrderResult(found=True, order_id=normalized_id, **order)
+
+
+class ItemResult(BaseModel):
+    """Public readonly item fields returned by ``get_item_info``."""
+
+    found: bool
+    item_id: str | None = None
+    title: str | None = None
+    listed_price_cents: int | None = None
+    sale_status: str | None = None
+    data_source: str | None = None
+    updated_at: str | None = None
+
+
+@server.tool(
+    name="get_item_info",
+    description="Look up public information for one local Xianyu demo item.",
+    structured_output=True,
+)
+def get_item_info(item_id: str) -> ItemResult:
+    """Return public item facts only; no internal pricing or order actions."""
+
+    result = ItemService().get_item_info(item_id)
+    return ItemResult(**result)
 
 
 if __name__ == "__main__":

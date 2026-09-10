@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.infrastructure import order_mcp_client
-from mcp_servers.order_server import OrderResult, get_order, server
+from mcp_servers.order_server import ItemResult, OrderResult, get_item_info, get_order, server
 
 
 def test_get_order_returns_each_mock_order() -> None:
@@ -36,10 +36,38 @@ def test_get_order_returns_structured_not_found_response() -> None:
     }
 
 
-def test_server_discovers_only_get_order() -> None:
+def test_get_item_info_returns_public_fields_only() -> None:
+    result = get_item_info("demo_item_001")
+
+    assert isinstance(result, ItemResult)
+    assert result.found is True
+    assert result.item_id == "DEMO_ITEM_001"
+    assert "internal" not in result.model_dump()
+    assert result.listed_price_cents == 128000
+
+
+def test_client_extracts_structured_item_result() -> None:
+    result = SimpleNamespace(
+        is_error=False,
+        structured_content={
+            "found": True,
+            "item_id": "DEMO_ITEM_001",
+            "title": "camera",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00",
+        },
+        content=[],
+    )
+
+    assert order_mcp_client._extract_item_result(result) == result.structured_content
+
+
+def test_server_discovers_order_and_readonly_item_tools() -> None:
     tool_list = asyncio.run(server.list_tools())
 
-    assert [tool.name for tool in tool_list] == ["get_order"]
+    assert [tool.name for tool in tool_list] == ["get_order", "get_item_info"]
 
 
 def test_client_starts_server_with_active_python() -> None:

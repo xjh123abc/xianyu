@@ -4,6 +4,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from app.infrastructure.model_runtime import configure_huggingface_loading
+
+configure_huggingface_loading()
+
 from sentence_transformers import CrossEncoder
 
 from config.settings import settings

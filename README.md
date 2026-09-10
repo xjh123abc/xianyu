@@ -21,7 +21,34 @@ copy .env.example .env
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-当前文件为项目骨架；请继续实现各模块中的业务逻辑，并将真实政策文档放入 `data/raw/`。
+当前项目保留原电商 RAG/MCP 链路，并增加了本地闲鱼示例商品问答。
+
+## 闲鱼阶段二本地问答
+
+三件示例商品位于 `data/xianyu/`。先同步独立的闲鱼知识域：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" -m app.ingestion.pipeline --scenario xianyu
+```
+
+运行阶段二真实本地 smoke。该命令经过 FastAPI、只读 MCP、Qdrant、Embedding 和 Reranker，使用本地校验生成器，不调用 DeepSeek，也不连接或发送闲鱼消息：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" -m scripts.smoke_xianyu_stage2
+```
+
+调用已启动服务中的闲鱼场景：
+
+```powershell
+$body = @{
+  query = "这个商品多少钱，带哪些配件？"
+  scenario = "xianyu"
+  item_id = "DEMO_ITEM_001"
+} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+```
 
 ## MCP 模拟订单
 

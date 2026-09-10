@@ -1,6 +1,6 @@
 """Chat API routes."""
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -15,6 +15,8 @@ class ChatRequest(BaseModel):
     """Request body for a chat question."""
 
     query: str
+    scenario: Literal["ecommerce", "xianyu"] = "ecommerce"
+    item_id: str | None = None
 
 
 class RetrievedResult(BaseModel):
@@ -43,6 +45,28 @@ class ReliabilityResponse(BaseModel):
     threshold: float
 
 
+class OrderResponse(BaseModel):
+    """Structured order data available to the customer-facing UI."""
+
+    found: bool
+    order_id: str | None = None
+    order_status: str | None = None
+    logistics_status: str | None = None
+    tracking_no: str | None = None
+
+
+class ItemResponse(BaseModel):
+    """Public readonly item facts returned by the Xianyu flow."""
+
+    found: bool
+    item_id: str | None = None
+    title: str | None = None
+    listed_price_cents: int | None = None
+    sale_status: str | None = None
+    data_source: str | None = None
+    updated_at: str | None = None
+
+
 class Response(BaseModel):
     """Grounded answer and its pipeline decision."""
 
@@ -54,6 +78,10 @@ class Response(BaseModel):
     reliability: ReliabilityResponse | None = None
     results: list[RetrievedResult] = Field(default_factory=list)
     route: str | None = None
+    mcp_result: OrderResponse | None = None
+    action: str | None = None
+    item_id: str | None = None
+    item_info: ItemResponse | None = None
 
 
 @router.post(
@@ -63,5 +91,13 @@ class Response(BaseModel):
 )
 async def chat(request: ChatRequest) -> Response:
     """Receive a question and return the grounded pipeline result."""
-    service_response = await chat_service.chat_async(request.query)
+    if request.scenario == "ecommerce" and request.item_id is None:
+        # Keep the original call shape for existing integrations and tests.
+        service_response = await chat_service.chat_async(request.query)
+    else:
+        service_response = await chat_service.chat_async(
+            request.query,
+            scenario=request.scenario,
+            item_id=request.item_id,
+        )
     return Response(**service_response)

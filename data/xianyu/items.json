@@ -1,0 +1,26 @@
+[
+  {
+    "item_id": "DEMO_ITEM_001",
+    "title": "复古胶片相机套装",
+    "listed_price_cents": 128000,
+    "sale_status": "listed",
+    "data_source": "seller_manual",
+    "updated_at": "2026-09-09T09:00:00+08:00"
+  },
+  {
+    "item_id": "DEMO_ITEM_002",
+    "title": "八成新机械键盘",
+    "listed_price_cents": 56000,
+    "sale_status": "sold",
+    "data_source": "seller_manual",
+    "updated_at": "2026-09-09T09:05:00+08:00"
+  },
+  {
+    "item_id": "DEMO_ITEM_003",
+    "title": "家用半自动咖啡机",
+    "listed_price_cents": 98000,
+    "sale_status": "unknown",
+    "data_source": "seller_manual",
+    "updated_at": "2026-09-09T09:10:00+08:00"
+  }
+]

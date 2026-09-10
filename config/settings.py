@@ -30,6 +30,10 @@ try:
         reranker_top_k: int = 5
         ingestion_manifest_path: str = ".rag_ingestion_manifest.json"
         answer_reliability_threshold: float = 0.5
+        xianyu_items_path: str = "data/xianyu/items.json"
+        xianyu_knowledge_base_path: str = "data/xianyu/knowledge"
+        xianyu_qdrant_collection: str = "xianyu_documents"
+        xianyu_ingestion_manifest_path: str = ".xianyu_ingestion_manifest.json"
 
 
 

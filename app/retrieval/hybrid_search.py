@@ -1,7 +1,9 @@
 """Hybrid keyword and vector retrieval."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TypedDict
+
+from qdrant_client.models import Filter
 
 from app.retrieval.bm25 import BM25Search
 from app.retrieval.vector_search import VectorSearch
@@ -14,6 +16,8 @@ class HybridResult(TypedDict):
     score: float
     source: str
     chunk_index: int
+    scope: str | None
+    item_id: str | None
 
 
 class HybridSearch:
@@ -42,6 +46,8 @@ class HybridSearch:
         *,
         dense_top_k: int | None = None,
         bm25_top_k: int | None = None,
+        query_filter: Filter | None = None,
+        bm25_filter: Callable[[object], bool] | None = None,
     ) -> list[HybridResult]:
         """Return one ranking built from the two independent result rankings."""
         dense_limit = dense_top_k if dense_top_k is not None else top_k
@@ -54,8 +60,18 @@ class HybridSearch:
         if output_limit <= 0:
             raise ValueError("top_k must be greater than zero")
 
-        dense_results = self.vector_search.search(query, top_k=dense_limit)
-        bm25_results = self.bm25_search.search(query, top_k=bm25_limit)
+        if query_filter is None:
+            dense_results = self.vector_search.search(query, top_k=dense_limit)
+        else:
+            dense_results = self.vector_search.search(
+                query, top_k=dense_limit, query_filter=query_filter
+            )
+        if bm25_filter is None:
+            bm25_results = self.bm25_search.search(query, top_k=bm25_limit)
+        else:
+            bm25_results = self.bm25_search.search(
+                query, top_k=bm25_limit, filter_fn=bm25_filter
+            )
         return self.fuse(dense_results, bm25_results, top_k=output_limit)
 
     def fuse(
@@ -101,6 +117,10 @@ class HybridSearch:
                 "source": result["source"],
                 "chunk_index": result["chunk_index"],
             }
+            if result.get("scope") is not None:
+                merged[key]["scope"] = result["scope"]
+            if result.get("item_id") is not None:
+                merged[key]["item_id"] = result["item_id"]
         else:
             merged[key]["score"] += contribution
 
@@ -112,9 +132,14 @@ class HybridSearch:
         else:
             payload = getattr(result, "payload", None) or {}
 
-        return {
+        normalized: HybridResult = {
             "content": str(payload["content"]),
             "score": float(payload.get("score", getattr(result, "score", 0.0))),
             "source": str(payload["source"]),
             "chunk_index": int(payload["chunk_index"]),
         }
+        if payload.get("scope") is not None:
+            normalized["scope"] = str(payload["scope"])
+        if payload.get("item_id") is not None:
+            normalized["item_id"] = str(payload["item_id"])
+        return normalized

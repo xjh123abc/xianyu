@@ -1,4 +1,9 @@
 .env
 .rag_ingestion_manifest.json
+.xianyu_ingestion_manifest.json
+data/private/
+*.db
+*.sqlite3
+logs/
 __pycache__/
 .pytest_cache/

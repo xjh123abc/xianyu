@@ -23,6 +23,15 @@ ORDER_RESULT_KEYS = (
     "logistics_status",
     "tracking_no",
 )
+ITEM_RESULT_KEYS = (
+    "found",
+    "item_id",
+    "title",
+    "listed_price_cents",
+    "sale_status",
+    "data_source",
+    "updated_at",
+)
 
 
 class OrderMCPError(RuntimeError):
@@ -72,6 +81,22 @@ def _extract_order_result(result: Any) -> dict[str, Any]:
     return {key: structured_content[key] for key in ORDER_RESULT_KEYS}
 
 
+def _extract_item_result(result: Any) -> dict[str, Any]:
+    """Validate and normalize the public item response from MCP."""
+
+    if result.is_error:
+        raise OrderMCPError(_format_tool_error(result))
+    structured_content = result.structured_content
+    if not isinstance(structured_content, Mapping):
+        raise OrderMCPError("MCP get_item_info returned no structured content")
+    missing_keys = [key for key in ITEM_RESULT_KEYS if key not in structured_content]
+    if missing_keys:
+        raise OrderMCPError(
+            "MCP get_item_info response is missing fields: " + ", ".join(missing_keys)
+        )
+    return {key: structured_content[key] for key in ITEM_RESULT_KEYS}
+
+
 async def _call_order_tool(client: Client, order_id: str) -> dict[str, Any]:
     """Call ``get_order`` over the already-established MCP connection."""
 
@@ -93,3 +118,26 @@ async def get_order_via_mcp(order_id: str) -> dict[str, Any]:
         raise
     except Exception as exc:
         raise OrderMCPError(f"MCP order lookup failed: {exc}") from exc
+
+
+async def _call_item_tool(client: Client, item_id: str) -> dict[str, Any]:
+    """Call ``get_item_info`` over an established MCP connection."""
+
+    result = await client.call_tool(
+        "get_item_info",
+        {"item_id": item_id},
+        read_timeout_seconds=10,
+    )
+    return _extract_item_result(result)
+
+
+async def get_item_info_via_mcp(item_id: str) -> dict[str, Any]:
+    """Start the local MCP server, call the readonly item tool, and close it."""
+
+    try:
+        async with Client(_server_parameters(), read_timeout_seconds=10) as client:
+            return await _call_item_tool(client, item_id)
+    except OrderMCPError:
+        raise
+    except Exception as exc:
+        raise OrderMCPError(f"MCP item lookup failed: {exc}") from exc

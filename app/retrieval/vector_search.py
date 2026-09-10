@@ -3,7 +3,7 @@
 from typing import Sequence
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import ScoredPoint
+from qdrant_client.models import FieldCondition, Filter, MatchValue, ScoredPoint
 
 from app.services.embedding_service import EmbeddingService
 from config.settings import settings
@@ -16,26 +16,63 @@ class VectorSearch:
         self,
         client: QdrantClient | None = None,
         embedding_service: EmbeddingService | None = None,
+        collection_name: str | None = None,
     ) -> None:
         if settings is None:
             raise RuntimeError("Project settings are unavailable")
 
-        self.collection_name = settings.qdrant_collection
+        self.collection_name = collection_name or settings.qdrant_collection
         self.client = client if client is not None else QdrantClient(url=settings.qdrant_url)
         self.embedding_service = (
             embedding_service if embedding_service is not None else EmbeddingService()
         )
 
-    def search(self, query: str, top_k: int = 5) -> Sequence[ScoredPoint]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        query_filter: Filter | None = None,
+    ) -> Sequence[ScoredPoint]:
         """Embed a user query and return the top matching Qdrant points."""
         if top_k <= 0:
             raise ValueError("top_k must be greater than zero")
 
         query_vector = self.embedding_service.embed_query(query)
-        result = self.client.query_points(
-            collection_name=self.collection_name,
-            query=query_vector,
-            limit=top_k,
-            with_payload=True,
-        )
+        query_kwargs = {
+            "collection_name": self.collection_name,
+            "query": query_vector,
+            "limit": top_k,
+            "with_payload": True,
+        }
+        if query_filter is not None:
+            query_kwargs["query_filter"] = query_filter
+        result = self.client.query_points(**query_kwargs)
         return result.points
+
+
+def xianyu_item_filter(item_id: str) -> Filter:
+    """Allow common seller rules and only the selected item's documents."""
+
+    normalized_id = str(item_id or "").strip()
+    if not normalized_id:
+        raise ValueError("item_id must not be empty")
+    return Filter(
+        should=[
+            FieldCondition(key="scope", match=MatchValue(value="common")),
+            Filter(
+                must=[
+                    FieldCondition(key="scope", match=MatchValue(value="item")),
+                    FieldCondition(key="item_id", match=MatchValue(value=normalized_id)),
+                ]
+            ),
+        ]
+    )
+
+
+def xianyu_common_filter() -> Filter:
+    """Allow only seller-wide rules when no concrete item is selected."""
+
+    return Filter(
+        must=[FieldCondition(key="scope", match=MatchValue(value="common"))]
+    )

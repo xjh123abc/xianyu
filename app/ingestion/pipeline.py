@@ -12,7 +12,9 @@ from typing import Any, Sequence, TypedDict
 from app.ingestion.chunker import Chunk
 from app.ingestion.loader import (
     configured_knowledge_base_path,
+    configured_xianyu_knowledge_base_path,
     load_configured_knowledge_base,
+    load_xianyu_knowledge_base,
 )
 from app.infrastructure.qdrant import QdrantStore
 from app.services.embedding_service import EmbeddingService
@@ -35,6 +37,8 @@ def knowledge_base_fingerprint(chunks: Sequence[Chunk]) -> str:
             "content": chunk.content,
             "source": chunk.source,
             "chunk_index": chunk_index,
+            "scope": chunk.scope,
+            "item_id": chunk.item_id,
         }
         digest.update(
             json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -103,16 +107,29 @@ class IngestionPipeline:
         store: QdrantStore | None = None,
         *,
         manifest_path: str | Path | None = None,
+        knowledge_base_path: str | Path | None = None,
+        xianyu: bool = False,
     ) -> None:
+        if xianyu and knowledge_base_path is not None:
+            raise ValueError("Pass either xianyu=True or knowledge_base_path, not both")
+        self.xianyu = xianyu
+        self.knowledge_base_path = (
+            Path(knowledge_base_path).resolve()
+            if knowledge_base_path is not None
+            else configured_xianyu_knowledge_base_path() if xianyu else None
+        )
         self.embedding_service = embedding_service or EmbeddingService()
-        self.store = store or QdrantStore()
+        self.store = store or QdrantStore(
+            collection_name=settings.xianyu_qdrant_collection if xianyu else None,
+            knowledge_base_path=self.knowledge_base_path,
+        )
         self.manifest_path = (
             Path(manifest_path) if manifest_path is not None else configured_manifest_path()
         )
 
     def ingest(self) -> IngestionResult:
         """Ingest the current configured corpus and then record its fingerprint."""
-        chunks = load_configured_knowledge_base()
+        chunks = load_xianyu_knowledge_base() if self.xianyu else load_configured_knowledge_base()
         fingerprint = knowledge_base_fingerprint(chunks)
         vectors = self.embedding_service.embed_chunks(chunks)
         self.store.upsert_chunks(chunks, vectors)
@@ -120,7 +137,9 @@ class IngestionPipeline:
         result: IngestionResult = {
             "fingerprint": fingerprint,
             "chunk_count": len(chunks),
-            "knowledge_base_path": str(configured_knowledge_base_path()),
+            "knowledge_base_path": str(
+                self.knowledge_base_path or configured_knowledge_base_path()
+            ),
         }
         _write_manifest(self.manifest_path, result)
         return result
@@ -130,8 +149,18 @@ def main() -> None:
     """Run the local ingestion command."""
     parser = argparse.ArgumentParser(description="Ingest the configured RAG knowledge base")
     parser.add_argument("--manifest", type=Path, help="Optional manifest output path")
+    parser.add_argument(
+        "--scenario",
+        choices=("ecommerce", "xianyu"),
+        default="ecommerce",
+        help="Corpus to ingest (default: ecommerce)",
+    )
     args = parser.parse_args()
-    result = IngestionPipeline(manifest_path=args.manifest).ingest()
+    result = IngestionPipeline(
+        manifest_path=args.manifest
+        or (settings.xianyu_ingestion_manifest_path if args.scenario == "xianyu" else None),
+        xianyu=args.scenario == "xianyu",
+    ).ingest()
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

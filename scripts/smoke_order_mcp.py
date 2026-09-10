@@ -9,6 +9,7 @@ import sys
 from mcp import Client
 
 from app.infrastructure.order_mcp_client import (
+    _call_item_tool,
     _call_order_tool,
     _server_parameters,
 )
@@ -53,7 +54,7 @@ async def run_smoke_test() -> None:
     async with Client(_server_parameters(), read_timeout_seconds=10) as client:
         tool_list = await client.list_tools()
         tool_names = [tool.name for tool in tool_list.tools]
-        if tool_names != ["get_order"]:
+        if tool_names != ["get_order", "get_item_info"]:
             raise AssertionError(f"Unexpected MCP tools: {tool_names}")
         print(json.dumps({"discovered_tools": tool_names}, ensure_ascii=False))
 
@@ -72,6 +73,11 @@ async def run_smoke_test() -> None:
                 f"{actual_missing!r} != {EXPECTED_MISSING_ORDER!r}"
             )
         print(json.dumps(actual_missing, ensure_ascii=False))
+
+        item = await _call_item_tool(client, "DEMO_ITEM_001")
+        if item["found"] is not True or item["item_id"] != "DEMO_ITEM_001":
+            raise AssertionError(f"Unexpected item response: {item!r}")
+        print(json.dumps(item, ensure_ascii=False))
 
 
 def main() -> None:

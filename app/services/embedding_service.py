@@ -4,6 +4,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Sequence
 
+from app.infrastructure.model_runtime import configure_huggingface_loading
+
+configure_huggingface_loading()
+
 from sentence_transformers import SentenceTransformer
 
 from app.ingestion.chunker import Chunk

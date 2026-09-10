@@ -15,11 +15,20 @@ from config.settings import settings
 class QdrantStore:
     """Write chunk vectors and metadata to the configured Qdrant collection."""
 
-    def __init__(self, client: QdrantClient | None = None) -> None:
+    def __init__(
+        self,
+        client: QdrantClient | None = None,
+        *,
+        collection_name: str | None = None,
+        knowledge_base_path: str | Path | None = None,
+    ) -> None:
         if settings is None:
             raise RuntimeError("Project settings are unavailable")
 
-        self.collection_name = settings.qdrant_collection
+        self.collection_name = collection_name or settings.qdrant_collection
+        self.knowledge_base_path = (
+            Path(knowledge_base_path).resolve() if knowledge_base_path is not None else None
+        )
         self.client = client or QdrantClient(url=settings.qdrant_url)
 
     def build_points(
@@ -41,18 +50,25 @@ class QdrantStore:
         if any(len(vector) != vector_size for vector in vectors):
             raise ValueError("All vectors must have the same dimension")
 
-        return [
-            PointStruct(
-                id=str(uuid5(NAMESPACE_URL, f"{chunk.source}:{chunk_index}")),
-                vector=list(vector),
-                payload={
-                    "content": chunk.content,
-                    "source": chunk.source,
-                    "chunk_index": chunk_index,
-                },
+        points: list[PointStruct] = []
+        for chunk_index, (chunk, vector) in enumerate(zip(chunks, vectors)):
+            payload = {
+                "content": chunk.content,
+                "source": chunk.source,
+                "chunk_index": chunk_index,
+            }
+            if chunk.scope is not None:
+                payload["scope"] = chunk.scope
+            if chunk.item_id is not None:
+                payload["item_id"] = chunk.item_id
+            points.append(
+                PointStruct(
+                    id=str(uuid5(NAMESPACE_URL, f"{chunk.source}:{chunk_index}")),
+                    vector=list(vector),
+                    payload=payload,
+                )
             )
-            for chunk_index, (chunk, vector) in enumerate(zip(chunks, vectors))
-        ]
+        return points
 
     def upsert_chunks(
         self,
@@ -93,7 +109,7 @@ class QdrantStore:
         excluded_ids: set[str] | None = None,
     ) -> None:
         """Delete existing points belonging to the configured knowledge base."""
-        knowledge_base_path = configured_knowledge_base_path()
+        knowledge_base_path = self.knowledge_base_path or configured_knowledge_base_path()
         excluded_ids = excluded_ids or set()
         legacy_point_ids: list[str] = []
         offset = None

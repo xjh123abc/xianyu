@@ -1,6 +1,6 @@
 """BM25 keyword retrieval."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from collections import Counter
 from math import log
 import re
@@ -66,6 +66,8 @@ class BM25Result(TypedDict):
     score: float
     source: str
     chunk_index: int
+    scope: str | None
+    item_id: str | None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -91,7 +93,13 @@ class BM25Search:
             else None
         )
 
-    def search(self, query: str, top_k: int = 5) -> list[BM25Result]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        filter_fn: Callable[[Chunk], bool] | None = None,
+    ) -> list[BM25Result]:
         """Return the top matching chunks and their BM25 scores."""
         if top_k <= 0:
             raise ValueError("top_k must be greater than zero")
@@ -100,17 +108,27 @@ class BM25Search:
             return []
 
         scores = self._bm25.get_scores(_tokenize(query))
+        candidate_indexes = [
+            index
+            for index, chunk in enumerate(self.chunks)
+            if filter_fn is None or filter_fn(chunk)
+        ]
         ranked_indexes = sorted(
-            range(len(self.chunks)),
+            candidate_indexes,
             key=lambda index: (-float(scores[index]), index),
         )[:top_k]
 
-        return [
-            {
+        results: list[BM25Result] = []
+        for index in ranked_indexes:
+            result: BM25Result = {
                 "content": self.chunks[index].content,
                 "score": float(scores[index]),
                 "source": self.chunks[index].source,
                 "chunk_index": index,
             }
-            for index in ranked_indexes
-        ]
+            if self.chunks[index].scope is not None:
+                result["scope"] = self.chunks[index].scope
+            if self.chunks[index].item_id is not None:
+                result["item_id"] = self.chunks[index].item_id
+            results.append(result)
+        return results
