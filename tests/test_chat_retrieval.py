@@ -10,6 +10,7 @@ from app.ingestion.loader import (
 )
 from app.infrastructure.qdrant import QdrantStore
 from app.main import app
+from app.rag.answerability import AnswerReliability
 from app.rag.pipeline import RAGPipeline
 from app.retrieval.bm25 import BM25Search
 from app.retrieval.hybrid_search import HybridSearch
@@ -72,7 +73,10 @@ def test_chat_retrieval_chain_returns_top_five_results(monkeypatch) -> None:
                 vector_search,
                 bm25_search=BM25Search(chunks),
                 reranker=Reranker(scorer=FakeScorer()),
-                rag_pipeline=RAGPipeline(generator=FakeGenerator()),
+                    rag_pipeline=RAGPipeline(
+                        answer_reliability=AnswerReliability(threshold=0.5),
+                        generator=FakeGenerator(),
+                    ),
             ),
         )
 

@@ -3,7 +3,7 @@
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.services.chat_service import ChatService
 
@@ -16,9 +16,18 @@ class ChatRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    query: str
+    query: str = Field(min_length=1)
     chat_id: str = Field(min_length=1)
     item_id: str | None = None
+
+    @field_validator("query")
+    @classmethod
+    def query_must_not_be_blank(cls, value: str) -> str:
+        """Normalize valid questions and reject whitespace-only input at the API edge."""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("query must not be blank")
+        return normalized
 
 
 class RetrievedResult(BaseModel):

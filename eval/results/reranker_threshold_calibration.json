@@ -1,0 +1,52 @@
+{
+  "calibrated_at": "2026-09-10",
+  "selection_rule": "precision >= 0.95, then maximize recall",
+  "model": {
+    "model_id": "Qwen3-Reranker-0.6B",
+    "json_configuration_sha256": "866cffb594a1dda6ae5d4d8ebc8a76208827602e5717eaa77f22b98b9480b4a9",
+    "score_type": "raw_logit"
+  },
+  "dataset": {
+    "path": "eval/retrieval_cases.jsonl",
+    "result_path": "eval/results/p2_reranker_calibration_results.jsonl",
+    "total": 58,
+    "answerable": 38,
+    "unanswerable": 20
+  },
+  "previous_threshold": {
+    "value": 0.5,
+    "true_positive": 35,
+    "false_positive": 6,
+    "true_negative": 14,
+    "false_negative": 3,
+    "precision": 0.8536585366,
+    "recall": 0.9210526316,
+    "rejection_rate": 0.2931034483
+  },
+  "selected_threshold": {
+    "value": 5.3,
+    "true_positive": 27,
+    "false_positive": 1,
+    "true_negative": 19,
+    "false_negative": 11,
+    "precision": 0.9642857143,
+    "recall": 0.7105263158,
+    "rejection_rate": 0.5172413793
+  },
+  "false_positive_ids": [
+    "unanswerable_payment_002"
+  ],
+  "false_negative_ids": [
+    "colloquial_001",
+    "vague_001",
+    "vague_002",
+    "shipping_001",
+    "membership_002",
+    "colloquial_002",
+    "order_001",
+    "account_004",
+    "product_stock_002",
+    "membership_001",
+    "account_003"
+  ]
+}

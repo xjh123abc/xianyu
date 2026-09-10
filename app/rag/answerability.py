@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from math import isfinite
+from pathlib import Path
 from typing import Any, Literal, TypedDict
 
 from config.settings import settings
@@ -35,6 +36,19 @@ class AnswerReliability:
         if threshold is None:
             if settings is None:
                 raise RuntimeError("Project settings are unavailable")
+            configured_model_id = str(
+                getattr(settings, "answer_reliability_model_id", "")
+            ).strip()
+            configured_model_path = str(getattr(settings, "reranker_model_path", "")).strip()
+            if (
+                configured_model_id
+                and configured_model_path
+                and Path(configured_model_path).name != configured_model_id
+            ):
+                raise RuntimeError(
+                    "The answer reliability threshold is calibrated for "
+                    f"{configured_model_id}, not {Path(configured_model_path).name}"
+                )
             threshold = getattr(settings, "answer_reliability_threshold", None)
 
         try:

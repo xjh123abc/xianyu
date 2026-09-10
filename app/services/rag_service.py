@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.generation.deepseek import DeepSeekGenerator
@@ -16,6 +17,9 @@ from app.retrieval.reranker import Reranker
 from app.retrieval.vector_search import VectorSearch
 from app.retrieval.vector_search import xianyu_common_filter, xianyu_item_filter
 from config.settings import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class RAGService:
@@ -113,28 +117,41 @@ class RAGService:
         }
 
     def chat(self, query: str, *, item_id: str | None = None) -> dict[str, object]:
-        """Run the complete RAG path."""
-        prepared = self.prepare(query, item_id=item_id)
-        if not prepared["can_answer"]:
-            return prepared
+        """Run RAG and convert dependency failures into a stable handoff result."""
+        try:
+            prepared = self.prepare(query, item_id=item_id)
+            if not prepared["can_answer"]:
+                return prepared
 
-        context = prepared["context"]
-        if context is None or not str(context["context"]).strip():
+            context = prepared["context"]
+            if context is None or not str(context["context"]).strip():
+                return {
+                    **prepared,
+                    "can_answer": False,
+                    "next_step": "human_handoff",
+                    "answer": None,
+                    "sources": [],
+                }
+
+            answer = self._get_generator().generate(query, context["context"])
             return {
                 **prepared,
+                "next_step": "complete",
+                "answer": answer,
+                "sources": context["sources"],
+            }
+        except Exception:
+            logger.exception("RAG request failed")
+            return {
+                "query": query,
+                "results": [],
                 "can_answer": False,
                 "next_step": "human_handoff",
-                "answer": None,
+                "reliability": None,
+                "context": None,
+                "answer": "知识库服务暂时不可用，请稍后重试或转人工客服。",
                 "sources": [],
             }
-
-        answer = self._get_generator().generate(query, context["context"])
-        return {
-            **prepared,
-            "next_step": "complete",
-            "answer": answer,
-            "sources": context["sources"],
-        }
 
     def _retrieve_and_rerank(
         self,

@@ -12,6 +12,8 @@ def test_retrieval_defaults_are_5_5_60_5() -> None:
     assert configured.bm25_top_k == 5
     assert configured.rrf_k == 60
     assert configured.reranker_top_k == 5
+    assert configured.answer_reliability_threshold == 5.3
+    assert configured.answer_reliability_model_id == "Qwen3-Reranker-0.6B"
 
 
 def test_retrieval_settings_are_overridable_by_environment(monkeypatch: pytest.MonkeyPatch) -> None:

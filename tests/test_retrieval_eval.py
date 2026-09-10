@@ -120,3 +120,33 @@ def test_evaluation_fuses_recorded_dense_and_bm25_results(
             "score": 1 / 61,
         },
     ][: len(reranker.candidates[0][1])]
+
+
+def test_recorded_threshold_calibration_matches_real_evaluation_results() -> None:
+    results_path = Path("eval/results/p2_reranker_calibration_results.jsonl")
+    calibration_path = Path("eval/results/reranker_threshold_calibration.json")
+    rows = [
+        json.loads(line)
+        for line in results_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
+    threshold = calibration["selected_threshold"]["value"]
+
+    decisions = [
+        (row["rerank"][0]["score"] >= threshold, bool(row["answerable"]))
+        for row in rows
+    ]
+    true_positive = sum(predicted and actual for predicted, actual in decisions)
+    false_positive = sum(predicted and not actual for predicted, actual in decisions)
+    true_negative = sum(not predicted and not actual for predicted, actual in decisions)
+    false_negative = sum(not predicted and actual for predicted, actual in decisions)
+
+    assert calibration["model"]["score_type"] == "raw_logit"
+    assert calibration["dataset"]["total"] == len(rows) == 58
+    assert (true_positive, false_positive, true_negative, false_negative) == (
+        calibration["selected_threshold"]["true_positive"],
+        calibration["selected_threshold"]["false_positive"],
+        calibration["selected_threshold"]["true_negative"],
+        calibration["selected_threshold"]["false_negative"],
+    )

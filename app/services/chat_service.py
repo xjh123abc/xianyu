@@ -250,7 +250,12 @@ class ChatService:
             reranker_cls=Reranker,
         )
         self.mcp_service = mcp_service or MCPService(order_lookup=get_order_via_mcp)
-        self.session_manager = session_manager or SessionManager()
+        self.session_manager = session_manager or SessionManager(
+            database_path=settings.session_database_path,
+            ttl_seconds=settings.session_ttl_seconds,
+            max_sessions=settings.session_max_count,
+            lock_timeout_seconds=settings.session_lock_timeout_seconds,
+        )
         self.xianyu_rag_service = xianyu_rag_service
         self.item_service = item_service or ItemService()
 
@@ -264,7 +269,28 @@ class ChatService:
         *,
         item_id: str | None = None,
     ) -> dict[str, object]:
-        """Resolve session item context, then route to existing capabilities."""
+        """Serialize one session while resolving and answering its next turn."""
+
+        include_chat_id = chat_id is not None
+        resolved_chat_id, _ = self.session_manager.get_or_create(chat_id)
+        async with self.session_manager.session_lock(resolved_chat_id):
+            response = await self._chat_async_locked(
+                query,
+                resolved_chat_id,
+                item_id=item_id,
+            )
+        if not include_chat_id:
+            response.pop("chat_id", None)
+        return response
+
+    async def _chat_async_locked(
+        self,
+        query: str,
+        chat_id: str,
+        *,
+        item_id: str | None = None,
+    ) -> dict[str, object]:
+        """Resolve session context and route while its per-chat lock is held."""
 
         resolved_chat_id, session = self.session_manager.get_or_create(chat_id)
         history, session_state = self.session_manager.read_context(session)
@@ -330,7 +356,7 @@ class ChatService:
                 query,
                 _session_order_id(session_state),
             ):
-                response = self.chat(query)
+                response = await asyncio.to_thread(self.chat, query)
             elif any(
                 question["scope"] == "item"
                 for question in plan["knowledge_questions"]
@@ -362,7 +388,7 @@ class ChatService:
             elif _requires_item_context(query):
                 response = self._xianyu_clarification(query)
             else:
-                response = self.chat(query)
+                response = await asyncio.to_thread(self.chat, query)
         elif route == "rag_mcp":
             response = await self._chat_rag_mcp(query, order_id, history)
         elif route == "missing_order_id":

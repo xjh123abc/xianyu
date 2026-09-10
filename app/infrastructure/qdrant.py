@@ -1,5 +1,6 @@
 """Qdrant client and collection infrastructure."""
 
+import hashlib
 from pathlib import Path
 from typing import Sequence
 from uuid import NAMESPACE_URL, uuid5
@@ -8,7 +9,6 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from app.ingestion.chunker import Chunk
-from app.ingestion.loader import canonical_source, configured_knowledge_base_path
 from config.settings import settings
 
 
@@ -21,6 +21,7 @@ class QdrantStore:
         *,
         collection_name: str | None = None,
         knowledge_base_path: str | Path | None = None,
+        corpus_id: str | None = None,
     ) -> None:
         if settings is None:
             raise RuntimeError("Project settings are unavailable")
@@ -29,6 +30,18 @@ class QdrantStore:
         self.knowledge_base_path = (
             Path(knowledge_base_path).resolve() if knowledge_base_path is not None else None
         )
+        if corpus_id is not None:
+            resolved_corpus_id = corpus_id.strip()
+        elif self.knowledge_base_path is None:
+            resolved_corpus_id = str(settings.knowledge_corpus_id).strip()
+        else:
+            path_digest = hashlib.sha256(
+                self.knowledge_base_path.as_posix().casefold().encode("utf-8")
+            ).hexdigest()[:12]
+            resolved_corpus_id = f"custom-{path_digest}"
+        if not resolved_corpus_id:
+            raise ValueError("corpus_id must not be empty")
+        self.corpus_id = resolved_corpus_id
         self.client = client or QdrantClient(url=settings.qdrant_url)
 
     def build_points(
@@ -56,6 +69,7 @@ class QdrantStore:
                 "content": chunk.content,
                 "source": chunk.source,
                 "chunk_index": chunk_index,
+                "corpus_id": self.corpus_id,
             }
             if chunk.scope is not None:
                 payload["scope"] = chunk.scope
@@ -63,7 +77,12 @@ class QdrantStore:
                 payload["item_id"] = chunk.item_id
             points.append(
                 PointStruct(
-                    id=str(uuid5(NAMESPACE_URL, f"{chunk.source}:{chunk_index}")),
+                    id=str(
+                        uuid5(
+                            NAMESPACE_URL,
+                            f"{self.corpus_id}:{chunk.source}:{chunk_index}",
+                        )
+                    ),
                     vector=list(vector),
                     payload=payload,
                 )
@@ -75,7 +94,7 @@ class QdrantStore:
         chunks: Sequence[Chunk],
         vectors: Sequence[Sequence[float]],
     ) -> None:
-        """Create the collection and replace legacy formal-KB points."""
+        """Create the collection and replace points from this corpus only."""
         points = self.build_points(chunks, vectors)
         if not points:
             if self.client.collection_exists(self.collection_name):
@@ -108,8 +127,7 @@ class QdrantStore:
         *,
         excluded_ids: set[str] | None = None,
     ) -> None:
-        """Delete existing points belonging to the configured knowledge base."""
-        knowledge_base_path = self.knowledge_base_path or configured_knowledge_base_path()
+        """Delete stale points carrying this store's explicit corpus identity."""
         excluded_ids = excluded_ids or set()
         legacy_point_ids: list[str] = []
         offset = None
@@ -124,17 +142,8 @@ class QdrantStore:
             for record in records:
                 if str(record.id) in excluded_ids:
                     continue
-                source = (record.payload or {}).get("source")
-                if not isinstance(source, str):
-                    continue
-                if not Path(source).is_absolute() and Path(source).suffix.lower() in {".md", ".txt"}:
-                    legacy_point_ids.append(str(record.id))
-                    continue
-                try:
-                    logical_source = canonical_source(source, knowledge_base_path)
-                except ValueError:
-                    continue
-                if Path(logical_source).suffix.lower() in {".md", ".txt"}:
+                payload = record.payload or {}
+                if payload.get("corpus_id") == self.corpus_id:
                     legacy_point_ids.append(str(record.id))
 
             if offset is None:

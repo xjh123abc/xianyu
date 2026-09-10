@@ -50,6 +50,28 @@ def test_chat_requires_query() -> None:
     assert response.status_code == 422
 
 
+def test_chat_rejects_blank_query() -> None:
+    response = client.post(
+        "/chat",
+        json={"query": " \t\n ", "chat_id": "chat_blank_query"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_chat_strips_query_before_dispatch(monkeypatch) -> None:
+    service_chat = Mock(return_value={"query": "shipping", "results": []})
+    monkeypatch.setattr(chat_api.chat_service, "chat", service_chat)
+
+    response = client.post(
+        "/chat",
+        json={"query": "  shipping  ", "chat_id": "chat_trim_query"},
+    )
+
+    assert response.status_code == 200
+    service_chat.assert_called_once_with("shipping")
+
+
 def test_chat_requires_chat_id() -> None:
     response = client.post("/chat", json={"query": "订单一般多久发货？"})
 

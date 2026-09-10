@@ -122,6 +122,9 @@ class IngestionPipeline:
         self.store = store or QdrantStore(
             collection_name=settings.xianyu_qdrant_collection if xianyu else None,
             knowledge_base_path=self.knowledge_base_path,
+            corpus_id=(
+                settings.xianyu_corpus_id if xianyu else settings.knowledge_corpus_id
+            ),
         )
         self.manifest_path = (
             Path(manifest_path) if manifest_path is not None else configured_manifest_path()

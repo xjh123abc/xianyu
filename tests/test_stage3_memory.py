@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api import chat as chat_api
@@ -63,6 +65,108 @@ def test_session_manager_isolates_chat_ids_and_limits_history() -> None:
     assert second["state"]["order_id"] == "TEST1002"
     assert second["state"]["current_item_id"] is None
     assert second["history"] != first["history"]
+
+
+def test_session_manager_expires_idle_sessions_and_limits_total_count() -> None:
+    now = [100.0]
+    manager = SessionManager(
+        ttl_seconds=10,
+        max_sessions=2,
+        clock=lambda: now[0],
+    )
+    manager.get_or_create("old")
+    now[0] = 101.0
+    manager.get_or_create("middle")
+    now[0] = 102.0
+    manager.get_or_create("new")
+
+    assert set(manager.sessions) == {"middle", "new"}
+
+    now[0] = 112.0
+    _, expired = manager.get_or_create("middle")
+    assert expired["history"] == []
+    assert expired["state"]["order_id"] is None
+
+
+@pytest.fixture
+def session_database_path():
+    database_path = Path("tests/.session-manager-test.sqlite3").resolve()
+    related_paths = [
+        database_path,
+        Path(f"{database_path}-wal"),
+        Path(f"{database_path}-shm"),
+    ]
+    for path in related_paths:
+        path.unlink(missing_ok=True)
+    try:
+        yield database_path
+    finally:
+        for path in related_paths:
+            path.unlink(missing_ok=True)
+
+
+def test_sqlite_session_state_is_shared_between_manager_instances(
+    session_database_path,
+) -> None:
+    database_path = session_database_path
+    first = SessionManager(database_path=database_path)
+    second = SessionManager(database_path=database_path)
+    first.append_turn(
+        "shared",
+        "query",
+        "answer",
+        order_id="TEST1001",
+    )
+
+    _, restored = second.get_or_create("shared")
+
+    assert restored["state"]["order_id"] == "TEST1001"
+    assert restored["history"][-1] == {"role": "assistant", "content": "answer"}
+
+
+def test_sqlite_sessions_enforce_ttl_and_capacity(session_database_path) -> None:
+    now = [100.0]
+    manager = SessionManager(
+        database_path=session_database_path,
+        ttl_seconds=10,
+        max_sessions=2,
+        clock=lambda: now[0],
+    )
+    manager.append_turn("oldest", "q", "a", order_id="TEST1001")
+    now[0] = 101.0
+    manager.append_turn("middle", "q", "a", order_id="TEST1002")
+    now[0] = 102.0
+    manager.append_turn("newest", "q", "a", order_id="TEST1003")
+
+    _, evicted = manager.get_or_create("oldest")
+    assert evicted["state"]["order_id"] is None
+
+    now[0] = 113.0
+    _, expired = manager.get_or_create("newest")
+    assert expired["state"]["order_id"] is None
+
+
+def test_sqlite_session_lock_serializes_workers(session_database_path) -> None:
+    database_path = session_database_path
+    first = SessionManager(database_path=database_path, lock_timeout_seconds=1)
+    second = SessionManager(database_path=database_path, lock_timeout_seconds=1)
+    events = []
+
+    async def worker(manager, name, delay):
+        async with manager.session_lock("shared"):
+            events.append(f"{name}-start")
+            await asyncio.sleep(delay)
+            events.append(f"{name}-end")
+
+    async def exercise():
+        first_task = asyncio.create_task(worker(first, "first", 0.05))
+        await asyncio.sleep(0.01)
+        second_task = asyncio.create_task(worker(second, "second", 0))
+        await asyncio.gather(first_task, second_task)
+
+    asyncio.run(exercise())
+
+    assert events == ["first-start", "first-end", "second-start", "second-end"]
 
 
 def test_chat_service_preserves_order_context_across_three_turns() -> None:

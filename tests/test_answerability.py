@@ -25,6 +25,20 @@ def test_reliability_reads_threshold_from_settings(monkeypatch) -> None:
     }
 
 
+def test_reliability_rejects_threshold_bound_to_another_model(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.rag.answerability.settings.reranker_model_path",
+        "models/another-reranker",
+    )
+    monkeypatch.setattr(
+        "app.rag.answerability.settings.answer_reliability_model_id",
+        "calibrated-reranker",
+    )
+
+    with pytest.raises(RuntimeError, match="calibrated-reranker"):
+        AnswerReliability()
+
+
 def test_reliability_uses_first_valid_rerank_result_without_sorting() -> None:
     result = AnswerReliability(threshold=0.7).evaluate(
         [
@@ -108,3 +122,54 @@ def test_pipeline_does_not_build_context_for_empty_results() -> None:
     assert result["next_step"] == "human_handoff"
     assert result["context"] is None
     context_builder.build.assert_not_called()
+
+
+def test_pipeline_only_builds_context_from_strong_unique_evidence() -> None:
+    context_builder = Mock()
+    context_builder.build.return_value = {
+        "context": "selected evidence",
+        "sources": [{"source": "policy.md", "index": 0}],
+    }
+    pipeline = RAGPipeline(
+        answer_reliability=AnswerReliability(threshold=0.5),
+        context_builder=context_builder,
+        context_max_chunks=2,
+        context_score_gap=0.1,
+    )
+    candidates = [
+        {
+            "content": "primary evidence",
+            "source": "policy.md",
+            "chunk_index": 0,
+            "rerank_score": 0.9,
+        },
+        {
+            "content": "  PRIMARY   EVIDENCE  ",
+            "source": "duplicate.md",
+            "chunk_index": 3,
+            "rerank_score": 0.88,
+        },
+        {
+            "content": "second strong fact",
+            "source": "shipping.md",
+            "chunk_index": 2,
+            "rerank_score": 0.82,
+        },
+        {
+            "content": "third strong fact beyond the limit",
+            "source": "orders.md",
+            "chunk_index": 1,
+            "rerank_score": 0.81,
+        },
+        {
+            "content": "weak unrelated evidence",
+            "source": "unrelated.md",
+            "chunk_index": 4,
+            "rerank_score": 0.79,
+        },
+    ]
+
+    result = pipeline.run_after_rerank(candidates)
+
+    assert result["can_answer"] is True
+    context_builder.build.assert_called_once_with([candidates[0], candidates[2]])
