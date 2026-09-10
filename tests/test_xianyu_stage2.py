@@ -31,10 +31,15 @@ class FakeRag:
         self.item_ids.append(item_id)
         return {
             "can_answer": self.can_answer,
-            "context": {"context": "confirmed item description", "sources": []}
+            "context": {
+                "context": "confirmed item description",
+                "sources": [{"source": "seller_rules.md", "index": 0}],
+            }
             if self.can_answer
             else None,
-            "sources": [],
+            "sources": [{"source": "seller_rules.md", "index": 0}]
+            if self.can_answer
+            else [],
             "results": [],
             "reliability": None,
         }
@@ -252,15 +257,16 @@ def test_chat_api_accepts_unified_item_fields_without_mode(monkeypatch) -> None:
     )
 
 
-def test_chat_openapi_marks_mode_as_deprecated_compatibility() -> None:
+def test_chat_openapi_exposes_only_unified_request_fields() -> None:
     request_schema = app.openapi()["components"]["schemas"]["ChatRequest"]
 
     assert {"query", "chat_id", "item_id"} <= request_schema["properties"].keys()
     assert {"query", "chat_id"} <= set(request_schema["required"])
-    assert request_schema["properties"]["scenario"]["deprecated"] is True
+    assert "scenario" not in request_schema["properties"]
+    assert request_schema["additionalProperties"] is False
 
 
-def test_legacy_mode_is_accepted_but_not_forwarded_to_business_service(monkeypatch) -> None:
+def test_removed_legacy_mode_is_rejected_at_api_boundary(monkeypatch) -> None:
     fake_service = Mock()
     fake_service.chat_async = AsyncMock(return_value={"query": "价格？", "results": []})
     monkeypatch.setattr(chat_api, "chat_service", fake_service)
@@ -275,10 +281,8 @@ def test_legacy_mode_is_accepted_but_not_forwarded_to_business_service(monkeypat
         },
     )
 
-    assert response.status_code == 200
-    fake_service.chat_async.assert_awaited_once_with(
-        "价格？", "legacy_chat_001", item_id="DEMO_ITEM_001"
-    )
+    assert response.status_code == 422
+    fake_service.chat_async.assert_not_awaited()
 
 
 def test_text_item_id_is_confirmed_and_saved_for_same_chat_followup() -> None:

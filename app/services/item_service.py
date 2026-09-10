@@ -82,12 +82,6 @@ class ItemService:
             "updated_at": None,
         }
 
-    def resolve_item_id(self, text: str) -> str | None:
-        """Resolve an unambiguous item ID or title mentioned in user text."""
-
-        matches = self.resolve_item_ids(text)
-        return matches[0] if len(matches) == 1 else None
-
     def resolve_item_ids(self, text: str) -> list[str]:
         """Return every configured item explicitly identified by ID or title."""
 

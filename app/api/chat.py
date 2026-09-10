@@ -1,9 +1,9 @@
 """Chat API routes."""
 
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.chat_service import ChatService
 
@@ -14,13 +14,10 @@ chat_service = ChatService()
 class ChatRequest(BaseModel):
     """Request body for a chat question."""
 
+    model_config = ConfigDict(extra="forbid")
+
     query: str
     chat_id: str = Field(min_length=1)
-    scenario: Literal["ecommerce", "xianyu"] | None = Field(
-        default=None,
-        deprecated=True,
-        description="Deprecated compatibility field; business routing no longer depends on it.",
-    )
     item_id: str | None = None
 
 

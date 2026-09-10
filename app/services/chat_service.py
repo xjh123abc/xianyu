@@ -11,6 +11,12 @@ from app.infrastructure.order_mcp_client import get_order_via_mcp
 from app.services.mcp_service import MCPService
 from app.services.rag_service import RAGService
 from app.services.item_service import ItemService
+from app.services.query_planner import (
+    QuestionPlan,
+    build_question_plan,
+    common_knowledge_query,
+    is_seller_scoped_query,
+)
 from app.services.session_manager import SessionManager
 from app.rag.pipeline import RAGPipeline
 from app.retrieval.bm25 import BM25Search
@@ -23,7 +29,7 @@ from config.settings import settings
 logger = logging.getLogger(__name__)
 
 
-Route = Literal["rag", "order", "rag_mcp", "xianyu", "missing_order_id", "unsupported_action"]
+Route = Literal["rag", "order", "rag_mcp", "missing_order_id", "unsupported_action"]
 RouteResult = tuple[Route, str | None]
 
 _ORDER_ID_PATTERN = re.compile(
@@ -70,42 +76,6 @@ _COMBINED_RULE_TERMS = (
     "多久",
     "多长时间",
     "时效",
-)
-_XIANYU_PRICE_TERMS = ("价格", "多少钱", "标价", "售价", "多少元", "price", "cost")
-_XIANYU_STATUS_TERMS = (
-    "在吗",
-    "还有吗",
-    "在售",
-    "卖出",
-    "售出",
-    "已售",
-    "状态",
-    "available",
-    "sold",
-)
-_XIANYU_KNOWLEDGE_TERMS = (
-    "配件",
-    "包含",
-    "附带",
-    "成色",
-    "瑕疵",
-    "磕碰",
-    "功能",
-    "检测",
-    "维修",
-    "拆修",
-    "改装",
-    "使用",
-    "续航",
-    "发货",
-    "运费",
-    "售后",
-    "包邮",
-    "说明",
-    "accessory",
-    "condition",
-    "shipping",
-    "repair",
 )
 _XIANYU_ITEM_CONTEXT_TERMS = (
     "这个商品",
@@ -298,12 +268,39 @@ class ChatService:
         resolved_chat_id, session = self.session_manager.get_or_create(chat_id)
         history, session_state = self.session_manager.read_context(session)
         current_item_id = self.session_manager.get_current_item_id(resolved_chat_id)
-        item, resolution_response = await self._resolve_current_item(
-            query,
-            item_id,
-            current_item_id,
+        plan = build_question_plan(query)
+        text_item_ids = self.item_service.resolve_item_ids(query)
+        needs_item = bool(
+            item_id
+            or text_item_ids
+            or plan["item_fields"]
+            or any(
+                question["scope"] == "item"
+                for question in plan["knowledge_questions"]
+            )
         )
+        if needs_item:
+            item, resolution_response = await self._resolve_current_item(
+                query,
+                item_id,
+                current_item_id,
+                text_item_ids=text_item_ids,
+            )
+        else:
+            item, resolution_response = None, None
         if resolution_response is not None:
+            if any(
+                question["scope"] == "common"
+                for question in plan["knowledge_questions"]
+            ):
+                common_response = await self._chat_xianyu_common(
+                    common_knowledge_query(plan, query)
+                )
+                common_response["query"] = query
+                resolution_response = self._merge_partial_response(
+                    resolution_response,
+                    common_response,
+                )
             self.session_manager.append_turn(
                 resolved_chat_id,
                 query,
@@ -325,13 +322,43 @@ class ChatService:
             if item is not None:
                 response = await self._chat_xianyu(
                     query,
-                    str(item["item_id"]),
-                    item=item,
+                    item,
+                    plan=plan,
                 )
-            elif _requires_item_context(query) and not _is_rule_followup(
+            elif _is_rule_followup(
                 query,
                 _session_order_id(session_state),
             ):
+                response = self.chat(query)
+            elif any(
+                question["scope"] == "item"
+                for question in plan["knowledge_questions"]
+            ):
+                response = self._xianyu_clarification(query)
+                if any(
+                    question["scope"] == "common"
+                    for question in plan["knowledge_questions"]
+                ):
+                    common_response = await self._chat_xianyu_common(
+                        common_knowledge_query(plan, query)
+                    )
+                    common_response["query"] = query
+                    response = self._merge_partial_response(response, common_response)
+            elif plan["knowledge_questions"] and (
+                current_item_id is not None
+                or bool(plan["item_fields"])
+                or is_seller_scoped_query(query)
+            ):
+                response = await self._chat_xianyu_common(
+                    common_knowledge_query(plan, query)
+                )
+                response["query"] = query
+                if plan["item_fields"]:
+                    response = self._merge_partial_response(
+                        self._xianyu_clarification(query),
+                        response,
+                    )
+            elif _requires_item_context(query):
                 response = self._xianyu_clarification(query)
             else:
                 response = self.chat(query)
@@ -370,11 +397,14 @@ class ChatService:
         query: str,
         structured_item_id: str | None,
         current_item_id: str | None,
+        *,
+        text_item_ids: Sequence[str] | None = None,
     ) -> tuple[Mapping[str, object] | None, dict[str, object] | None]:
         """Resolve and confirm one item without falling back after a bad switch."""
 
         explicit_item_id = str(structured_item_id or "").strip().upper() or None
-        text_item_ids = self.item_service.resolve_item_ids(query)
+        if text_item_ids is None:
+            text_item_ids = self.item_service.resolve_item_ids(query)
         if len(text_item_ids) > 1:
             return None, self._item_conflict_response(
                 query,
@@ -419,49 +449,34 @@ class ChatService:
                 else "当前会话关联的商品已无法确认，请重新提供商品编号。"
             )
             return None, self._item_conflict_response(query, message, item_id=candidate_id)
+        if not self._valid_item_evidence(item, candidate_id):
+            response = self._non_rag_response(
+                query,
+                "商品资料返回不完整或编号不一致，无法可靠确认，请转人工客服。",
+                can_answer=False,
+                route="xianyu",
+                action="handoff",
+                item_id=candidate_id,
+            )
+            response["next_step"] = "human_handoff"
+            return None, response
         return item, None
 
     async def _chat_xianyu(
         self,
         query: str,
-        item_id: str | None,
+        item: Mapping[str, object],
         *,
-        item: Mapping[str, object] | None = None,
+        plan: QuestionPlan | None = None,
     ) -> dict[str, object]:
-        """Answer a demo Xianyu item question with MCP facts plus scoped RAG."""
+        """Answer one item question from already-confirmed MCP facts and scoped RAG."""
 
-        resolved_item_id = item_id or self.item_service.resolve_item_id(query)
-        if not resolved_item_id:
-            common_terms = (
-                "发货", "运费", "售后", "规则", "多久", "包邮", "shipping", "shipping time"
-            )
-            if any(term in query.casefold() for term in common_terms):
-                return await self._chat_xianyu_common(query)
-            return self._xianyu_clarification(query)
-
-        if item is None:
-            try:
-                item = await self.mcp_service.get_item_info(resolved_item_id)
-            except Exception:
-                logger.exception("Item MCP lookup failed for item_id=%s", resolved_item_id)
-                response = self._non_rag_response(
-                    query,
-                    "商品资料查询暂时失败，请稍后重试或转人工客服。",
-                    can_answer=False,
-                    route="xianyu",
-                    action="handoff",
-                    item_id=resolved_item_id,
-                )
-                response["next_step"] = "human_handoff"
-                return response
-            if not item.get("found"):
-                return self._xianyu_clarification(query, item_id=resolved_item_id)
-
-        lowered_query = query.casefold()
-        asks_price = any(term in lowered_query for term in _XIANYU_PRICE_TERMS)
-        asks_status = any(term in lowered_query for term in _XIANYU_STATUS_TERMS)
-        asks_knowledge = any(term in lowered_query for term in _XIANYU_KNOWLEDGE_TERMS)
+        plan = plan or build_question_plan(query)
+        asks_price = "listed_price_cents" in plan["item_fields"]
+        asks_status = "sale_status" in plan["item_fields"]
+        asks_knowledge = bool(plan["knowledge_questions"])
         fact_answers: list[str] = []
+        unresolved_answers: list[str] = []
 
         if asks_price:
             cents = int(item["listed_price_cents"])
@@ -478,55 +493,37 @@ class ChatService:
             elif status == "sold":
                 fact_answers.append(f"“{item['title']}”的卖家资料标记为已售出。")
             else:
-                return self._xianyu_handoff(
-                    query,
-                    self._join_xianyu_answers(
-                        fact_answers,
-                        "该商品当前状态在卖家资料中标记为未知，无法替你确认，请联系卖家核实。",
-                    ),
-                    item,
+                unresolved_answers.append(
+                    "该商品当前状态在卖家资料中标记为未知，无法替你确认，请联系卖家核实。"
                 )
 
-        if fact_answers and not asks_knowledge:
-            return self._xianyu_reply(
-                query,
-                self._join_xianyu_answers(fact_answers),
-                item,
-            )
+        if not asks_knowledge:
+            if unresolved_answers:
+                return self._xianyu_handoff(
+                    query,
+                    self._join_xianyu_answers(fact_answers + unresolved_answers),
+                    item,
+                )
+            if fact_answers:
+                return self._xianyu_reply(
+                    query,
+                    self._join_xianyu_answers(fact_answers),
+                    item,
+                )
+            return self._xianyu_clarification(query, item_id=str(item["item_id"]))
 
-        retrieval_query = self._xianyu_retrieval_query(
-            query,
+        prepared, knowledge_issues = await self._collect_xianyu_knowledge(
+            plan,
+            item,
             remove_facts=bool(fact_answers),
-            item_title=str(item["title"]),
         )
-        rag_service = self._get_xianyu_rag_service()
-        try:
-            warm_up = getattr(rag_service, "warm_up", None)
-            if callable(warm_up):
-                warm_up()
-            prepared = await asyncio.to_thread(
-                rag_service.prepare,
-                retrieval_query,
-                item_id=str(item["item_id"]),
-            )
-        except Exception:
-            logger.exception("Xianyu RAG preparation failed for item_id=%s", item["item_id"])
-            return self._xianyu_handoff(
-                query,
-                self._join_xianyu_answers(
-                    fact_answers,
-                    "商品资料检索暂时失败，请转人工客服确认。",
-                ),
-                item,
-            )
+        unresolved_answers.extend(knowledge_issues)
         context = prepared.get("context")
-        if not prepared.get("can_answer") or not isinstance(context, Mapping):
+        knowledge_sources = self._valid_knowledge_sources(prepared)
+        if not isinstance(context, Mapping) or not knowledge_sources:
             return self._xianyu_handoff(
                 query,
-                self._join_xianyu_answers(
-                    fact_answers,
-                    "现有商品资料不足以可靠回答这个问题，请转人工客服确认。",
-                ),
+                self._join_xianyu_answers(fact_answers + unresolved_answers),
                 item,
                 prepared,
             )
@@ -535,44 +532,152 @@ class ChatService:
             return self._xianyu_handoff(
                 query,
                 self._join_xianyu_answers(
-                    fact_answers,
-                    "现有商品资料没有覆盖这个问题，请转人工客服确认。",
+                    fact_answers + unresolved_answers,
+                    "现有资料没有覆盖这个问题，请转人工客服确认。",
                 ),
                 item,
                 prepared,
             )
         try:
-            public_context = self._public_item_context(item)
+            knowledge_query = "；".join(
+                need["question"] for need in plan["knowledge_questions"]
+            )
+            item_reference = ""
+            if any(
+                need["scope"] == "item"
+                for need in plan["knowledge_questions"]
+            ):
+                item_reference = (
+                    f"当前商品：{item['title']}（{item['item_id']}）\n"
+                    "未记录的信息不得推断为不存在。\n\n"
+                )
             answer = self._get_generator().generate(
-                query,
-                public_context + "\n\n卖家规则与商品说明：\n" + context_text,
+                knowledge_query,
+                item_reference + "卖家规则与商品说明：\n" + context_text,
             )
             if not isinstance(answer, str) or not answer.strip():
                 raise RuntimeError("empty Xianyu answer")
-            answer = self._join_xianyu_answers(fact_answers, answer.strip())
+            answer = self._join_xianyu_answers(
+                fact_answers,
+                answer.strip(),
+            )
+            answer = self._join_xianyu_answers([answer] + unresolved_answers)
         except Exception:
             logger.exception("Xianyu answer generation failed for item_id=%s", item["item_id"])
             return self._xianyu_handoff(
                 query,
                 self._join_xianyu_answers(
-                    fact_answers,
+                    fact_answers + unresolved_answers,
                     "商品问题回答生成失败，请转人工客服。",
                 ),
                 item,
                 prepared,
             )
+        if unresolved_answers:
+            return self._xianyu_handoff(query, answer, item, prepared)
         return {
             "query": query,
             "route": "xianyu",
             "action": "reply",
             "answer": answer,
-            "sources": prepared.get("sources", []),
+            "sources": [self._item_source(item), *knowledge_sources],
             "results": prepared.get("results", []),
             "reliability": prepared.get("reliability"),
             "next_step": None,
             "can_answer": True,
             "item_id": item["item_id"],
             "item_info": item,
+        }
+
+    async def _collect_xianyu_knowledge(
+        self,
+        plan: QuestionPlan,
+        item: Mapping[str, object],
+        *,
+        remove_facts: bool,
+    ) -> tuple[dict[str, object], list[str]]:
+        """Evaluate each knowledge subquestion independently and merge valid evidence."""
+
+        rag_service = self._get_xianyu_rag_service()
+        contexts: list[str] = []
+        sources: list[Mapping[str, object]] = []
+        results: list[object] = []
+        issues: list[str] = []
+        reliability: object = None
+        try:
+            warm_up = getattr(rag_service, "warm_up", None)
+            if callable(warm_up):
+                warm_up()
+        except Exception:
+            logger.exception("Xianyu RAG warm-up failed for item_id=%s", item["item_id"])
+            issues.append("商品资料检索暂时失败，请转人工客服确认。")
+            return self._knowledge_bundle(contexts, sources, results, reliability), issues
+
+        for need in plan["knowledge_questions"]:
+            retrieval_query = self._xianyu_retrieval_query(
+                need["question"],
+                remove_facts=remove_facts,
+                item_title=str(item["title"]) if need["scope"] == "item" else "",
+            )
+            try:
+                prepared = await asyncio.to_thread(
+                    rag_service.prepare,
+                    retrieval_query,
+                    item_id=str(item["item_id"])
+                    if need["scope"] == "item"
+                    else None,
+                )
+            except Exception:
+                logger.exception(
+                    "Xianyu RAG preparation failed for question=%s item_id=%s",
+                    need["question"],
+                    item["item_id"],
+                )
+                issues.append(f"“{need['question']}”的资料检索失败，请转人工客服确认。")
+                continue
+
+            prepared_results = prepared.get("results")
+            if isinstance(prepared_results, list):
+                results.extend(prepared_results)
+            current_reliability = prepared.get("reliability")
+            if reliability is None or not prepared.get("can_answer"):
+                reliability = current_reliability
+            context = prepared.get("context")
+            current_sources = self._valid_knowledge_sources(prepared)
+            context_text = (
+                str(context.get("context", "")).strip()
+                if isinstance(context, Mapping)
+                else ""
+            )
+            if not prepared.get("can_answer") or not context_text or not current_sources:
+                issues.append(f"现有资料不足以可靠回答“{need['question']}”，请转人工客服确认。")
+                continue
+
+            contexts.append(
+                f"[{need['scope']}] {need['question']}\n{context_text}"
+            )
+            for source in current_sources:
+                if source not in sources:
+                    sources.append(source)
+
+        return self._knowledge_bundle(contexts, sources, results, reliability), issues
+
+    @staticmethod
+    def _knowledge_bundle(
+        contexts: Sequence[str],
+        sources: list[Mapping[str, object]],
+        results: list[object],
+        reliability: object,
+    ) -> dict[str, object]:
+        context_text = "\n\n".join(contexts)
+        return {
+            "can_answer": bool(contexts),
+            "context": {"context": context_text, "sources": sources}
+            if context_text
+            else None,
+            "sources": sources,
+            "results": results,
+            "reliability": reliability,
         }
 
     async def _chat_xianyu_common(self, query: str) -> dict[str, object]:
@@ -585,7 +690,12 @@ class ChatService:
                 warm_up()
             prepared = await asyncio.to_thread(rag_service.prepare, query)
             context = prepared.get("context")
-            if not prepared.get("can_answer") or not isinstance(context, Mapping):
+            knowledge_sources = self._valid_knowledge_sources(prepared)
+            if (
+                not prepared.get("can_answer")
+                or not isinstance(context, Mapping)
+                or not knowledge_sources
+            ):
                 return self._non_rag_response(
                     query,
                     "现有卖家通用规则不足以可靠回答这个问题，请转人工客服。",
@@ -604,7 +714,7 @@ class ChatService:
                 "route": "xianyu",
                 "action": "reply",
                 "answer": answer.strip(),
-                "sources": prepared.get("sources", []),
+                "sources": knowledge_sources,
                 "results": prepared.get("results", []),
                 "reliability": prepared.get("reliability"),
                 "next_step": None,
@@ -634,17 +744,50 @@ class ChatService:
         return self.xianyu_rag_service
 
     @staticmethod
-    def _public_item_context(item: Mapping[str, object]) -> str:
-        cents = int(item["listed_price_cents"])
+    def _valid_item_evidence(item: Mapping[str, object], expected_item_id: str) -> bool:
+        """Accept only complete public MCP facts for the requested item."""
+
+        price = item.get("listed_price_cents")
         return (
-            "公开商品事实（以卖家资料快照为准）：\n"
-            f"商品：{item['title']}（{item['item_id']}）\n"
-            f"卖家维护标价：¥{cents / 100:.2f}\n"
-            f"资料状态：{item['sale_status']}\n"
-            f"资料更新时间：{item['updated_at']}\n"
-            "资料性质：卖家人工维护快照，不是闲鱼平台实时查询。\n"
-            "回答边界：未记录的信息不得推断为不存在，特别是维修史、隐藏瑕疵和未列出的配件。"
+            item.get("found") is True
+            and item.get("item_id") == expected_item_id
+            and isinstance(item.get("title"), str)
+            and bool(str(item.get("title")).strip())
+            and isinstance(price, int)
+            and not isinstance(price, bool)
+            and price >= 0
+            and item.get("sale_status") in {"listed", "sold", "unknown"}
+            and item.get("data_source") == "seller_manual"
+            and isinstance(item.get("updated_at"), str)
+            and bool(str(item.get("updated_at")).strip())
         )
+
+    @staticmethod
+    def _item_source(item: Mapping[str, object]) -> dict[str, object]:
+        """Represent MCP evidence without pretending it is a document chunk."""
+
+        return {
+            "source": "mcp:get_item_info",
+            "index": item["item_id"],
+        }
+
+    @staticmethod
+    def _valid_knowledge_sources(
+        prepared: Mapping[str, object],
+    ) -> list[Mapping[str, object]]:
+        """Keep only knowledge references with a source and stable chunk index."""
+
+        raw_sources = prepared.get("sources")
+        if not isinstance(raw_sources, list):
+            return []
+        return [
+            source
+            for source in raw_sources
+            if isinstance(source, Mapping)
+            and isinstance(source.get("source"), str)
+            and bool(str(source.get("source")).strip())
+            and source.get("index") is not None
+        ]
 
     @staticmethod
     def _join_xianyu_answers(parts: Sequence[str], tail: str | None = None) -> str:
@@ -654,6 +797,26 @@ class ChatService:
         if tail is not None and tail.strip():
             answer_parts.append(tail.strip())
         return "\n".join(answer_parts)
+
+    @staticmethod
+    def _merge_partial_response(
+        partial: Mapping[str, object],
+        knowledge: Mapping[str, object],
+    ) -> dict[str, object]:
+        """Keep an independent knowledge answer when an item need is unresolved."""
+
+        merged = dict(partial)
+        merged["answer"] = ChatService._join_xianyu_answers(
+            [
+                str(knowledge.get("answer") or ""),
+                str(partial.get("answer") or ""),
+            ]
+        )
+        merged["sources"] = knowledge.get("sources", [])
+        merged["results"] = knowledge.get("results", [])
+        merged["reliability"] = knowledge.get("reliability")
+        merged["can_answer"] = False
+        return merged
 
     @staticmethod
     def _xianyu_retrieval_query(
@@ -683,7 +846,7 @@ class ChatService:
             "route": "xianyu",
             "action": "reply",
             "answer": answer,
-            "sources": [],
+            "sources": [ChatService._item_source(item)],
             "results": [],
             "reliability": None,
             "next_step": None,
@@ -748,7 +911,10 @@ class ChatService:
         if prepared is not None:
             response.update(
                 {
-                    "sources": prepared.get("sources", []),
+                    "sources": [
+                        ChatService._item_source(item),
+                        *ChatService._valid_knowledge_sources(prepared),
+                    ],
                     "results": prepared.get("results", []),
                     "reliability": prepared.get("reliability"),
                 }
