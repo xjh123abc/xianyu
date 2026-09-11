@@ -150,6 +150,7 @@ async def _run(
     trigger_text: str,
     listen_timeout: float,
     receipt_timeout: float,
+    expected_count: int,
 ) -> dict[str, Any]:
     _verify_reference(reference_root)
     _log("template", "verified", commit=DEFAULT_REFERENCE_COMMIT)
@@ -217,14 +218,15 @@ async def _run(
         "status": "connected_no_trigger",
         "buyer_messages": 0,
         "ignored_buyer_messages": 0,
-        "reply_submitted": False,
-        "send_ack": False,
-        "self_echo": False,
+        "reply_submissions": 0,
+        "send_acks": 0,
+        "self_echo_count": 0,
     }
     stop_heartbeat = asyncio.Event()
     heartbeat_task: asyncio.Task[None] | None = None
     send_mid: str | None = None
     send_deadline: float | None = None
+    pending_send_mids: set[str] = set()
 
     try:
         async with websockets.connect(DEFAULT_WS_URL, **connect_kwargs) as websocket:
@@ -272,10 +274,10 @@ async def _run(
                             ack["headers"][key] = message_headers[key]
                     await websocket.send(json.dumps(ack))
 
-                if send_mid and message.get("code") == 200 and str(incoming_mid or "") == send_mid:
-                    if not report["send_ack"]:
-                        report["send_ack"] = True
-                        _log("fixed_reply_ack", "received", request_hash=_digest(send_mid))
+                if message.get("code") == 200 and str(incoming_mid or "") in pending_send_mids:
+                    pending_send_mids.remove(str(incoming_mid))
+                    report["send_acks"] += 1
+                    _log("fixed_reply_ack", "received", request_hash=_digest(incoming_mid))
 
                 body = message.get("body")
                 package = body.get("syncPushPackage") if isinstance(body, Mapping) else None
@@ -295,8 +297,8 @@ async def _run(
 
                     is_seller = chat["sender_id"] == seller_id
                     if is_seller:
-                        if report["reply_submitted"] and chat["text"] == FIXED_REPLY:
-                            report["self_echo"] = True
+                        if report["reply_submissions"] and chat["text"] == FIXED_REPLY:
+                            report["self_echo_count"] += 1
                             _log(
                                 "fixed_reply_echo",
                                 "received",
@@ -314,7 +316,7 @@ async def _run(
                         text_length=len(chat["text"]),
                         trigger_match=chat["text"].strip() == trigger_text,
                     )
-                    if report["reply_submitted"] or chat["text"].strip() != trigger_text:
+                    if report["reply_submissions"] >= expected_count or chat["text"].strip() != trigger_text:
                         report["ignored_buyer_messages"] += 1
                         continue
 
@@ -327,11 +329,13 @@ async def _run(
                         generate_uuid=generate_uuid,
                     )
                     await websocket.send(payload)
-                    report["reply_submitted"] = True
+                    report["reply_submissions"] += 1
                     report["status"] = "fixed_reply_submitted"
                     report["chat_hash"] = _digest(chat["chat_id"])
                     report["buyer_hash"] = _digest(chat["sender_id"])
-                    send_deadline = loop.time() + receipt_timeout
+                    pending_send_mids.add(send_mid)
+                    if report["reply_submissions"] >= expected_count:
+                        send_deadline = loop.time() + receipt_timeout
                     _log(
                         "fixed_reply",
                         "submitted_once",
@@ -341,7 +345,7 @@ async def _run(
                         buyer_hash=report["buyer_hash"],
                     )
 
-                if report["send_ack"] and report["self_echo"]:
+                if report["reply_submissions"] >= expected_count and not pending_send_mids:
                     break
     except Exception as exc:
         _log("websocket", "failed", error_type=type(exc).__name__, error=str(exc))
@@ -356,12 +360,12 @@ async def _run(
             except asyncio.CancelledError:
                 pass
 
-    if report["reply_submitted"]:
+    if report["reply_submissions"] >= expected_count:
         _log(
             "acceptance",
             "awaiting_buyer_window_confirmation",
-            send_ack=report["send_ack"],
-            self_echo=report["self_echo"],
+            send_acks=report["send_acks"],
+            self_echo_count=report["self_echo_count"],
         )
     else:
         _log("acceptance", "failed_no_fixed_reply", status=report["status"])
@@ -375,6 +379,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--trigger-text", default=DEFAULT_TRIGGER)
     parser.add_argument("--listen-timeout", type=float, default=300.0)
     parser.add_argument("--receipt-timeout", type=float, default=30.0)
+    parser.add_argument("--expected-count", type=int, default=1)
     parser.add_argument("--log-file", type=Path)
     return parser.parse_args()
 
@@ -382,8 +387,8 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     global _LOG_FILE
     args = _parse_args()
-    if args.listen_timeout <= 0 or args.receipt_timeout <= 0:
-        raise SystemExit("timeouts must be greater than zero")
+    if args.listen_timeout <= 0 or args.receipt_timeout <= 0 or args.expected_count <= 0:
+        raise SystemExit("timeouts and expected-count must be greater than zero")
     project_root = args.project_root.resolve()
     reference_root = args.reference_root.resolve()
     if args.log_file is not None:
@@ -401,6 +406,7 @@ def main() -> int:
                         trigger_text=args.trigger_text,
                         listen_timeout=args.listen_timeout,
                         receipt_timeout=args.receipt_timeout,
+                        expected_count=args.expected_count,
                     )
                 )
             finally:
@@ -410,7 +416,7 @@ def main() -> int:
         return 1
 
     print(json.dumps({"final_report": report}, ensure_ascii=False, sort_keys=True), flush=True)
-    return 0 if report.get("reply_submitted") else 1
+    return 0 if report.get("reply_submissions", 0) >= args.expected_count else 1
 
 
 if __name__ == "__main__":
