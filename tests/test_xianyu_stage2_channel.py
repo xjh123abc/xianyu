@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.channels.xianyu.adapter import iter_sync_events
-from app.channels.xianyu.client import build_text_payload
+from app.channels.xianyu.client import WebSocketTextSender, build_text_payload
 from app.channels.xianyu.lock import AccountProcessLock
 from app.channels.xianyu.models import InboundMessage, SendReceipt
 from app.channels.xianyu.store import ChannelStore
@@ -147,5 +147,28 @@ def test_adapter_processes_every_record_and_marks_seller() -> None:
     parsed = list(iter_sync_events(message, account_id="seller", seller_id="seller", decrypt=lambda _: ""))
 
     assert [item.platform_message_id for item in parsed] == ["m1", "m2"]
+    assert parsed[0].chat_id == "xianyu:seller:chat-1"
+    assert parsed[0].platform_chat_id == "chat-1"
     assert parsed[0].sender_is_seller is False
     assert parsed[1].sender_is_seller is True
+
+
+def test_sender_uses_injected_platform_uuid_format() -> None:
+    captured: list[dict[str, object]] = []
+
+    async def capture(payload: dict[str, object]) -> None:
+        captured.append(payload)
+
+    sender = WebSocketTextSender(
+        websocket=None,
+        seller_id="seller",
+        send_json=capture,
+        uuid_factory=lambda: "-12345678901",
+        mid_factory=lambda: "1234567890 0",
+    )
+
+    receipt = asyncio.run(sender.send_text("chat-1", "buyer-1", "hello", "request-1"))
+
+    assert receipt.local_submitted is True
+    assert captured[0]["body"][0]["uuid"] == "-12345678901"
+    assert captured[0]["headers"]["mid"] == "1234567890 0"

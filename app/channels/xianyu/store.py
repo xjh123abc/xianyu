@@ -50,6 +50,7 @@ class ChannelStore:
                     account_id TEXT NOT NULL,
                     platform_message_id TEXT NOT NULL,
                     chat_id TEXT NOT NULL,
+                    platform_chat_id TEXT,
                     buyer_id TEXT NOT NULL,
                     platform_item_id TEXT,
                     message_type TEXT NOT NULL,
@@ -68,8 +69,31 @@ class ChannelStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_channel_messages_chat
                     ON channel_messages(account_id, chat_id, received_at);
+                CREATE TABLE IF NOT EXISTS xianyu_item_bindings (
+                    account_id TEXT NOT NULL,
+                    platform_item_id TEXT NOT NULL,
+                    internal_item_id TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (account_id, platform_item_id)
+                );
                 """
             )
+            # The stage-2 database may already exist.  Keep this migration local
+            # and additive so its accepted delivery ledger remains intact.
+            self._add_column_if_missing(connection, "channel_sessions", "current_item_id TEXT")
+            self._add_column_if_missing(connection, "channel_messages", "action TEXT")
+            self._add_column_if_missing(connection, "channel_messages", "platform_chat_id TEXT")
+            self._add_column_if_missing(connection, "channel_messages", "handoff_reason TEXT")
+            self._add_column_if_missing(connection, "channel_messages", "notification_state TEXT NOT NULL DEFAULT 'NONE'")
+            self._add_column_if_missing(connection, "channel_messages", "notification_error TEXT")
+
+    @staticmethod
+    def _add_column_if_missing(connection: sqlite3.Connection, table: str, definition: str) -> None:
+        column = definition.split()[0]
+        columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
 
     def ensure_account(self, account_id: str) -> None:
         with self._connect() as connection:
@@ -160,6 +184,57 @@ class ChannelStore:
             ).fetchone()
         return dict(row)
 
+    def bind_item(self, account_id: str, platform_item_id: str, internal_item_id: str) -> None:
+        """Bind a trusted Xianyu listing ID to one local product ID."""
+
+        if not account_id.strip() or not platform_item_id.strip() or not internal_item_id.strip():
+            raise ValueError("account, platform item and internal item are required")
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO xianyu_item_bindings(account_id, platform_item_id, internal_item_id, enabled)
+                VALUES (?, ?, ?, 1)
+                ON CONFLICT(account_id, platform_item_id) DO UPDATE SET
+                    internal_item_id=excluded.internal_item_id, enabled=1, updated_at=CURRENT_TIMESTAMP
+                """,
+                (account_id, platform_item_id, internal_item_id),
+            )
+
+    def resolve_item(self, account_id: str, chat_id: str, buyer_id: str, platform_item_id: str | None) -> str | None:
+        """Resolve a trusted listing ID, otherwise retain the session's prior item.
+
+        A non-empty unbound platform item deliberately resolves to ``None``: it
+        must never silently reuse another listing's facts.
+        """
+
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._ensure_session(connection, account_id, chat_id, buyer_id)
+            if platform_item_id:
+                row = connection.execute(
+                    """
+                    SELECT internal_item_id FROM xianyu_item_bindings
+                    WHERE account_id = ? AND platform_item_id = ? AND enabled = 1
+                    """,
+                    (account_id, platform_item_id),
+                ).fetchone()
+                if row is None:
+                    return None
+                item_id = str(row["internal_item_id"])
+                connection.execute(
+                    """
+                    UPDATE channel_sessions SET current_item_id = ?
+                    WHERE account_id = ? AND chat_id = ?
+                    """,
+                    (item_id, account_id, chat_id),
+                )
+                return item_id
+            row = connection.execute(
+                "SELECT current_item_id FROM channel_sessions WHERE account_id = ? AND chat_id = ?",
+                (account_id, chat_id),
+            ).fetchone()
+            return str(row["current_item_id"]) if row and row["current_item_id"] else None
+
     def record_inbound(self, message: Any) -> bool:
         """Insert one event; duplicate platform IDs are a no-op."""
 
@@ -173,14 +248,15 @@ class ChannelStore:
             cursor = connection.execute(
                 """
                 INSERT OR IGNORE INTO channel_messages(
-                    account_id, platform_message_id, chat_id, buyer_id, platform_item_id,
+                    account_id, platform_message_id, chat_id, platform_chat_id, buyer_id, platform_item_id,
                     message_type, sender_is_seller, is_system_event, text, received_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message.account_id,
                     message.platform_message_id,
                     message.chat_id,
+                    message.platform_chat_id,
                     message.buyer_id,
                     message.platform_item_id,
                     message.message_type,
@@ -194,6 +270,201 @@ class ChannelStore:
 
     def mark_ignored(self, account_id: str, message_id: str, reason: str) -> None:
         self._update_message(account_id, message_id, status="IGNORED", error=reason)
+
+    def claim_for_generation(self, account_id: str, message_id: str) -> dict[str, Any] | None:
+        """Atomically reserve an inbound message before calling /chat."""
+
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT m.*, s.enabled, s.control_version AS account_version,
+                       cs.mode, cs.control_version AS session_version
+                FROM channel_messages m
+                JOIN channel_state s ON s.account_id = m.account_id
+                JOIN channel_sessions cs ON cs.account_id = m.account_id AND cs.chat_id = m.chat_id
+                WHERE m.account_id = ? AND m.platform_message_id = ?
+                """,
+                (account_id, message_id),
+            ).fetchone()
+            if row is None or not row["enabled"] or row["mode"] != "AUTO":
+                return None
+            if row["status"] != "RECEIVED" or row["delivery_state"] != "NONE":
+                return None
+            request_id = str(uuid.uuid4())
+            connection.execute(
+                """
+                UPDATE channel_messages SET status = 'GENERATING', request_id = ?
+                WHERE account_id = ? AND platform_message_id = ? AND status = 'RECEIVED'
+                """,
+                (request_id, account_id, message_id),
+            )
+            return {
+                "request_id": request_id,
+                "chat_id": row["chat_id"],
+                "platform_chat_id": row["platform_chat_id"] or row["chat_id"],
+                "buyer_id": row["buyer_id"],
+                "account_version": int(row["account_version"]),
+                "session_version": int(row["session_version"]),
+            }
+
+    def prepare_candidate(
+        self,
+        account_id: str,
+        message_id: str,
+        *,
+        action: str,
+        candidate_text: str,
+        account_version: int,
+        session_version: int,
+    ) -> dict[str, Any] | None:
+        """Persist a candidate after /chat, only while controls are unchanged."""
+
+        if action not in {"answer", "clarify"} or not candidate_text.strip():
+            raise ValueError("a non-empty answer or clarification is required")
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT m.request_id, s.enabled, s.control_version AS account_version,
+                       cs.mode, cs.control_version AS session_version
+                FROM channel_messages m
+                JOIN channel_state s ON s.account_id = m.account_id
+                JOIN channel_sessions cs ON cs.account_id = m.account_id AND cs.chat_id = m.chat_id
+                WHERE m.account_id = ? AND m.platform_message_id = ?
+                """,
+                (account_id, message_id),
+            ).fetchone()
+            if (
+                row is None
+                or not row["enabled"]
+                or row["mode"] != "AUTO"
+                or int(row["account_version"]) != account_version
+                or int(row["session_version"]) != session_version
+            ):
+                connection.execute(
+                    """UPDATE channel_messages SET status = 'SUPERSEDED', error = 'control_changed_during_generation'
+                       WHERE account_id = ? AND platform_message_id = ? AND status = 'GENERATING'""",
+                    (account_id, message_id),
+                )
+                return None
+            connection.execute(
+                """
+                UPDATE channel_messages SET status = 'READY', action = ?, candidate_text = ?
+                WHERE account_id = ? AND platform_message_id = ? AND status = 'GENERATING'
+                """,
+                (action, candidate_text.strip(), account_id, message_id),
+            )
+            return {"request_id": row["request_id"]}
+
+    def claim_ready_delivery(self, account_id: str, message_id: str) -> dict[str, Any] | None:
+        """Make a durable ready candidate the sole permitted send attempt."""
+
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT m.*, s.enabled, cs.mode FROM channel_messages m
+                JOIN channel_state s ON s.account_id = m.account_id
+                JOIN channel_sessions cs ON cs.account_id = m.account_id AND cs.chat_id = m.chat_id
+                WHERE m.account_id = ? AND m.platform_message_id = ?
+                """,
+                (account_id, message_id),
+            ).fetchone()
+            if row is None or not row["enabled"] or row["mode"] != "AUTO" or row["status"] != "READY":
+                return None
+            connection.execute(
+                """UPDATE channel_messages SET status = 'SENDING'
+                   WHERE account_id = ? AND platform_message_id = ? AND status = 'READY'""",
+                (account_id, message_id),
+            )
+            return {
+                key: row[key]
+                for key in ("request_id", "chat_id", "platform_chat_id", "buyer_id", "candidate_text", "action")
+            } | {"platform_chat_id": row["platform_chat_id"] or row["chat_id"]}
+
+    def handoff(
+        self,
+        account_id: str,
+        message_id: str,
+        *,
+        reason: str,
+        candidate_text: str,
+    ) -> dict[str, Any] | None:
+        """Switch the session to HUMAN before any seller notification or send."""
+
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT m.*, s.enabled, cs.mode FROM channel_messages m
+                JOIN channel_state s ON s.account_id = m.account_id
+                JOIN channel_sessions cs ON cs.account_id = m.account_id AND cs.chat_id = m.chat_id
+                WHERE m.account_id = ? AND m.platform_message_id = ?
+                """,
+                (account_id, message_id),
+            ).fetchone()
+            if row is None or not row["enabled"] or row["mode"] != "AUTO" or row["status"] not in {"RECEIVED", "GENERATING"}:
+                return None
+            request_id = row["request_id"] or str(uuid.uuid4())
+            connection.execute(
+                """
+                UPDATE channel_sessions SET mode = 'HUMAN', takeover_reason = ?,
+                    control_version = control_version + 1
+                WHERE account_id = ? AND chat_id = ?
+                """,
+                (reason, account_id, row["chat_id"]),
+            )
+            connection.execute(
+                """
+                UPDATE channel_messages SET status = 'HUMAN_REQUIRED', action = 'human_handoff',
+                    candidate_text = ?, request_id = ?, handoff_reason = ?, notification_state = 'PENDING'
+                WHERE account_id = ? AND platform_message_id = ?
+                """,
+                (candidate_text.strip(), request_id, reason, account_id, message_id),
+            )
+            return {
+                "request_id": request_id,
+                "chat_id": row["chat_id"],
+                "platform_chat_id": row["platform_chat_id"] or row["chat_id"],
+                "buyer_id": row["buyer_id"],
+                "text": row["text"],
+            }
+
+    def claim_handoff_notice(self, account_id: str, message_id: str) -> dict[str, Any] | None:
+        """Reserve the optional fixed handoff notice only while account is live."""
+
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT m.*, s.enabled FROM channel_messages m
+                JOIN channel_state s ON s.account_id = m.account_id
+                WHERE m.account_id = ? AND m.platform_message_id = ?
+                """,
+                (account_id, message_id),
+            ).fetchone()
+            if row is None or not row["enabled"] or row["status"] != "HUMAN_REQUIRED" or row["delivery_state"] != "NONE":
+                return None
+            connection.execute(
+                """UPDATE channel_messages SET status = 'SENDING'
+                   WHERE account_id = ? AND platform_message_id = ? AND status = 'HUMAN_REQUIRED'""",
+                (account_id, message_id),
+            )
+            return {
+                key: row[key]
+                for key in ("request_id", "chat_id", "platform_chat_id", "buyer_id", "candidate_text")
+            } | {"platform_chat_id": row["platform_chat_id"] or row["chat_id"]}
+
+    def mark_notification(self, account_id: str, message_id: str, state: str, error: str | None = None) -> None:
+        if state not in {"SENT", "FAILED", "DISABLED"}:
+            raise ValueError("invalid notification state")
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE channel_messages SET notification_state = ?, notification_error = ?
+                   WHERE account_id = ? AND platform_message_id = ?""",
+                (state, error, account_id, message_id),
+            )
 
     def claim_for_send(self, account_id: str, message_id: str, candidate_text: str) -> dict[str, Any] | None:
         if not candidate_text.strip():

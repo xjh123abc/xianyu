@@ -77,7 +77,8 @@ def iter_sync_events(
             )
             continue
 
-        chat_id = str(first.get("2") or "").split("@", 1)[0]
+        platform_chat_id = str(first.get("2") or "").split("@", 1)[0]
+        chat_id = f"xianyu:{seller_id}:{platform_chat_id}" if platform_chat_id else "unknown"
         sender_id = str(details.get("senderUserId") or "")
         text = details.get("reminderContent")
         reminder_url = str(details.get("reminderUrl") or "")
@@ -85,13 +86,14 @@ def iter_sync_events(
         if "itemId=" in reminder_url:
             item_id = reminder_url.split("itemId=", 1)[1].split("&", 1)[0] or None
         sender_is_seller = sender_id == seller_id
-        if not chat_id or not sender_id:
+        if not platform_chat_id or not sender_id:
             yield InboundMessage(
                 account_id=account_id,
                 platform_message_id=_stable_message_id(record, event),
                 chat_id=chat_id or "unknown",
                 buyer_id=sender_id or "unknown",
                 text=str(text or ""),
+                platform_chat_id=platform_chat_id or None,
                 message_type="unknown",
                 platform_item_id=item_id,
                 sender_is_seller=sender_is_seller,
@@ -105,6 +107,7 @@ def iter_sync_events(
             chat_id=chat_id,
             buyer_id=sender_id,
             text=text if isinstance(text, str) else "",
+            platform_chat_id=platform_chat_id,
             message_type=message_type,
             platform_item_id=item_id,
             sender_is_seller=sender_is_seller,

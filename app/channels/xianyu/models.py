@@ -20,6 +20,7 @@ class InboundMessage:
     chat_id: str
     buyer_id: str
     text: str
+    platform_chat_id: str | None = None
     message_type: MessageType = "text"
     platform_item_id: str | None = None
     sender_is_seller: bool = False
