@@ -13,6 +13,11 @@ from app.generation.prompt import (
     build_order_messages,
     build_xianyu_messages,
 )
+from app.generation.xianyu_expert_prompt import (
+    build_xianyu_expert_plan_messages,
+    build_xianyu_product_expert_messages,
+    build_xianyu_service_expert_messages,
+)
 from config.settings import settings
 
 
@@ -49,6 +54,39 @@ class DeepSeekGenerator:
         return self._generate_messages(
             build_xianyu_messages(query, item, context, history)
         )
+
+    def plan_xianyu_questions(
+        self,
+        query: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> str:
+        """Return a planner payload; S4 validates it before creating tasks."""
+
+        return self._generate_messages(build_xianyu_expert_plan_messages(query, history))
+
+    def generate_xianyu_expert(
+        self,
+        expert: str,
+        question: str,
+        item: Mapping[str, Any] | None,
+        evidence: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> str:
+        """Generate one product or service answer from its bounded evidence."""
+
+        if expert == "product":
+            messages = build_xianyu_product_expert_messages(
+                question, item, evidence, history
+            )
+        elif expert == "service":
+            messages = build_xianyu_service_expert_messages(
+                question, item, evidence, history
+            )
+        else:
+            raise ValueError("expert must be 'product' or 'service'")
+        return self._generate_messages(messages)
 
     def generate_combined(
         self,
