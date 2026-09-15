@@ -124,13 +124,20 @@ class IntentRouter:
     def __init__(self, classifier: Classifier | None = None) -> None:
         self._classifier = classifier
 
-    def route(self, query: str) -> IntentMatch:
+    def route(self, query: str, *, allow_ai: bool = True) -> IntentMatch:
+        """Classify one question, optionally disabling the model fallback.
+
+        Expert planning performs its own single model call for a full compound
+        message.  Its local pre-checks therefore set ``allow_ai=False`` so one
+        sub-question cannot trigger an additional classification request.
+        """
+
         normalized = str(query or "").strip()
         rule_intent = self._rule_intent(normalized)
         if rule_intent is not None:
             return self._match(rule_intent, "rule")
 
-        if self._classifier is not None and normalized:
+        if allow_ai and self._classifier is not None and normalized:
             try:
                 candidate = self._classifier(normalized)
             except Exception:

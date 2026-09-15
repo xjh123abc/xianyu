@@ -18,7 +18,14 @@ _EMPTY_STATE = {
     "order_id": None,
     "current_item_id": None,
     "last_intent": None,
+    "xianyu_context": {
+        "item_id": None,
+        "recent_price_topic": None,
+        "shipping_condition": None,
+    },
 }
+_UNSET = object()
+_SHIPPING_CONDITIONS = {"seller_pays", "buyer_pays"}
 
 
 class SessionManager:
@@ -84,7 +91,13 @@ class SessionManager:
         if not normalized_item_id:
             raise ValueError("item_id must not be empty")
         _, session = self.get_or_create(chat_id)
-        session["state"]["current_item_id"] = normalized_item_id
+        state = session["state"]
+        previous_item_id = state.get("current_item_id")
+        state["current_item_id"] = normalized_item_id
+        xianyu_context = self._xianyu_context_from_state(state)
+        if previous_item_id != normalized_item_id or xianyu_context["item_id"] != normalized_item_id:
+            xianyu_context = self._empty_xianyu_context(normalized_item_id)
+        state["xianyu_context"] = xianyu_context
         self._save(chat_id, session)
 
     def get_current_item_id(self, chat_id: str) -> str | None:
@@ -92,6 +105,51 @@ class SessionManager:
         _, session = self.get_or_create(chat_id)
         current_item_id = session["state"].get("current_item_id")
         return str(current_item_id) if current_item_id else None
+
+    def get_xianyu_context(self, chat_id: str) -> dict[str, Any]:
+        """Return one chat's normalized product-scoped follow-up context."""
+
+        _, session = self.get_or_create(chat_id)
+        return dict(self._xianyu_context_from_state(session["state"]))
+
+    def update_xianyu_context(
+        self,
+        chat_id: str,
+        *,
+        item_id: str | None | object = _UNSET,
+        recent_price_topic: str | None | object = _UNSET,
+        shipping_condition: str | None | object = _UNSET,
+    ) -> None:
+        """Persist seller-neutral Xianyu follow-up context through a public API.
+
+        A different product clears prior price topic and shipping selection.
+        ``shipping_condition`` represents only an explicit buyer selection;
+        comparison questions must leave it unset.
+        """
+
+        _, session = self.get_or_create(chat_id)
+        state = session["state"]
+        context = self._xianyu_context_from_state(state)
+        if item_id is not _UNSET:
+            normalized_item_id = self._normalise_item_id(item_id)
+            if normalized_item_id != context["item_id"]:
+                context = self._empty_xianyu_context(normalized_item_id)
+            else:
+                context["item_id"] = normalized_item_id
+        if recent_price_topic is not _UNSET:
+            if recent_price_topic is not None and (
+                not isinstance(recent_price_topic, str) or not recent_price_topic.strip()
+            ):
+                raise ValueError("recent_price_topic must be a non-empty string or None")
+            context["recent_price_topic"] = (
+                recent_price_topic.strip() if isinstance(recent_price_topic, str) else None
+            )
+        if shipping_condition is not _UNSET:
+            if shipping_condition is not None and shipping_condition not in _SHIPPING_CONDITIONS:
+                raise ValueError("shipping_condition must be seller_pays, buyer_pays, or None")
+            context["shipping_condition"] = shipping_condition
+        state["xianyu_context"] = context
+        self._save(chat_id, session)
 
     def append_turn(
         self,
@@ -157,17 +215,62 @@ class SessionManager:
     def read_context(session: Mapping[str, Any]) -> tuple[list[dict[str, str]], dict[str, Any]]:
         """Return defensive copies of history and state for one request."""
         history = [dict(item) for item in session.get("history", [])]
-        state = dict(session.get("state", {}))
+        state = SessionManager._normalise_state(session.get("state", {}))
         return history, state
 
     @staticmethod
     def _empty_session() -> dict[str, Any]:
-        return {"history": [], "state": dict(_EMPTY_STATE)}
+        return {"history": [], "state": SessionManager._normalise_state({})}
 
     @staticmethod
     def _copy_session(session: Mapping[str, Any]) -> dict[str, Any]:
         history, state = SessionManager.read_context(session)
         return {"history": history, "state": state}
+
+    @staticmethod
+    def _empty_xianyu_context(item_id: str | None = None) -> dict[str, Any]:
+        return {
+            "item_id": item_id,
+            "recent_price_topic": None,
+            "shipping_condition": None,
+        }
+
+    @classmethod
+    def _xianyu_context_from_state(cls, state: Mapping[str, Any]) -> dict[str, Any]:
+        raw_context = state.get("xianyu_context")
+        context = cls._empty_xianyu_context()
+        if isinstance(raw_context, Mapping):
+            raw_item_id = raw_context.get("item_id")
+            if isinstance(raw_item_id, str) and raw_item_id.strip():
+                context["item_id"] = raw_item_id.strip().upper()
+            raw_price_topic = raw_context.get("recent_price_topic")
+            if isinstance(raw_price_topic, str) and raw_price_topic.strip():
+                context["recent_price_topic"] = raw_price_topic.strip()
+            raw_shipping = raw_context.get("shipping_condition")
+            if raw_shipping in _SHIPPING_CONDITIONS:
+                context["shipping_condition"] = raw_shipping
+        return context
+
+    @classmethod
+    def _normalise_state(cls, state: object) -> dict[str, Any]:
+        raw_state = state if isinstance(state, Mapping) else {}
+        normalized = {
+            "order_id": raw_state.get("order_id"),
+            "current_item_id": raw_state.get("current_item_id"),
+            "last_intent": raw_state.get("last_intent"),
+            "xianyu_context": cls._xianyu_context_from_state(raw_state),
+        }
+        for key, value in raw_state.items():
+            normalized.setdefault(key, value)
+        return normalized
+
+    @staticmethod
+    def _normalise_item_id(value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("item_id must be a non-empty string or None")
+        return value.strip().upper()
 
     def _save(self, chat_id: str, session: Mapping[str, Any]) -> None:
         normalized_id = chat_id.strip()
