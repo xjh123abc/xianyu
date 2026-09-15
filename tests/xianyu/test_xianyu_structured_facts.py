@@ -146,10 +146,6 @@ def test_xianyu_prompt_has_context_but_no_internal_item_id() -> None:
 def test_confirmed_condition_and_included_items_are_answered_from_facts() -> None:
     rag = NoRag()
     service = _service(_canon_item(), rag)
-    service.generator.generate_xianyu.return_value = (
-        "机身九成新，正常使用痕迹，快门正常，过片正常；"
-        "一起出的有 Canon FTb 机身、50mm 镜头和镜头盖。"
-    )
 
     result = asyncio.run(
         service.chat_async(
@@ -160,12 +156,13 @@ def test_confirmed_condition_and_included_items_are_answered_from_facts() -> Non
     )
 
     assert result["action"] == "reply"
-    assert "正常使用痕迹" in str(result["answer"])
-    assert "快门正常，过片正常" in str(result["answer"])
-    assert "Canon FTb 机身" in str(result["answer"])
-    assert "镜头盖" in str(result["answer"])
+    assert result["answer"] == (
+        "机身九成新，有轻微使用痕迹。\n"
+        "一起出的有 Canon FTb 机身、FD 50mm F1.8 镜头、镜头盖。"
+    )
     assert rag.item_ids == []
-    service.generator.generate_xianyu.assert_called_once()
+    service.generator.generate_xianyu.assert_not_called()
+    service.generator.generate_xianyu_expert.assert_not_called()
 
 
 def test_confirmed_brand_and_model_are_answered_from_facts() -> None:

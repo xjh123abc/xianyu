@@ -144,7 +144,14 @@ def build_expert_plan(
     rule_drafts = _rule_drafts(normalized, xianyu_context)
     model_drafts: list[_Draft] = []
     if planner is not None and _requires_model_planning(normalized, xianyu_context):
-        model_drafts = _validated_model_drafts(_call_planner(planner, normalized, history), normalized)
+        model_drafts = [
+            draft
+            for draft in _validated_model_drafts(
+                _call_planner(planner, normalized, history),
+                normalized,
+            )
+            if _scope_matches_context(draft.task, normalized, xianyu_context)
+        ]
     return _finalize_drafts(_merge_drafts(model_drafts, rule_drafts, router))
 
 
@@ -178,12 +185,47 @@ def _rule_drafts(query: str, context: Mapping[str, object] | None) -> list[_Draf
         question = {"minimum": "最低价", "offer": "买家报价", "additional_discount": "继续优惠", "listed_price": "商品标价"}[kind]
         add("price", _price_fragment(query), question, "item_fact", price_conditions)
 
+    # With an explicit/current item, shipping and after-sale facts belong to
+    # that item.  A seller-scoped turn without an item must use common seller
+    # rules instead.  Keeping ``context is None`` as item-scoped preserves the
+    # standalone S4 planner contract for callers that have not resolved a
+    # session yet.
+    item_scoped = (
+        context is None
+        or (
+            bool(isinstance(context, Mapping) and context.get("item_id"))
+            and not is_seller_scoped_query(query)
+        )
+        or any(term in lowered for term in _ITEM_REFERENCE_TERMS)
+    )
+    service_scope = "item_fact" if item_scoped else "seller_rule"
     if any(term in lowered for term in _DISPATCH_TERMS):
-        add("service", _fragment(query, _DISPATCH_TERMS), "发货时限或地点", "item_fact")
+        add("service", _fragment(query, _DISPATCH_TERMS), "发货时限或地点", service_scope)
     if any(term in lowered for term in _CARRIER_TERMS) and not _is_price_question(query, context):
-        add("service", _fragment(query, _CARRIER_TERMS), "快递方式", "item_fact")
+        add("service", _fragment(query, _CARRIER_TERMS), "快递方式", service_scope)
+    if (
+        any(term in lowered for term in ("包邮", "运费", "邮费", "快递费"))
+        and not _is_price_question(query, context)
+        and not any(
+            task.expert == "service" and task.normalized_question == "快递方式"
+            for task in (draft.task for draft in drafts)
+        )
+    ):
+        add("service", _fragment(query, ("包邮", "运费", "邮费", "快递费")), "包邮或运费条件", service_scope)
     if any(term in lowered for term in _AFTER_SALE_TERMS):
-        add("service", _fragment(query, _AFTER_SALE_TERMS), "售后或交易规则", "item_fact")
+        add("service", _fragment(query, _AFTER_SALE_TERMS), "售后或交易规则", service_scope)
+    if (
+        not item_scoped
+        and any(term in lowered for term in ("售后", "退货", "退款", "规则", "政策"))
+        and not any(task.expert == "service" for task in (draft.task for draft in drafts))
+    ):
+        seller_rule_terms = ("售后", "退货", "退款", "规则", "政策")
+        add(
+            "service",
+            _fragment(query, seller_rule_terms),
+            "售后或店铺通用规则",
+            "seller_rule",
+        )
     if re.fullmatch(r"(?:你好|您好|哈喽|hello|hi)[！!。？? ]*", lowered):
         add("service", query, "普通招呼", "greeting")
 
@@ -305,6 +347,28 @@ def _scope_allowed(expert: object, scope: object) -> bool:
     return (expert == "price" and scope == "item_fact") or (expert == "product" and scope in {"item_fact", "model_knowledge"}) or (expert == "service" and scope in {"item_fact", "seller_rule", "greeting"})
 
 
+def _scope_matches_context(
+    task: ExpertTask,
+    query: str,
+    context: Mapping[str, object] | None,
+) -> bool:
+    """Reject model tasks that move item service facts into seller-rule RAG."""
+
+    if task.knowledge_scope == "greeting":
+        return bool(
+            re.fullmatch(
+                r"(?:你好|您好|哈喽|hello|hi)[！!。？? ]*",
+                task.question_fragment.casefold(),
+            )
+        )
+    has_item = bool(isinstance(context, Mapping) and context.get("item_id"))
+    if has_item and task.knowledge_scope == "seller_rule":
+        return is_seller_scoped_query(query)
+    if not has_item and task.knowledge_scope in {"item_fact", "model_knowledge"}:
+        return False
+    return True
+
+
 def _validate_model_conditions(raw: object, query: str, fragment: str, expert: object) -> dict[str, object] | None:
     if not isinstance(raw, Mapping) or (expert != "price" and raw):
         return None
@@ -413,7 +477,30 @@ def _fragment(query: str, terms: Sequence[str]) -> str:
     if not positions:
         return query
     start, term = min(positions)
-    return _fragment_from_position(query, start, term)
+    initial_length = _contiguous_term_length(query, start, term, terms)
+    return _fragment_from_position(
+        query,
+        start,
+        query[start : start + initial_length],
+        initial_length=initial_length,
+    )
+
+
+def _contiguous_term_length(
+    query: str,
+    start: int,
+    first_term: str,
+    terms: Sequence[str],
+) -> int:
+    """Keep adjacent facet words such as ``带什么镜头`` in one fragment."""
+
+    lowered = query.casefold()
+    end = start + len(first_term)
+    while True:
+        adjacent = [term for term in terms if lowered.startswith(term, end)]
+        if not adjacent:
+            return end - start
+        end += len(max(adjacent, key=len))
 
 
 def _price_fragment(query: str) -> str:
@@ -428,10 +515,27 @@ def _price_fragment(query: str) -> str:
     if not positions:
         return query
     start = min(positions)
-    return _fragment_from_position(query, start, query[start:])
+    start_terms = [
+        term
+        for term in (*_BARGAIN_TERMS, *_BUYER_PAYS_TERMS, "包邮")
+        if query.casefold().startswith(term, start)
+    ]
+    initial_length = max((len(term) for term in start_terms), default=1)
+    return _fragment_from_position(
+        query,
+        start,
+        query[start:],
+        initial_length=initial_length,
+    )
 
 
-def _fragment_from_position(query: str, start: int, fallback: str) -> str:
+def _fragment_from_position(
+    query: str,
+    start: int,
+    fallback: str,
+    *,
+    initial_length: int = 1,
+) -> str:
     punctuation_end = min(
         (index for index in (query.find(mark, start) for mark in "，,。.!！?？、；;") if index >= 0),
         default=len(query),
@@ -440,7 +544,7 @@ def _fragment_from_position(query: str, start: int, fallback: str) -> str:
         (
             index
             for term in _EXPERT_BOUNDARY_TERMS
-            for index in (query.casefold().find(term, start + 1),)
+            for index in (query.casefold().find(term, start + max(initial_length, 1)),)
             if index >= 0
         ),
         default=len(query),
@@ -452,7 +556,11 @@ def _fragment_from_position(query: str, start: int, fallback: str) -> str:
 def _mentions_seller_pays(lowered: str) -> bool:
     """Match an explicit package-included condition, not the substring in 不包邮."""
 
-    return bool(re.search(r"(?<!不)包邮", lowered))
+    for match in re.finditer("包邮", lowered):
+        prefix = lowered[max(0, match.start() - 2) : match.start()]
+        if not prefix.endswith(("不", "不用")):
+            return True
+    return False
 
 
 def _position(query: str, fragment: str) -> int:
@@ -470,3 +578,26 @@ def is_seller_scoped_query(query: str) -> bool:
 
 def common_knowledge_query(plan: QuestionPlan, fallback: str) -> str:
     return "；".join(need["question"] for need in plan["knowledge_questions"] if need["scope"] == "common") or fallback
+
+
+def xianyu_context_updates(
+    query: str,
+    context: Mapping[str, object] | None = None,
+) -> dict[str, str]:
+    """Extract only explicit, seller-neutral follow-up state from one turn.
+
+    The returned shipping condition is intentionally absent for a comparison
+    question.  Historical answers are never read as a new price authority.
+    """
+
+    if not _is_price_question(query, context):
+        return {}
+    conditions = _price_conditions(query, context)
+    updates: dict[str, str] = {}
+    request_kind = conditions.get("request_kind")
+    if isinstance(request_kind, str):
+        updates["recent_price_topic"] = request_kind
+    shipping = conditions.get("shipping")
+    if shipping in {"seller_pays", "buyer_pays"}:
+        updates["shipping_condition"] = shipping
+    return updates

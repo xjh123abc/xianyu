@@ -51,7 +51,9 @@ def _service(rag: EvidenceRag, item_lookup: AsyncMock | None = None) -> ChatServ
         side_effect=lambda item_id: ItemService().get_item_info(item_id)
     )
     generator = Mock()
-    generator.generate_xianyu.return_value = "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。"
+    generator.generate_xianyu_expert.return_value = (
+        "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。"
+    )
     return ChatService(
         mcp_service=mcp,
         xianyu_rag_service=rag,
@@ -100,6 +102,8 @@ def test_seller_general_question_uses_common_knowledge_without_mcp() -> None:
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     assert rag.item_ids == [None]
     service.mcp_service.get_item_info.assert_not_awaited()
+    service.generator.generate_xianyu_expert.assert_called_once()
+    service.generator.generate_xianyu.assert_not_called()
 
 
 def test_unconfirmed_return_promise_uses_current_common_corpus() -> None:
@@ -172,7 +176,7 @@ def test_missing_item_keeps_common_answer_and_asks_for_item() -> None:
     assert rag.item_ids == [None]
 
 
-def test_unknown_status_does_not_discard_supported_common_knowledge() -> None:
+def test_unknown_status_does_not_fall_back_to_common_shipping_rules() -> None:
     rag = EvidenceRag()
     service = _service(rag)
 
@@ -188,12 +192,12 @@ def test_unknown_status_does_not_discard_supported_common_knowledge() -> None:
     assert result["next_step"] == "human_handoff"
     assert result["answer"] == "稍等我看看"
     assert result["sources"] == [
-        {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"},
-        {"source": "seller_rules.md", "index": 0},
+        {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"}
     ]
+    assert rag.item_ids == []
 
 
-def test_each_knowledge_subquestion_is_gated_without_losing_other_evidence() -> None:
+def test_structured_subquestions_do_not_fall_back_to_item_knowledge() -> None:
     rag = EvidenceRag()
     original_prepare = rag.prepare
 
@@ -218,12 +222,19 @@ def test_each_knowledge_subquestion_is_gated_without_losing_other_evidence() -> 
         )
     )
 
-    assert result["can_answer"] is False
-    assert result["answer"] == "稍等我看看"
+    assert result["can_answer"] is True
+    assert result["answer"] == (
+        "这件标价是 ¥1280.00。\n"
+        "一起出的有 相机机身、相机背带、镜头盖。\n"
+        "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。"
+    )
     assert rag.item_ids == [None]
-    generator_query, generator_item, generator_context = service.generator.generate_xianyu.call_args.args
-    assert generator_query == "多少钱？有什么配件？你们店一般怎么处理售后？"
-    assert "1280.00" not in generator_context
+    expert, question, item, evidence = service.generator.generate_xianyu_expert.call_args.args
+    assert expert == "service"
+    assert question == "售后或店铺通用规则"
+    assert item is not None
+    assert "1280.00" not in evidence
+    service.generator.generate_xianyu.assert_not_called()
     assert result["sources"] == [
         {"source": "mcp:get_item_info", "index": "DEMO_ITEM_001"},
         {"source": "seller_rules.md", "index": 0},
@@ -296,7 +307,7 @@ def test_knowledge_without_a_valid_source_cannot_make_a_positive_promise() -> No
 def test_common_generation_failure_keeps_retrieved_evidence() -> None:
     rag = EvidenceRag()
     service = _service(rag)
-    service.generator.generate_xianyu.side_effect = RuntimeError("empty answer")
+    service.generator.generate_xianyu_expert.side_effect = RuntimeError("empty answer")
 
     result = asyncio.run(
         service.chat_async("你们店售后怎么处理？", "stage3_common_failure")
@@ -306,6 +317,7 @@ def test_common_generation_failure_keeps_retrieved_evidence() -> None:
     assert result["next_step"] == "human_handoff"
     assert result["answer"] == "稍等我看看"
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
+    service.generator.generate_xianyu.assert_not_called()
 
 
 def test_explicit_item_routes_unlisted_damage_question_to_item_knowledge() -> None:

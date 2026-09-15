@@ -40,6 +40,8 @@ class ExpertContext:
     item: Mapping[str, object] | None
     history: Sequence[Mapping[str, object]] = ()
     xianyu_context: Mapping[str, object] = field(default_factory=dict)
+    # Owned by the orchestrator and never persisted as buyer/session state.
+    deadline: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

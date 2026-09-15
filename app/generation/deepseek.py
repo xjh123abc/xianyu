@@ -60,10 +60,14 @@ class DeepSeekGenerator:
         query: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
     ) -> str:
         """Return a planner payload; S4 validates it before creating tasks."""
 
-        return self._generate_messages(build_xianyu_expert_plan_messages(query, history))
+        return self._generate_messages(
+            build_xianyu_expert_plan_messages(query, history),
+            timeout_seconds=timeout_seconds,
+        )
 
     def generate_xianyu_expert(
         self,
@@ -73,6 +77,7 @@ class DeepSeekGenerator:
         evidence: str,
         *,
         history: Sequence[Mapping[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
     ) -> str:
         """Generate one product or service answer from its bounded evidence."""
 
@@ -86,7 +91,7 @@ class DeepSeekGenerator:
             )
         else:
             raise ValueError("expert must be 'product' or 'service'")
-        return self._generate_messages(messages)
+        return self._generate_messages(messages, timeout_seconds=timeout_seconds)
 
     def generate_combined(
         self,
@@ -132,18 +137,26 @@ class DeepSeekGenerator:
         intent = payload.get("intent") if isinstance(payload, dict) else None
         return intent.strip().upper() if isinstance(intent, str) else None
 
-    def _generate_messages(self, messages: list[dict[str, str]]) -> str:
+    def _generate_messages(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        timeout_seconds: float | None = None,
+    ) -> str:
         if settings is None:
             raise RuntimeError("Project settings are unavailable")
 
         client = self.client or self._build_client()
-        response = client.chat.completions.create(
-            model=settings.deepseek_model,
-            messages=messages,
-            temperature=settings.deepseek_temperature,
-            max_tokens=settings.deepseek_max_tokens,
-            stream=False,
-        )
+        request: dict[str, object] = {
+            "model": settings.deepseek_model,
+            "messages": messages,
+            "temperature": settings.deepseek_temperature,
+            "max_tokens": settings.deepseek_max_tokens,
+            "stream": False,
+        }
+        if timeout_seconds is not None:
+            request["timeout"] = max(float(timeout_seconds), 0.01)
+        response = client.chat.completions.create(**request)
 
         try:
             content = response.choices[0].message.content

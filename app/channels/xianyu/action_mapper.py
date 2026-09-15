@@ -49,7 +49,5 @@ def map_chat_response(payload: Mapping[str, Any]) -> MappedAction:
     # A legacy response may omit action but still state it cannot answer.  Do
     # not let a generic error/empty answer reach the buyer.
     if payload.get("can_answer") is False:
-        if clarify:
-            return MappedAction("clarify", text=clarify)
         return MappedAction("human_handoff", reason=reason)
     return MappedAction("human_handoff", reason="/chat 返回了未知动作")

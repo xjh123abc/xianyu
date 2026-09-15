@@ -180,7 +180,7 @@ class IntentRouter:
             return "DEFECT"
         if any(term in lowered for term in ("成色", "外观", "新不新", "使用痕迹")):
             return "CONDITION"
-        if any(term in lowered for term in ("配件", "带什么", "包含", "一起给", "说明书", "包装")):
+        if any(term in lowered for term in ("配件", "带什么", "包含", "一起给", "说明书", "包装", "镜头")):
             return "ACCESSORIES"
         if any(term in lowered for term in ("型号", "哪一年", "哪年生产", "新手", "怎么用", "为什么卖", "为什么要卖")):
             return "PRODUCT_INFO"

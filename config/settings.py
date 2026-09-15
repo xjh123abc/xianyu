@@ -45,6 +45,7 @@ try:
         xianyu_ingestion_manifest_path: str = ".xianyu_ingestion_manifest.json"
         xianyu_chat_api_base_url: str = "http://127.0.0.1:8000"
         xianyu_chat_api_timeout_seconds: float = 30.0
+        xianyu_expert_budget_seconds: float = 25.0
         wecom_webhook_url: str = ""
 
 

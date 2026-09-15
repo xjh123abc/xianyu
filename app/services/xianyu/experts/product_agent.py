@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import re
+import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Any
+import re
+import time
+from collections.abc import Awaitable, Callable, Mapping
 
 from app.generation.deepseek import DeepSeekGenerator
 from app.services.intent_router import IntentMatch
@@ -70,9 +71,9 @@ class ProductAgent:
         item: Mapping[str, object],
     ) -> ExpertResult:
         response = self._fact_responder.answer_intent(
-            task.normalized_question,
+            task.question_fragment,
             item,
-            self._route_intent(task.normalized_question),
+            self._route_intent(task.question_fragment),
         )
         sources = _sources(response)
         if response.get("action") == "reply":
@@ -80,13 +81,13 @@ class ProductAgent:
             if isinstance(answer, str) and answer.strip():
                 return ExpertResult.answered(task, answer.strip(), sources=sources)
 
-        listing_answer = self._listing_description_answer(task.normalized_question, item)
+        listing_answer = self._listing_description_answer(task.question_fragment, item)
         if listing_answer is not None:
             return ExpertResult.answered(task, listing_answer, sources=sources)
         return ExpertResult.handoff(
             task,
             str(response.get("reason") or "item_fact_unavailable"),
-            missing_fields=tuple(self._route_intent(task.normalized_question).required_fields),
+            missing_fields=tuple(self._route_intent(task.question_fragment).required_fields),
             sources=sources,
         )
 
@@ -106,13 +107,21 @@ class ProductAgent:
                 missing_fields=("model_knowledge",),
                 sources=sources,
             )
+        timeout_seconds = _remaining_timeout(context)
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            return ExpertResult.handoff(task, "expert_processing_timeout", sources=sources)
         try:
-            answer = self._generator().generate_xianyu_expert(
+            generator = self._generator()
+            kwargs: dict[str, object] = {"history": context.history}
+            if timeout_seconds is not None:
+                kwargs["timeout_seconds"] = timeout_seconds
+            answer = await asyncio.to_thread(
+                generator.generate_xianyu_expert,
                 "product",
                 task.normalized_question,
                 context.item,
                 evidence,
-                history=context.history,
+                **kwargs,
             )
         except Exception:
             logger.exception("Product expert generation failed for task_id=%s", task.task_id)
@@ -167,3 +176,9 @@ def _issues(prepared: Mapping[str, object]) -> tuple[str, ...]:
 def _sources(response: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
     raw = response.get("sources")
     return tuple(source for source in raw if isinstance(source, Mapping)) if isinstance(raw, list) else ()
+
+
+def _remaining_timeout(context: ExpertContext) -> float | None:
+    if context.deadline is None:
+        return None
+    return context.deadline - time.monotonic()

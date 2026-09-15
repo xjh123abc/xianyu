@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable, Mapping
 
 from app.generation.deepseek import DeepSeekGenerator
@@ -60,9 +62,9 @@ class ServiceAgent:
         if context.item is None:
             return ExpertResult.handoff(task, "item_context_unavailable", missing_fields=("item",))
         response = self._fact_responder.answer_intent(
-            task.normalized_question,
+            task.question_fragment,
             context.item,
-            self._route_intent(task.normalized_question),
+            self._route_intent(task.question_fragment),
         )
         sources = _sources(response)
         answer = response.get("answer")
@@ -71,7 +73,7 @@ class ServiceAgent:
         return ExpertResult.handoff(
             task,
             str(response.get("reason") or "seller_service_fact_unavailable"),
-            missing_fields=tuple(self._route_intent(task.normalized_question).required_fields),
+            missing_fields=tuple(self._route_intent(task.question_fragment).required_fields),
             sources=sources,
         )
 
@@ -88,9 +90,21 @@ class ServiceAgent:
                 missing_fields=("seller_rule",),
                 sources=sources,
             )
+        timeout_seconds = _remaining_timeout(context)
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            return ExpertResult.handoff(task, "expert_processing_timeout", sources=sources)
         try:
-            answer = self._generator().generate_xianyu_expert(
-                "service", task.normalized_question, context.item, evidence, history=context.history
+            generator = self._generator()
+            kwargs: dict[str, object] = {"history": context.history}
+            if timeout_seconds is not None:
+                kwargs["timeout_seconds"] = timeout_seconds
+            answer = await asyncio.to_thread(
+                generator.generate_xianyu_expert,
+                "service",
+                task.normalized_question,
+                context.item,
+                evidence,
+                **kwargs,
             )
         except Exception:
             logger.exception("Service expert generation failed for task_id=%s", task.task_id)
@@ -115,3 +129,9 @@ def _issues(prepared: Mapping[str, object]) -> tuple[str, ...]:
 def _sources(response: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
     raw = response.get("sources")
     return tuple(source for source in raw if isinstance(source, Mapping)) if isinstance(raw, list) else ()
+
+
+def _remaining_timeout(context: ExpertContext) -> float | None:
+    if context.deadline is None:
+        return None
+    return context.deadline - time.monotonic()
