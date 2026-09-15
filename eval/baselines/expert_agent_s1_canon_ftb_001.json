@@ -1,0 +1,82 @@
+{
+  "snapshot_schema_version": 1,
+  "captured_at": "2026-09-15T11:24:07+08:00",
+  "source": {
+    "path": "data/xianyu/items.json",
+    "sha256": "972499F9855AB8D5262222740EB61A48382C93F4A1B9ECB56513E81AC1810415",
+    "item_id": "CANON_FTB_001",
+    "source_updated_at": "2026-09-13T10:00:00+08:00"
+  },
+  "item": {
+    "item_id": "CANON_FTB_001",
+    "platform_item_id": "1084130180117",
+    "title": "Canon FTb 胶片相机",
+    "category": "胶片相机",
+    "brand": "Canon",
+    "model": "FTb",
+    "listed_price_cents": 150000,
+    "sale_status": "listed",
+    "negotiation": "negotiable",
+    "condition": {
+      "appearance": "正常使用痕迹",
+      "function": "快门正常，过片正常",
+      "known_issues": [],
+      "summary": "机身九成新，有轻微使用痕迹",
+      "scratches": "轻微使用划痕，不影响使用",
+      "dents": "没有明显磕碰"
+    },
+    "function": {
+      "overall": "working",
+      "shutter": "working"
+    },
+    "history": {
+      "repair_history": "没有维修过",
+      "drop_history": "没摔过",
+      "disassembly_history": "没有修过"
+    },
+    "lens": {
+      "included": true,
+      "focal_length_mm": 50,
+      "model": "FD 50mm F1.8"
+    },
+    "included_items": [
+      "Canon FTb 机身",
+      "50mm 镜头",
+      "镜头盖"
+    ],
+    "accessories": [
+      "Canon FTb 机身",
+      "FD 50mm F1.8 镜头",
+      "镜头盖"
+    ],
+    "accessory_details": {
+      "completeness": "unknown",
+      "original_accessories": "FD 50mm F1.8 原厂镜头",
+      "image_items": "unknown",
+      "manual_or_packaging": "打包"
+    },
+    "shipping": {
+      "ship_from": "上海",
+      "carrier": "中通",
+      "shipping_fee": "包邮",
+      "dispatch_time": "付款后 48 小时内发出",
+      "negotiation_express_policy": "不包邮售价减20 1480元",
+      "negotiation_policy": "小刀10元，1490元可以拍"
+    },
+    "product_info": {
+      "production_year": "2015年",
+      "beginner_suitability": "yes",
+      "usage": "装入 35mm 胶卷后过片、测光并按快门拍摄；建议新手先阅读胶片相机基础教程。",
+      "sale_reason": "整理闲置"
+    },
+    "after_sale": {
+      "transaction_channel": "xianyu",
+      "return_policy": "manual_review",
+      "description_policy": "seller_confirmed",
+      "inspection_confirmation": "unknown"
+    },
+    "listing_description": "佳能FTb QL胶片单反套机，带原厂FD 50mm f1.8 SC镜头。机身成色还可以，有点使用痕迹，不影响使用。快门、过片、光圈正常，镜头干净，成像没有问题。适合胶片摄影、收藏、把玩。",
+    "data_source": "seller_manual",
+    "updated_at": "2026-09-13T10:00:00+08:00"
+  }
+}
