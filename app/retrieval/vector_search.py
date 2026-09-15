@@ -17,11 +17,17 @@ class VectorSearch:
         client: QdrantClient | None = None,
         embedding_service: EmbeddingService | None = None,
         collection_name: str | None = None,
+        corpus_id: str | None = None,
     ) -> None:
         if settings is None:
             raise RuntimeError("Project settings are unavailable")
 
         self.collection_name = collection_name or settings.qdrant_collection
+        self.corpus_id = str(
+            corpus_id if corpus_id is not None else settings.knowledge_corpus_id
+        ).strip()
+        if not self.corpus_id:
+            raise ValueError("corpus_id must not be empty")
         self.client = client if client is not None else QdrantClient(url=settings.qdrant_url)
         self.embedding_service = (
             embedding_service if embedding_service is not None else EmbeddingService()
@@ -45,10 +51,26 @@ class VectorSearch:
             "limit": top_k,
             "with_payload": True,
         }
-        if query_filter is not None:
-            query_kwargs["query_filter"] = query_filter
+        query_kwargs["query_filter"] = self._corpus_filter(query_filter)
         result = self.client.query_points(**query_kwargs)
         return result.points
+
+    def verify_collection(self) -> None:
+        """Verify that the configured collection exists and is reachable."""
+
+        if not self.client.collection_exists(self.collection_name):
+            raise RuntimeError(f"Qdrant collection is unavailable: {self.collection_name}")
+
+    def _corpus_filter(self, query_filter: Filter | None) -> Filter:
+        """Require this retriever's corpus without discarding caller scope filters."""
+
+        corpus_condition = FieldCondition(
+            key="corpus_id",
+            match=MatchValue(value=self.corpus_id),
+        )
+        if query_filter is None:
+            return Filter(must=[corpus_condition])
+        return Filter(must=[corpus_condition, query_filter])
 
 
 def xianyu_item_filter(item_id: str) -> Filter:

@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 from app.services.chat_service import ChatService
 from app.services.intent_router import IntentRouter
+from config.settings import settings
 
 
 class _RegularRag:
@@ -37,3 +38,11 @@ def test_regular_rag_turn_does_not_read_xianyu_item_snapshot() -> None:
 
     assert result["answer"] == "普通知识库回答"
     item_service.resolve_item_ids.assert_not_called()
+
+
+def test_xianyu_rag_service_uses_its_own_corpus_identity() -> None:
+    service = ChatService(rag_service=_RegularRag(), intent_router=IntentRouter())
+
+    xianyu_rag_service = service._get_xianyu_rag_service()
+
+    assert xianyu_rag_service.corpus_id == settings.xianyu_corpus_id

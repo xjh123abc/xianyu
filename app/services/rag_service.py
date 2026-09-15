@@ -40,6 +40,7 @@ class RAGService:
         collection_name: str | None = None,
         manifest_path: str | None = None,
         scoped_corpus: bool = False,
+        corpus_id: str | None = None,
     ) -> None:
         if isinstance(vector_search, (BM25Search, HybridSearch)) and bm25_search is None:
             self.vector_search = None
@@ -59,6 +60,7 @@ class RAGService:
         self.collection_name = collection_name
         self.manifest_path = manifest_path
         self.scoped_corpus = scoped_corpus
+        self.corpus_id = corpus_id
 
     def warm_up(self) -> None:
         """Load configured local retrieval models before worker-thread inference."""
@@ -66,10 +68,7 @@ class RAGService:
         if self.hybrid_search is None and self.vector_search is None:
             if self.bm25_search is None:
                 self.bm25_search = BM25Search(self._load_chunks())
-            vector_kwargs = {}
-            if self.collection_name is not None:
-                vector_kwargs["collection_name"] = self.collection_name
-            self.vector_search = self._vector_search_cls(**vector_kwargs)
+            self.vector_search = self._vector_search_cls(**self._vector_search_kwargs())
             self.hybrid_search = self._hybrid_search_cls(
                 self.vector_search,
                 self.bm25_search,
@@ -213,10 +212,7 @@ class RAGService:
                 chunks = self._load_chunks()
                 self.bm25_search = BM25Search(chunks)
 
-            vector_kwargs = {}
-            if self.collection_name is not None:
-                vector_kwargs["collection_name"] = self.collection_name
-            self.vector_search = self._vector_search_cls(**vector_kwargs)
+            self.vector_search = self._vector_search_cls(**self._vector_search_kwargs())
             self.hybrid_search = self._hybrid_search_cls(
                 self.vector_search,
                 self.bm25_search,
@@ -256,6 +252,16 @@ class RAGService:
         else:
             ensure_knowledge_base_in_sync(chunks)
         return chunks
+
+    def _vector_search_kwargs(self) -> dict[str, str]:
+        """Build the retriever identity used by the corresponding ingestion flow."""
+
+        kwargs: dict[str, str] = {}
+        if self.collection_name is not None:
+            kwargs["collection_name"] = self.collection_name
+        if self.corpus_id is not None:
+            kwargs["corpus_id"] = self.corpus_id
+        return kwargs
 
     @staticmethod
     def _chunk_filter(item_id: str | None) -> Callable[[object], bool] | None:

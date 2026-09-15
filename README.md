@@ -21,6 +21,24 @@ copy .env.example .env
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+### RAG 启动前置条件与就绪检查
+
+项目只从本地目录加载 embedding 和 reranker 模型，不会在请求期间下载模型。复制示例配置后，必须在 `.env` 中将以下两项替换为实际存在的本地模型目录：
+
+```dotenv
+EMBEDDING_MODEL_PATH=/absolute/path/to/local-embedding-model
+RERANKER_MODEL_PATH=/absolute/path/to/local-reranker-model
+```
+
+`GET /health` 仅表示 FastAPI 进程已启动；`GET /ready` 会实际加载普通 RAG 使用的两个本地模型，并验证 Qdrant collection 可访问。若模型路径错误、模型无法加载、Qdrant 不可达或 collection 尚未摄取，`/ready` 返回 HTTP 503；只有返回 `{"status":"ready","rag":"ready"}` 才表示普通 RAG 链路可用。
+
+首次启动前需要先完成知识库摄取，并确认 `/ready` 成功：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" -m app.ingestion.pipeline
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/ready"
+```
+
 当前项目保留原电商 RAG/MCP 链路，并增加了本地闲鱼示例商品问答。
 
 ## 统一商品问答

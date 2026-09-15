@@ -316,6 +316,7 @@ class ChatService:
                 collection_name=settings.xianyu_qdrant_collection,
                 manifest_path=settings.xianyu_ingestion_manifest_path,
                 scoped_corpus=True,
+                corpus_id=settings.xianyu_corpus_id,
             )
         return self.xianyu_rag_service
 
