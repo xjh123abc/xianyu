@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 import json
 import re
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -23,6 +24,9 @@ from config.settings import settings
 
 class DeepSeekGenerator:
     """Generate a grounded answer from a query and ContextBuilder text."""
+
+    _EMPTY_CONTENT_RETRIES = 1
+    _RETRY_MAX_TOKENS = 2048
 
     def __init__(self, client: Any | None = None) -> None:
         """Accept an injected client for tests; otherwise build it lazily."""
@@ -154,18 +158,40 @@ class DeepSeekGenerator:
             "max_tokens": settings.deepseek_max_tokens,
             "stream": False,
         }
-        if timeout_seconds is not None:
-            request["timeout"] = max(float(timeout_seconds), 0.01)
-        response = client.chat.completions.create(**request)
+        if settings.deepseek_model == "deepseek-flash":
+            request["extra_body"] = {"thinking": {"type": "disabled"}}
+        deadline = (
+            time.monotonic() + max(float(timeout_seconds), 0.01)
+            if timeout_seconds is not None
+            else None
+        )
 
-        try:
-            content = response.choices[0].message.content
-        except (AttributeError, IndexError, TypeError) as error:
-            raise RuntimeError("DeepSeek response did not contain an answer") from error
+        for attempt in range(self._EMPTY_CONTENT_RETRIES + 1):
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                request["timeout"] = max(remaining, 0.01)
 
-        if not isinstance(content, str) or not content.strip():
-            raise RuntimeError("DeepSeek response contained an empty answer")
-        return content.strip()
+            response = client.chat.completions.create(**request)
+            try:
+                content = response.choices[0].message.content
+            except (AttributeError, IndexError, TypeError) as error:
+                raise RuntimeError(
+                    "DeepSeek response did not contain an answer"
+                ) from error
+
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+
+            if attempt < self._EMPTY_CONTENT_RETRIES:
+                current_max_tokens = int(request["max_tokens"])
+                request["max_tokens"] = min(
+                    current_max_tokens * 2,
+                    self._RETRY_MAX_TOKENS,
+                )
+
+        raise RuntimeError("DeepSeek response contained an empty answer")
 
     @staticmethod
     def _build_client() -> OpenAI:
@@ -181,4 +207,5 @@ class DeepSeekGenerator:
             api_key=api_key,
             base_url=settings.deepseek_base_url,
             timeout=settings.deepseek_timeout,
+            max_retries=0,
         )

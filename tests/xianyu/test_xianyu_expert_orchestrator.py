@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+import time
 from unittest.mock import AsyncMock, Mock
 
 from app.services.chat_service import ChatService
@@ -215,6 +216,27 @@ def test_expert_budget_discards_late_batch_result() -> None:
     assert result["action"] == "handoff"
     assert result["answer"] == "稍等我看看"
     assert result["reason"] == "expert_processing_timeout"
+
+
+def test_model_planner_uses_a_bounded_subbudget() -> None:
+    from app.services.xianyu.expert_orchestrator import XianyuExpertOrchestrator
+
+    generator = Mock()
+    generator.plan_xianyu_questions.return_value = {"tasks": []}
+    service = _service(_canon_item(), generator)
+    orchestrator = XianyuExpertOrchestrator(
+        fact_responder=service.item_fact_responder,
+        knowledge_responder=service.xianyu_knowledge_responder,
+        intent_router=service.intent_router,
+        generator=generator,
+    )
+
+    planner = orchestrator._model_planner(time.monotonic() + 60)
+    assert planner is not None
+    planner("还在吗？有没有维修过？")
+
+    timeout = generator.plan_xianyu_questions.call_args.kwargs["timeout_seconds"]
+    assert 0 < timeout <= orchestrator._PLANNER_BUDGET_SECONDS
 
 
 def test_current_item_context_is_reused_for_an_unclassified_follow_up() -> None:

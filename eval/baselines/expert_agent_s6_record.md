@@ -46,21 +46,17 @@
 ## 测试结果
 
 ```text
-tests/xianyu tests/api tests/orders tests/regression: 294 passed
-tests/ingestion: 7 passed
-tests/retrieval（不含三组重模型文件）: 39 passed
-tests/retrieval/test_chat_retrieval.py（CPU 独立进程）: 2 passed
-tests/retrieval/test_qdrant.py（CPU 独立进程）: 3 passed
-tests/retrieval/test_vector_search.py（CPU 独立进程）: 3 passed
-合计: 348 passed
+闲鱼、API、订单、回归、灌库及非重模型检索: 350 passed
+三组 GPU 重模型／内存 Qdrant 检索: 8 passed
+合计: 358 passed
 ```
 
-文档要求的单进程 `pytest -q` 实际结果为 `336 passed, 3 failed`。三项失败均发生在 SentenceTransformer 权重加载阶段：Windows 分页文件错误 `os error 1455`／CUDA 4GB 显存不足；拆分到独立 CPU 进程后全部通过。该环境限制没有用 skip／xfail 隐藏。
+Windows 提交内存曾被无关桌面程序占满，触发 SentenceTransformer `os error 1455`／底层访问异常。清理该程序后，embedding 与 reranker 已可在 GTX 1650 GPU 和 Qdrant 同时运行；三组重模型测试全部通过。该环境问题没有用 skip／xfail 隐藏。
 
-60 条真实 `/chat` 批测完成，HTTP 与响应安全契约 `60/60`，其中 47 条 reply、13 条 handoff。真实模型抽测发现并修复了两个额外任务问题：A08 不再被模型错误转成 seller-rule RAG，T52 不再被模型虚构 greeting。
+闲鱼知识库已从最新本地文档重新生成，Qdrant 只保留 `xianyu_documents`，4 条 payload 与本地 UTF-8 文本逐字一致并使用持久化卷。60 条真实 `/chat` 批测完成，HTTP 与响应安全契约 `60/60`，其中 44 条 reply、16 条有原因的 handoff；`generation_failed`、`knowledge_warmup_failed` 和处理超时均为 0。真实模型验证还补齐了四个口语路由、DeepSeek Flash 非思考模式、空正文有限重试、规划子预算及“缺少依据”统一接管。
 
 ## 尚未通过，因此尚未正式启用
 
-- 闲鱼 Qdrant 同步未完成：Docker Desktop WSL 引擎以 `0xc00000fd` 退出，7 条知识类批测因 `knowledge_warmup_failed` 安全接管。批测只能记为“完成”，不能记为语义全通过。
-- 当前提交尚未完成真实渠道的正常报价、未知事实接管和生成期间手动接管三项交互；企业微信真实通知也未在本次运行中宣称成功。
-- 真实账号已暂停，旧 API／渠道进程已停止。`approved_for_auto_send` 必须保持 `false`，在上述两项通过并生成绑定部署提交的验收报告前，正式运行器拒绝启动。
+- Qdrant、真实模型和 60 条 HTTP 批测已经通过；剩余阻塞只是真实渠道交互验收。
+- 当前提交尚未完成真实闲鱼测试会话中的正常报价、未知事实接管和生成期间手动接管三项交互；企业微信真实通知也未在本次运行中宣称成功。
+- 真实账号保持暂停。`approved_for_auto_send` 必须保持 `false`，在真实渠道通过并生成绑定部署提交的验收报告前，正式运行器拒绝启动。

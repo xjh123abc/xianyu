@@ -240,6 +240,10 @@ def test_xianyu_prompt_exposes_all_confirmed_facts_without_conflicts() -> None:
         "我帮你问卖家。",
         "请等待卖家确认。",
         "需要人工确认后才能答复。",
+        "缺少依据",
+        "缺少依据。当前资料没有对应说明。",
+        "资料不足。",
+        "无法确认",
     ],
 )
 def test_buyer_visible_human_review_language_is_rejected(text: str) -> None:

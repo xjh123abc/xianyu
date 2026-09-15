@@ -58,7 +58,10 @@ def join_answers(parts: Sequence[str], tail: str | None = None) -> str:
 def requires_human_handoff(text: str) -> bool:
     """Reject buyer-facing model text that asks them to wait for seller review."""
 
-    return bool(_HUMAN_REVIEW_LANGUAGE.search(text))
+    normalized = str(text or "").strip().rstrip("。！？!?").strip()
+    if normalized.startswith(("缺少依据", "资料不足", "无法确认")):
+        return True
+    return bool(_HUMAN_REVIEW_LANGUAGE.search(normalized))
 
 
 def merge_partial_response(

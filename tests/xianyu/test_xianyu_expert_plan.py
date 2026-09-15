@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+import pytest
+
 from app.services.intent_router import IntentRouter
 from app.services.query_planner import build_expert_plan
 from app.services.session_manager import SessionManager
@@ -42,6 +44,30 @@ def test_simple_question_uses_rule_plan_without_model_call() -> None:
     assert planner.calls == []
     assert [(task.expert, task.normalized_question) for task in tasks] == [
         ("product", "是否在售")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("query", "expert", "normalized_question"),
+    [
+        ("现在还能拍吗？", "product", "是否在售"),
+        ("东西卖掉了吗？", "product", "是否在售"),
+        ("现在下单还有货吗？", "product", "是否在售"),
+        ("现在什么价出？", "price", "商品标价"),
+    ],
+)
+def test_batch_phrasing_uses_deterministic_fact_plan(
+    query: str,
+    expert: str,
+    normalized_question: str,
+) -> None:
+    planner = PlannerSpy({"tasks": []})
+
+    tasks = build_expert_plan(query, planner=planner)
+
+    assert planner.calls == []
+    assert [(task.expert, task.normalized_question) for task in tasks] == [
+        (expert, normalized_question)
     ]
 
 

@@ -31,13 +31,19 @@ class QuestionPlan(TypedDict):
     knowledge_questions: list[KnowledgeQuestion]
 
 
-_PRICE_TERMS = ("价格", "多少钱", "标价", "售价", "多少元", "price", "cost")
+_PRICE_TERMS = (
+    "价格", "多少钱", "标价", "售价", "多少元", "什么价", "拍的话", "price", "cost",
+)
 _BARGAIN_TERMS = ("最低", "便宜", "少一点", "少点", "优惠", "小刀", "刀吗", "还价", "报价")
 _BUYER_PAYS_TERMS = ("不包邮", "不用包邮", "出邮费", "出运费", "自付运费", "承担运费")
 _SHIPPING_PRICE_TERMS = ("运费", "邮费", "快递费", "shipping fee")
 _NON_ITEM_STATUS_TERMS = ("订单状态", "物流状态", "快递状态", "发货状态")
 _SELLER_SCOPE_TERMS = ("你们店", "店里", "本店", "卖家", "这件商品", "这个商品")
-_STATUS_TERMS = ("在吗", "能买吗", "还能买", "可买吗", "还有吗", "在售", "还没卖", "没卖", "还没出", "卖出", "售出", "已售", "状态", "available", "sold")
+_STATUS_TERMS = (
+    "在吗", "能买吗", "还能买", "可买吗", "还能拍", "还有吗", "有货", "在售",
+    "还没卖", "没卖", "还没出", "卖掉", "卖出", "售出", "已售", "状态",
+    "available", "sold",
+)
 
 COMMON_KNOWLEDGE_RETRIEVAL_HINT = "卖家通用规则 售后与边界 二手商品 成色 瑕疵 配件 双方确认 争议 附加条件 单独确认 不自行承诺"
 _COMMON_KNOWLEDGE_TERMS = ("售后", "质量问题", "退货", "退款", "发货", "运费", "邮费", "包邮", "规则", "政策", "shipping")

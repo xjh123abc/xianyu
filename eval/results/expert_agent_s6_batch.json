@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "kind": "xianyu_expert_fixed_batch",
-  "generated_at": "2026-09-15T20:51:20+08:00",
+  "generated_at": "2026-09-15T22:14:01+08:00",
   "base_url": "http://127.0.0.1:8000",
-  "item_id": "CANON_FTB_001",
+  "item_id": "DEMO_ITEM_001",
   "summary": {
     "status": "completed",
     "total": 60,
@@ -16,7 +16,7 @@
       "category": "是否在售",
       "question": "这个还在吗？",
       "chat_id": "qa_batch_chat_t01",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "还在的，这台目前还没出。",
       "action": "reply",
       "can_answer": true,
@@ -35,17 +35,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1668.492
+      "elapsed_ms": 1673.499
     },
     {
       "id": "T02",
       "category": "是否在售",
       "question": "还没出吧？",
       "chat_id": "qa_batch_chat_t02",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "还在的，这台目前还没出。",
       "action": "reply",
       "can_answer": true,
@@ -64,78 +64,105 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1619.791
+      "elapsed_ms": 1576.759
     },
     {
       "id": "T03",
       "category": "是否在售",
       "question": "现在还能拍吗？",
       "chat_id": "qa_batch_chat_t03",
-      "item_id": "CANON_FTB_001",
-      "answer": "稍等我看看",
-      "action": "handoff",
-      "can_answer": false,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "还在的，这台目前还没出。",
+      "action": "reply",
+      "can_answer": true,
       "route": "xianyu",
-      "tasks": [],
-      "reason": "knowledge_warmup_failed",
+      "tasks": [
+        {
+          "task_id": "q1",
+          "expert": "product",
+          "question_fragment": "还能拍吗",
+          "knowledge_scope": "item_fact",
+          "transaction_conditions": {},
+          "depends_on_task_ids": []
+        }
+      ],
+      "reason": null,
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1576.527
+      "elapsed_ms": 1533.764
     },
     {
       "id": "T04",
       "category": "是否在售",
       "question": "东西卖掉了吗？",
       "chat_id": "qa_batch_chat_t04",
-      "item_id": "CANON_FTB_001",
-      "answer": "稍等我看看",
-      "action": "handoff",
-      "can_answer": false,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "还在的，这台目前还没出。",
+      "action": "reply",
+      "can_answer": true,
       "route": "xianyu",
-      "tasks": [],
-      "reason": "knowledge_warmup_failed",
+      "tasks": [
+        {
+          "task_id": "q1",
+          "expert": "product",
+          "question_fragment": "卖掉了吗",
+          "knowledge_scope": "item_fact",
+          "transaction_conditions": {},
+          "depends_on_task_ids": []
+        }
+      ],
+      "reason": null,
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1569.252
+      "elapsed_ms": 1535.963
     },
     {
       "id": "T05",
       "category": "是否在售",
       "question": "现在下单还有货吗？",
       "chat_id": "qa_batch_chat_t05",
-      "item_id": "CANON_FTB_001",
-      "answer": "稍等我看看",
-      "action": "handoff",
-      "can_answer": false,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "还在的，这台目前还没出。",
+      "action": "reply",
+      "can_answer": true,
       "route": "xianyu",
-      "tasks": [],
-      "reason": "knowledge_warmup_failed",
+      "tasks": [
+        {
+          "task_id": "q1",
+          "expert": "product",
+          "question_fragment": "有货吗",
+          "knowledge_scope": "item_fact",
+          "transaction_conditions": {},
+          "depends_on_task_ids": []
+        }
+      ],
+      "reason": null,
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1567.993
+      "elapsed_ms": 1554.328
     },
     {
       "id": "T06",
       "category": "价格",
       "question": "这个多少钱？",
       "chat_id": "qa_batch_chat_t06",
-      "item_id": "CANON_FTB_001",
-      "answer": "这件标价是 ¥1500.00。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件标价是 ¥1280.00。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -155,38 +182,49 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1574.663
+      "elapsed_ms": 1556.141
     },
     {
       "id": "T07",
       "category": "价格",
       "question": "现在什么价出？",
       "chat_id": "qa_batch_chat_t07",
-      "item_id": "CANON_FTB_001",
-      "answer": "稍等我看看",
-      "action": "handoff",
-      "can_answer": false,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件标价是 ¥1280.00。",
+      "action": "reply",
+      "can_answer": true,
       "route": "xianyu",
-      "tasks": [],
-      "reason": "knowledge_warmup_failed",
+      "tasks": [
+        {
+          "task_id": "q1",
+          "expert": "price",
+          "question_fragment": "现在什么价出？",
+          "knowledge_scope": "item_fact",
+          "transaction_conditions": {
+            "request_kind": "listed_price"
+          },
+          "depends_on_task_ids": []
+        }
+      ],
+      "reason": null,
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1544.012
+      "elapsed_ms": 1583.366
     },
     {
       "id": "T08",
       "category": "价格",
       "question": "标价就是最终价格吗？",
       "chat_id": "qa_batch_chat_t08",
-      "item_id": "CANON_FTB_001",
-      "answer": "这件标价是 ¥1500.00。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件标价是 ¥1280.00。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -206,18 +244,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1590.42
+      "elapsed_ms": 1556.072
     },
     {
       "id": "T09",
       "category": "价格",
       "question": "这个价格包含全部东西吗？",
       "chat_id": "qa_batch_chat_t09",
-      "item_id": "CANON_FTB_001",
-      "answer": "这件标价是 ¥1500.00。\n一起出的有 Canon FTb 机身、FD 50mm F1.8 镜头、镜头盖。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件标价是 ¥1280.00。\n一起出的有 相机机身、相机背带、镜头盖。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -235,18 +273,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 4397.134
+      "elapsed_ms": 2572.863
     },
     {
       "id": "T10",
       "category": "价格",
       "question": "我拍的话是多少钱？",
       "chat_id": "qa_batch_chat_t10",
-      "item_id": "CANON_FTB_001",
-      "answer": "这件标价是 ¥1500.00。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件标价是 ¥1280.00。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -266,18 +304,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 3210.573
+      "elapsed_ms": 2278.614
     },
     {
       "id": "T11",
       "category": "议价",
       "question": "能便宜点吗？",
       "chat_id": "qa_batch_chat_t11",
-      "item_id": "CANON_FTB_001",
-      "answer": "最低 ¥1490.00 可以拍。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "标价 ¥1280.00，这个价格可以拍。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -297,18 +335,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1540.602
+      "elapsed_ms": 1528.712
     },
     {
       "id": "T12",
       "category": "议价",
       "question": "最低多少？",
       "chat_id": "qa_batch_chat_t12",
-      "item_id": "CANON_FTB_001",
-      "answer": "最低 ¥1490.00 可以拍。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "标价 ¥1280.00，这个价格可以拍。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -328,18 +366,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1556.445
+      "elapsed_ms": 1521.986
     },
     {
       "id": "T13",
       "category": "议价",
       "question": "诚心要，能少一点不？",
       "chat_id": "qa_batch_chat_t13",
-      "item_id": "CANON_FTB_001",
-      "answer": "这件标价是 ¥1500.00。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件标价是 ¥1280.00。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -359,18 +397,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1606.032
+      "elapsed_ms": 1602.094
     },
     {
       "id": "T14",
       "category": "议价",
       "question": "还能刀吗？",
       "chat_id": "qa_batch_chat_t14",
-      "item_id": "CANON_FTB_001",
-      "answer": "这件标价是 ¥1500.00。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件标价是 ¥1280.00。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -390,18 +428,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1531.471
+      "elapsed_ms": 1569.599
     },
     {
       "id": "T15",
       "category": "议价",
       "question": "直接拍能优惠多少？",
       "chat_id": "qa_batch_chat_t15",
-      "item_id": "CANON_FTB_001",
-      "answer": "最低 ¥1490.00 可以拍。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "标价 ¥1280.00，这个价格可以拍。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -421,18 +459,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1589.212
+      "elapsed_ms": 1536.095
     },
     {
       "id": "T16",
       "category": "成色",
       "question": "成色怎么样？",
       "chat_id": "qa_batch_chat_t16",
-      "item_id": "CANON_FTB_001",
-      "answer": "机身九成新，有轻微使用痕迹。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "正常使用痕迹，外观整体干净。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -450,18 +488,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1551.645
+      "elapsed_ms": 1553.674
     },
     {
       "id": "T17",
       "category": "成色",
       "question": "外观看起来新不新？",
       "chat_id": "qa_batch_chat_t17",
-      "item_id": "CANON_FTB_001",
-      "answer": "机身九成新，有轻微使用痕迹。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "正常使用痕迹，外观整体干净。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -479,18 +517,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1545.713
+      "elapsed_ms": 1525.725
     },
     {
       "id": "T18",
       "category": "成色",
       "question": "使用痕迹明显吗？",
       "chat_id": "qa_batch_chat_t18",
-      "item_id": "CANON_FTB_001",
-      "answer": "机身九成新，有轻微使用痕迹。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "正常使用痕迹，外观整体干净。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -508,18 +546,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1543.027
+      "elapsed_ms": 1516.266
     },
     {
       "id": "T19",
       "category": "成色",
       "question": "有划痕吗？",
       "chat_id": "qa_batch_chat_t19",
-      "item_id": "CANON_FTB_001",
-      "answer": "轻微使用划痕，不影响使用。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "机身底部有轻微使用划痕。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -537,18 +575,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1555.608
+      "elapsed_ms": 1619.127
     },
     {
       "id": "T20",
       "category": "成色",
       "question": "有没有磕碰？",
       "chat_id": "qa_batch_chat_t20",
-      "item_id": "CANON_FTB_001",
-      "answer": "没有明显磕碰。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "未见明显磕碰。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -574,17 +612,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1544.261
+      "elapsed_ms": 1563.299
     },
     {
       "id": "T21",
       "category": "瑕疵/历史",
       "question": "这个有什么毛病吗？",
       "chat_id": "qa_batch_chat_t21",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "暂未发现已知问题。",
       "action": "reply",
       "can_answer": true,
@@ -603,17 +641,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1558.077
+      "elapsed_ms": 1530.512
     },
     {
       "id": "T22",
       "category": "瑕疵/历史",
       "question": "有什么隐藏问题吗？",
       "chat_id": "qa_batch_chat_t22",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "暂未发现已知问题。",
       "action": "reply",
       "can_answer": true,
@@ -632,20 +670,20 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1598.688
+      "elapsed_ms": 1518.301
     },
     {
       "id": "T23",
       "category": "瑕疵/历史",
       "question": "以前摔过吗？",
       "chat_id": "qa_batch_chat_t23",
-      "item_id": "CANON_FTB_001",
-      "answer": "没摔过。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -657,24 +695,24 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": null,
+      "reason": "摔碰历史_unavailable",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1570.646
+      "elapsed_ms": 1546.166
     },
     {
       "id": "T24",
       "category": "瑕疵/历史",
       "question": "有没有维修过？",
       "chat_id": "qa_batch_chat_t24",
-      "item_id": "CANON_FTB_001",
-      "answer": "没有维修过。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -686,24 +724,24 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": null,
+      "reason": "维修历史_unavailable",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1590.436
+      "elapsed_ms": 1516.276
     },
     {
       "id": "T25",
       "category": "瑕疵/历史",
       "question": "有拆修记录吗？",
       "chat_id": "qa_batch_chat_t25",
-      "item_id": "CANON_FTB_001",
-      "answer": "没有修过。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -715,21 +753,21 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": null,
+      "reason": "拆修记录_unavailable",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1535.373
+      "elapsed_ms": 1569.859
     },
     {
       "id": "T26",
       "category": "功能",
       "question": "功能都正常吗？",
       "chat_id": "qa_batch_chat_t26",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "目前记录的功能状态正常，可以使用。",
       "action": "reply",
       "can_answer": true,
@@ -748,17 +786,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1532.74
+      "elapsed_ms": 1579.543
     },
     {
       "id": "T27",
       "category": "功能",
       "question": "现在可以正常使用吗？",
       "chat_id": "qa_batch_chat_t27",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "目前记录的功能状态正常，可以使用。",
       "action": "reply",
       "can_answer": true,
@@ -777,17 +815,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1562.356
+      "elapsed_ms": 1537.44
     },
     {
       "id": "T28",
       "category": "功能",
       "question": "有没有哪个功能是坏的？",
       "chat_id": "qa_batch_chat_t28",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "目前记录的功能状态正常，可以使用。",
       "action": "reply",
       "can_answer": true,
@@ -806,17 +844,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1556.003
+      "elapsed_ms": 1532.768
     },
     {
       "id": "T29",
       "category": "功能",
       "question": "快门正常吗？",
       "chat_id": "qa_batch_chat_t29",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "快门功能正常。",
       "action": "reply",
       "can_answer": true,
@@ -835,17 +873,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1510.146
+      "elapsed_ms": 1507.347
     },
     {
       "id": "T30",
       "category": "功能",
       "question": "买回去能直接用吗？",
       "chat_id": "qa_batch_chat_t30",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "目前记录的功能状态正常，可以使用。",
       "action": "reply",
       "can_answer": true,
@@ -864,18 +902,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1583.989
+      "elapsed_ms": 1556.36
     },
     {
       "id": "T31",
       "category": "配件",
       "question": "都带什么东西？",
       "chat_id": "qa_batch_chat_t31",
-      "item_id": "CANON_FTB_001",
-      "answer": "一起出的有 Canon FTb 机身、FD 50mm F1.8 镜头、镜头盖。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "一起出的有 相机机身、相机背带、镜头盖。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -893,17 +931,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1554.283
+      "elapsed_ms": 1520.348
     },
     {
       "id": "T32",
       "category": "配件",
       "question": "配件齐全吗？",
       "chat_id": "qa_batch_chat_t32",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "稍等我看看",
       "action": "handoff",
       "can_answer": false,
@@ -922,18 +960,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1532.829
+      "elapsed_ms": 1584.869
     },
     {
       "id": "T33",
       "category": "配件",
       "question": "有原装配件吗？",
       "chat_id": "qa_batch_chat_t33",
-      "item_id": "CANON_FTB_001",
-      "answer": "一起出的有 Canon FTb 机身、FD 50mm F1.8 镜头、镜头盖。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "一起出的有 相机机身、相机背带、镜头盖。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -951,18 +989,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1603.553
+      "elapsed_ms": 1587.633
     },
     {
       "id": "T34",
       "category": "配件",
       "question": "图片里的东西都一起给吗？",
       "chat_id": "qa_batch_chat_t34",
-      "item_id": "CANON_FTB_001",
-      "answer": "一起出的有 Canon FTb 机身、FD 50mm F1.8 镜头、镜头盖。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "一起出的有 相机机身、相机背带、镜头盖。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -980,20 +1018,20 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1548.585
+      "elapsed_ms": 1523.854
     },
     {
       "id": "T35",
       "category": "配件",
       "question": "有没有说明书或者包装？",
       "chat_id": "qa_batch_chat_t35",
-      "item_id": "CANON_FTB_001",
-      "answer": "打包。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -1005,22 +1043,22 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": null,
+      "reason": "说明书或包装_unavailable",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1558.852
+      "elapsed_ms": 1570.671
     },
     {
       "id": "T36",
       "category": "发货",
       "question": "什么时候能发？",
       "chat_id": "qa_batch_chat_t36",
-      "item_id": "CANON_FTB_001",
-      "answer": "付款后 48 小时内发出。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "付款后 24 小时内发出。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -1038,18 +1076,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1613.104
+      "elapsed_ms": 1557.099
     },
     {
       "id": "T37",
       "category": "发货",
       "question": "今天买今天能发吗？",
       "chat_id": "qa_batch_chat_t37",
-      "item_id": "CANON_FTB_001",
-      "answer": "付款后 48 小时内发出。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "付款后 24 小时内发出。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -1067,17 +1105,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1545.93
+      "elapsed_ms": 1530.975
     },
     {
       "id": "T38",
       "category": "发货",
       "question": "从哪里发货？",
       "chat_id": "qa_batch_chat_t38",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "上海。",
       "action": "reply",
       "can_answer": true,
@@ -1096,17 +1134,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1568.665
+      "elapsed_ms": 1629.627
     },
     {
       "id": "T39",
       "category": "发货",
       "question": "包邮吗？",
       "chat_id": "qa_batch_chat_t39",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "包邮。",
       "action": "reply",
       "can_answer": true,
@@ -1125,17 +1163,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1554.33
+      "elapsed_ms": 1588.968
     },
     {
       "id": "T40",
       "category": "发货",
       "question": "用什么快递？",
       "chat_id": "qa_batch_chat_t40",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "稍等我看看",
       "action": "handoff",
       "can_answer": false,
@@ -1154,18 +1192,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1520.111
+      "elapsed_ms": 1521.815
     },
     {
       "id": "T41",
       "category": "商品信息",
       "question": "这个具体是什么型号？",
       "chat_id": "qa_batch_chat_t41",
-      "item_id": "CANON_FTB_001",
-      "answer": "这件的型号是：Canon FTb。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件的型号是：复古胶片相机套装。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -1183,20 +1221,20 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1611.399
+      "elapsed_ms": 1512.875
     },
     {
       "id": "T42",
       "category": "商品信息",
       "question": "哪一年生产的？",
       "chat_id": "qa_batch_chat_t42",
-      "item_id": "CANON_FTB_001",
-      "answer": "2015年。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -1208,21 +1246,21 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": null,
+      "reason": "生产年份_unavailable",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1588.678
+      "elapsed_ms": 1596.51
     },
     {
       "id": "T43",
       "category": "商品信息",
       "question": "这个适合新手吗？",
       "chat_id": "qa_batch_chat_t43",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "适合新手；建议先阅读基础使用教程再开始使用。",
       "action": "reply",
       "can_answer": true,
@@ -1241,18 +1279,18 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1511.284
+      "elapsed_ms": 1585.853
     },
     {
       "id": "T44",
       "category": "商品信息",
       "question": "这个东西怎么用？",
       "chat_id": "qa_batch_chat_t44",
-      "item_id": "CANON_FTB_001",
-      "answer": "装入 35mm 胶卷后过片、测光并按快门拍摄；建议新手先阅读胶片相机基础教程。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -1270,17 +1308,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1502.002
+      "elapsed_ms": 1543.203
     },
     {
       "id": "T45",
       "category": "商品信息",
       "question": "为什么要卖？",
       "chat_id": "qa_batch_chat_t45",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "整理闲置。",
       "action": "reply",
       "can_answer": true,
@@ -1299,17 +1337,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1558.771
+      "elapsed_ms": 1616.78
     },
     {
       "id": "T46",
       "category": "交易/售后",
       "question": "可以走闲鱼交易吗？",
       "chat_id": "qa_batch_chat_t46",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "可以走闲鱼平台交易。",
       "action": "reply",
       "can_answer": true,
@@ -1328,17 +1366,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1536.887
+      "elapsed_ms": 1555.117
     },
     {
       "id": "T47",
       "category": "交易/售后",
       "question": "收到发现有问题怎么办？",
       "chat_id": "qa_batch_chat_t47",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "稍等我看看",
       "action": "handoff",
       "can_answer": false,
@@ -1357,17 +1395,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1567.237
+      "elapsed_ms": 1591.676
     },
     {
       "id": "T48",
       "category": "交易/售后",
       "question": "可以退吗？",
       "chat_id": "qa_batch_chat_t48",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "稍等我看看",
       "action": "handoff",
       "can_answer": false,
@@ -1386,17 +1424,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1575.521
+      "elapsed_ms": 1549.181
     },
     {
       "id": "T49",
       "category": "交易/售后",
       "question": "能保证和描述的一样吗？",
       "chat_id": "qa_batch_chat_t49",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "商品按现有描述发布；下单前可把在意的细节再确认一次。",
       "action": "reply",
       "can_answer": true,
@@ -1415,17 +1453,17 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1599.249
+      "elapsed_ms": 1541.618
     },
     {
       "id": "T50",
       "category": "交易/售后",
       "question": "可以验货以后再确认收货吗？",
       "chat_id": "qa_batch_chat_t50",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "稍等我看看",
       "action": "handoff",
       "can_answer": false,
@@ -1444,20 +1482,20 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1550.481
+      "elapsed_ms": 1550.873
     },
     {
       "id": "T51",
       "category": "复合问题",
       "question": "还在吗？有没有维修过？包邮吗？",
       "chat_id": "qa_batch_chat_t51",
-      "item_id": "CANON_FTB_001",
-      "answer": "还在的，这台目前还没出。\n没有维修过。\n包邮。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -1485,24 +1523,24 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": null,
+      "reason": "缺少或无法确认：维修过:维修历史_unavailable；已确认：还在的，这台目前还没出。；包邮。",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 4860.437
+      "elapsed_ms": 2788.763
     },
     {
       "id": "T52",
       "category": "复合问题",
       "question": "还在吗有没有维修过不包邮最低多少",
       "chat_id": "qa_batch_chat_t52",
-      "item_id": "CANON_FTB_001",
-      "answer": "还在的，这台目前还没出。\n没有维修过。\n不包邮的话最低 ¥1470.00 可以拍。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -1533,22 +1571,22 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": null,
+      "reason": "缺少或无法确认：维修过:维修历史_unavailable；不包邮:buyer_pays_shipping_policy_unavailable；不包邮最低多少:buyer_pays_shipping_policy_unavailable；已确认：还在的，这台目前还没出。",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 5038.264
+      "elapsed_ms": 2744.486
     },
     {
       "id": "T53",
       "category": "复合问题",
       "question": "今天能发吗？走顺丰吗？",
       "chat_id": "qa_batch_chat_t53",
-      "item_id": "CANON_FTB_001",
-      "answer": "付款后 48 小时内发出。\n中通。",
+      "item_id": "DEMO_ITEM_001",
+      "answer": "付款后 24 小时内发出。\n中通快递。",
       "action": "reply",
       "can_answer": true,
       "route": "xianyu",
@@ -1574,20 +1612,20 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 4441.99
+      "elapsed_ms": 2358.246
     },
     {
       "id": "T54",
       "category": "价格条件",
       "question": "包邮最低多少？不包邮呢？",
       "chat_id": "qa_batch_chat_t54",
-      "item_id": "CANON_FTB_001",
-      "answer": "包邮最低 ¥1490.00；不包邮的话最低 ¥1470.00。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -1602,21 +1640,21 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": null,
+      "reason": "缺少或无法确认：包邮:buyer_pays_shipping_policy_unavailable；包邮最低多少？:buyer_pays_shipping_policy_unavailable",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 4483.725
+      "elapsed_ms": 2682.754
     },
     {
       "id": "T55",
       "category": "价格条件",
       "question": "包邮1495可以吗？",
       "chat_id": "qa_batch_chat_t55",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "可以，¥1495.00 可以拍。",
       "action": "reply",
       "can_answer": true,
@@ -1639,20 +1677,20 @@
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1516.297
+      "elapsed_ms": 1645.015
     },
     {
       "id": "T56",
       "category": "价格条件",
       "question": "1470包邮可以吗？",
       "chat_id": "qa_batch_chat_t56",
-      "item_id": "CANON_FTB_001",
-      "answer": "稍等我看看",
-      "action": "handoff",
-      "can_answer": false,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "可以，¥1470.00 可以拍。",
+      "action": "reply",
+      "can_answer": true,
       "route": "xianyu",
       "tasks": [
         {
@@ -1668,44 +1706,48 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": "buyer_offer_below_authorised_minimum:offer=¥1470.00;minimum=¥1490.00",
+      "reason": null,
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 1610.786
+      "elapsed_ms": 1573.686
     },
     {
       "id": "T57",
       "category": "未知事实",
       "question": "测光和手机对比过吗？",
       "chat_id": "qa_batch_chat_t57",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "稍等我看看",
       "action": "handoff",
       "can_answer": false,
       "route": "xianyu",
       "tasks": [],
-      "reason": "knowledge_warmup_failed",
+      "reason": "generated_reply_requires_human_review",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
+        },
+        {
+          "source": "items/DEMO_ITEM_001.md",
+          "index": 1
         }
       ],
-      "elapsed_ms": 1579.937
+      "elapsed_ms": 3511.286
     },
     {
       "id": "T58",
       "category": "条件依赖",
       "question": "如果没修过，1470不包邮我就买",
       "chat_id": "qa_batch_chat_t58",
-      "item_id": "CANON_FTB_001",
-      "answer": "没有维修过。\n不包邮的话最低 ¥1470.00 可以拍。",
-      "action": "reply",
-      "can_answer": true,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "稍等我看看",
+      "action": "handoff",
+      "can_answer": false,
       "route": "xianyu",
       "tasks": [
         {
@@ -1731,44 +1773,48 @@
           ]
         }
       ],
-      "reason": null,
+      "reason": "缺少或无法确认：修过:维修历史_unavailable；1470:dependency_unresolved:q1；1470不包邮我就买:buyer_pays_shipping_policy_unavailable",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
         }
       ],
-      "elapsed_ms": 4938.662
+      "elapsed_ms": 2894.571
     },
     {
       "id": "T59",
       "category": "型号知识",
       "question": "Canon FTb 应该怎么上卷？",
       "chat_id": "qa_batch_chat_t59",
-      "item_id": "CANON_FTB_001",
+      "item_id": "DEMO_ITEM_001",
       "answer": "稍等我看看",
       "action": "handoff",
       "can_answer": false,
       "route": "xianyu",
       "tasks": [],
-      "reason": "knowledge_warmup_failed",
+      "reason": "generated_reply_requires_human_review",
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
+        },
+        {
+          "source": "items/DEMO_ITEM_001.md",
+          "index": 1
         }
       ],
-      "elapsed_ms": 1533.442
+      "elapsed_ms": 3297.045
     },
     {
       "id": "T60",
       "category": "复合问题",
       "question": "多少钱？带哪些配件？你们店售后怎么处理？",
       "chat_id": "qa_batch_chat_t60",
-      "item_id": "CANON_FTB_001",
-      "answer": "稍等我看看",
-      "action": "handoff",
-      "can_answer": false,
+      "item_id": "DEMO_ITEM_001",
+      "answer": "这件标价是 ¥1280.00。\n一起出的有 相机机身、相机背带、镜头盖。\n售后按商品资料记录处理：二手商品的成色、瑕疵和配件以对应商品资料为准。该商品资料中退货政策为“manual_review”，即需人工审核，无法在此直接给出退货结论。\n\n发货方面，商品资料写明“付款后 24 小时内发出”，承运为中通快递，包邮，发货地为上海。发出后会在对话中补充可公开的物流信息，未确认的物流状态不作承诺。\n\n配件以资料记录为准：相机机身、相机背带、镜头盖。资料未写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n改价、指定快递、多件打包、赠品等附加条件，资料中没有明确政策的，不追加承诺。",
+      "action": "reply",
+      "can_answer": true,
       "route": "xianyu",
       "tasks": [
         {
@@ -1798,14 +1844,18 @@
           "depends_on_task_ids": []
         }
       ],
-      "reason": "缺少或无法确认：售后怎么处理:knowledge_warmup_failed；已确认：这件标价是 ¥1500.00。；一起出的有 Canon FTb 机身、FD 50mm F1.8 镜头、镜头盖。",
+      "reason": null,
       "sources": [
         {
           "source": "mcp:get_item_info",
-          "index": "CANON_FTB_001"
+          "index": "DEMO_ITEM_001"
+        },
+        {
+          "source": "common/seller_rules.md",
+          "index": 0
         }
       ],
-      "elapsed_ms": 4055.92
+      "elapsed_ms": 5350.385
     }
   ]
 }

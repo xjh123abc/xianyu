@@ -35,6 +35,8 @@ class XianyuExpertOrchestrator:
     human takeover to the S3 channel worker.
     """
 
+    _PLANNER_BUDGET_SECONDS = 8.0
+
     def __init__(
         self,
         *,
@@ -179,7 +181,10 @@ class XianyuExpertOrchestrator:
 
         def plan(query: str, *, history: Sequence[Mapping[str, object]] | None = None) -> object:
             kwargs: dict[str, object] = {"history": history}
-            timeout = self._remaining(deadline)
+            timeout = min(
+                self._remaining(deadline),
+                self._PLANNER_BUDGET_SECONDS,
+            )
             if timeout is not None and _accepts_keyword(method, "timeout_seconds"):
                 kwargs["timeout_seconds"] = timeout
             return method(query, **kwargs)
