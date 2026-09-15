@@ -76,6 +76,7 @@ class ItemResponse(BaseModel):
     sale_status: str | None = None
     data_source: str | None = None
     updated_at: str | None = None
+    facts: dict[str, Any] = Field(default_factory=dict)
 
 
 class Response(BaseModel):
@@ -94,6 +95,9 @@ class Response(BaseModel):
     action: str | None = None
     item_id: str | None = None
     item_info: ItemResponse | None = None
+    intent: str | None = None
+    required_fields: list[str] = Field(default_factory=list)
+    facts: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post(

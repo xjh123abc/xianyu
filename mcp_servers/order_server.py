@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -12,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.services.item_service import ItemService
 from mcp.server import MCPServer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 MOCK_ORDERS: dict[str, dict[str, str | None]] = {
@@ -77,6 +78,7 @@ class ItemResult(BaseModel):
     sale_status: str | None = None
     data_source: str | None = None
     updated_at: str | None = None
+    facts: dict[str, Any] = Field(default_factory=dict)
 
 
 @server.tool(

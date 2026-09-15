@@ -31,6 +31,7 @@ ITEM_RESULT_KEYS = (
     "sale_status",
     "data_source",
     "updated_at",
+    "facts",
 )
 
 

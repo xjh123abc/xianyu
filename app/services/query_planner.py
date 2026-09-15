@@ -6,7 +6,15 @@ import re
 from typing import Literal, TypedDict
 
 
-ItemField = Literal["listed_price_cents", "sale_status"]
+ItemField = Literal[
+    "listed_price_cents",
+    "sale_status",
+    "lens",
+    "included_items",
+    "condition",
+    "history",
+    "identity",
+]
 KnowledgeScope = Literal["common", "item"]
 
 
@@ -35,6 +43,9 @@ _STATUS_TERMS = (
     "可买吗",
     "还有吗",
     "在售",
+    "还没卖",
+    "没卖",
+    "还没出",
     "卖出",
     "售出",
     "已售",
@@ -87,6 +98,11 @@ _ITEM_REFERENCE_TERMS = (
     "这台",
     "它",
 )
+_LENS_TERMS = ("镜头", "焦段", "焦距", "lens")
+_INCLUDED_ITEMS_TERMS = ("配件", "包含", "附带", "带什么", "一起出", "赠送", "accessory")
+_CONDITION_TERMS = ("成色", "外观", "瑕疵", "快门", "过片", "功能", "检测", "condition")
+_HISTORY_TERMS = ("维修", "修过", "拆修", "改装", "摔", "磕碰", "维修记录", "repair")
+_IDENTITY_TERMS = ("型号", "品牌", "品类", "类别", "model", "brand")
 
 
 def _asks_item_price(query: str) -> bool:
@@ -112,6 +128,23 @@ def _asks_item_status(query: str) -> bool:
     return any(term in lowered_query for term in _STATUS_TERMS)
 
 
+def _structured_item_fields(query: str) -> list[ItemField]:
+    """Classify facts that can be answered only from explicit item evidence."""
+
+    lowered_query = str(query or "").casefold()
+    fields: list[ItemField] = []
+    for field, terms in (
+        ("lens", _LENS_TERMS),
+        ("included_items", _INCLUDED_ITEMS_TERMS),
+        ("condition", _CONDITION_TERMS),
+        ("history", _HISTORY_TERMS),
+        ("identity", _IDENTITY_TERMS),
+    ):
+        if any(term in lowered_query for term in terms):
+            fields.append(field)
+    return fields
+
+
 def build_question_plan(query: str) -> QuestionPlan:
     """Return the supported fact fields and independently gated knowledge needs."""
 
@@ -121,6 +154,7 @@ def build_question_plan(query: str) -> QuestionPlan:
         item_fields.append("listed_price_cents")
     if _asks_item_status(lowered_query):
         item_fields.append("sale_status")
+    item_fields.extend(_structured_item_fields(lowered_query))
 
     clauses = [
         clause.strip()
@@ -133,10 +167,15 @@ def build_question_plan(query: str) -> QuestionPlan:
         scopes: list[KnowledgeScope] = []
         if any(term in lowered_clause for term in _COMMON_KNOWLEDGE_TERMS):
             scopes.append("common")
-        if any(term in lowered_clause for term in _ITEM_KNOWLEDGE_TERMS):
+        clause_structured_fields = _structured_item_fields(lowered_clause)
+        if (
+            any(term in lowered_clause for term in _ITEM_KNOWLEDGE_TERMS)
+            and not clause_structured_fields
+        ):
             scopes.append("item")
         if (
             not scopes
+            and not clause_structured_fields
             and not _asks_item_price(lowered_clause)
             and not _asks_item_status(lowered_clause)
             and any(term in lowered_clause for term in _ITEM_REFERENCE_TERMS)

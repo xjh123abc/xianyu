@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from uuid import uuid4
 from unittest.mock import AsyncMock, Mock
 
 from app.services.chat_service import ChatService
@@ -50,7 +51,7 @@ def _service(rag: EvidenceRag, item_lookup: AsyncMock | None = None) -> ChatServ
         side_effect=lambda item_id: ItemService().get_item_info(item_id)
     )
     generator = Mock()
-    generator.generate.return_value = "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。"
+    generator.generate_xianyu.return_value = "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。"
     return ChatService(
         mcp_service=mcp,
         xianyu_rag_service=rag,
@@ -146,8 +147,7 @@ def test_mcp_failure_keeps_independent_common_knowledge_answer() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] == "human_handoff"
-    assert "商品资料查询暂时失败" in str(result["answer"])
-    assert "48 小时" in str(result["answer"])
+    assert result["answer"] == "稍等我看看"
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     item_lookup.assert_awaited_once_with("DEMO_ITEM_001")
     assert rag.item_ids == [None]
@@ -165,9 +165,9 @@ def test_missing_item_keeps_common_answer_and_asks_for_item() -> None:
     )
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "clarify_question"
-    assert "48 小时" in str(result["answer"])
-    assert "请提供具体商品编号" in str(result["answer"])
+    assert result["next_step"] == "human_handoff"
+    assert result["answer"] == "稍等我看看"
+    assert "DEMO_ITEM_001" not in str(result["answer"])
     service.mcp_service.get_item_info.assert_not_awaited()
     assert rag.item_ids == [None]
 
@@ -186,8 +186,7 @@ def test_unknown_status_does_not_discard_supported_common_knowledge() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] == "human_handoff"
-    assert "状态在卖家资料中标记为未知" in str(result["answer"])
-    assert "48 小时" in str(result["answer"])
+    assert result["answer"] == "稍等我看看"
     assert result["sources"] == [
         {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"},
         {"source": "seller_rules.md", "index": 0},
@@ -220,12 +219,10 @@ def test_each_knowledge_subquestion_is_gated_without_losing_other_evidence() -> 
     )
 
     assert result["can_answer"] is False
-    assert "1280.00" in str(result["answer"])
-    assert "48 小时" in str(result["answer"])
-    assert "有什么配件" in str(result["answer"])
-    assert rag.item_ids == ["DEMO_ITEM_001", None]
-    generator_query, generator_context = service.generator.generate.call_args.args
-    assert "多少钱" not in generator_query
+    assert result["answer"] == "稍等我看看"
+    assert rag.item_ids == [None]
+    generator_query, generator_item, generator_context = service.generator.generate_xianyu.call_args.args
+    assert generator_query == "多少钱？有什么配件？你们店一般怎么处理售后？"
     assert "1280.00" not in generator_context
     assert result["sources"] == [
         {"source": "mcp:get_item_info", "index": "DEMO_ITEM_001"},
@@ -269,7 +266,7 @@ def test_mismatched_mcp_item_is_rejected_and_not_saved() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] == "human_handoff"
-    assert "编号不一致" in str(result["answer"])
+    assert result["answer"] == "稍等我看看"
     assert service.session_manager.get_current_item_id("stage3_mismatch") is None
 
 
@@ -293,13 +290,13 @@ def test_knowledge_without_a_valid_source_cannot_make_a_positive_promise() -> No
 
     assert result["can_answer"] is False
     assert result["next_step"] == "human_handoff"
-    assert "不足以可靠回答" in str(result["answer"])
+    assert result["answer"] == "稍等我看看"
 
 
 def test_common_generation_failure_keeps_retrieved_evidence() -> None:
     rag = EvidenceRag()
     service = _service(rag)
-    service.generator.generate.side_effect = RuntimeError("empty answer")
+    service.generator.generate_xianyu.side_effect = RuntimeError("empty answer")
 
     result = asyncio.run(
         service.chat_async("你们店售后怎么处理？", "stage3_common_failure")
@@ -307,7 +304,7 @@ def test_common_generation_failure_keeps_retrieved_evidence() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] == "human_handoff"
-    assert "回答生成失败" in str(result["answer"])
+    assert result["answer"] == "稍等我看看"
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
 
 
@@ -323,9 +320,9 @@ def test_explicit_item_routes_unlisted_damage_question_to_item_knowledge() -> No
         )
     )
 
-    assert result["action"] != "clarify"
+    assert result["action"] == "handoff"
     assert result["item_id"] == "DEMO_ITEM_001"
-    assert rag.item_ids == ["DEMO_ITEM_001"]
+    assert rag.item_ids == []
     assert service.session_manager.get_current_item_id("stage3_test_005") == "DEMO_ITEM_001"
 
 
@@ -367,14 +364,17 @@ def test_explicit_item_limits_usb_cable_question_to_selected_item() -> None:
     assert all("DEMO_ITEM_002.md" not in source["source"] for source in result["sources"])
 
 
-def test_item_question_without_request_or_memory_item_clarifies() -> None:
+def test_item_question_without_request_or_memory_item_handoffs() -> None:
     for index, query in enumerate(
         ("这台相机以前有没有摔过？", "这个商品带USB数据线吗？")
     ):
         service = _service(EvidenceRag())
 
-        result = asyncio.run(service.chat_async(query, f"stage3_missing_{index}"))
+        result = asyncio.run(
+            service.chat_async(query, f"stage3_missing_{index}_{uuid4().hex}")
+        )
 
-        assert result["action"] == "clarify"
-        assert result["next_step"] == "clarify_question"
+        assert result["action"] == "handoff"
+        assert result["next_step"] == "human_handoff"
+        assert result["answer"] == "稍等我看看"
         service.mcp_service.get_item_info.assert_not_awaited()

@@ -1,0 +1,402 @@
+[
+  {
+    "id": "T01",
+    "question": "这个还在吗？",
+    "answer": "还在的，这台目前还没出。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T02",
+    "question": "还没出吧？",
+    "answer": "还在的，这台目前还没出。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T03",
+    "question": "现在还能拍吗？",
+    "answer": "还在的，这台目前还没出。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T04",
+    "question": "东西卖掉了吗？",
+    "answer": "还在的，这台目前还没出。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T05",
+    "question": "现在下单还有货吗？",
+    "answer": "还在的，这台目前还没出。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T06",
+    "question": "这个多少钱？",
+    "answer": "这件标价是 ¥1280.00。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T07",
+    "question": "现在什么价出？",
+    "answer": "这件标价是 ¥1280.00。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T08",
+    "question": "标价就是最终价格吗？",
+    "answer": "这件标价是 ¥1280.00。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T09",
+    "question": "这个价格包含全部东西吗？",
+    "answer": "这台标价 ¥1280.00。\n配件这边还没确认。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T10",
+    "question": "我拍的话是多少钱？",
+    "answer": "这件标价是 ¥1280.00。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T11",
+    "question": "能便宜点吗？",
+    "answer": "标价是 ¥1280.00，价格已设为不议价。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T12",
+    "question": "最低多少？",
+    "answer": "标价是 ¥1280.00，价格已设为不议价。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T13",
+    "question": "诚心要，能少一点不？",
+    "answer": "标价是 ¥1280.00，价格已设为不议价。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T14",
+    "question": "还能刀吗？",
+    "answer": "标价是 ¥1280.00，价格已设为不议价。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T15",
+    "question": "直接拍能优惠多少？",
+    "answer": "标价是 ¥1280.00，价格已设为不议价。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T16",
+    "question": "成色怎么样？",
+    "answer": "成色情况：正常使用痕迹，外观整体干净。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T17",
+    "question": "外观看起来新不新？",
+    "answer": "成色情况：正常使用痕迹，外观整体干净。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T18",
+    "question": "使用痕迹明显吗？",
+    "answer": "成色情况：正常使用痕迹，外观整体干净。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T19",
+    "question": "有划痕吗？",
+    "answer": "划痕情况：机身底部有轻微使用划痕。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T20",
+    "question": "有没有磕碰？",
+    "answer": "磕碰情况：未见明显磕碰。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T21",
+    "question": "这个有什么毛病吗？",
+    "answer": "目前记录的已知问题：无。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T22",
+    "question": "有什么隐藏问题吗？",
+    "answer": "目前记录的已知问题：无。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T23",
+    "question": "以前摔过吗？",
+    "answer": "这件的摔碰历史还没有确认，麻烦人工确认一下。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T24",
+    "question": "有没有维修过？",
+    "answer": "这件的维修历史还没有确认，麻烦人工确认一下。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T25",
+    "question": "有拆修记录吗？",
+    "answer": "这件的拆修记录还没有确认，麻烦人工确认一下。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T26",
+    "question": "功能都正常吗？",
+    "answer": "目前记录的功能状态正常，可以使用。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T27",
+    "question": "现在可以正常使用吗？",
+    "answer": "目前记录的功能状态正常，可以使用。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T28",
+    "question": "有没有哪个功能是坏的？",
+    "answer": "目前记录的功能状态正常，可以使用。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T29",
+    "question": "快门正常吗？",
+    "answer": "快门功能正常。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T30",
+    "question": "买回去能直接用吗？",
+    "answer": "目前记录的功能状态正常，可以使用。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T31",
+    "question": "都带什么东西？",
+    "answer": "随商品一起出的有：相机机身、相机背带、镜头盖。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T32",
+    "question": "配件齐全吗？",
+    "answer": "配件是否齐全还没有确认，麻烦人工确认一下。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T33",
+    "question": "有原装配件吗？",
+    "answer": "原装配件还没有确认，麻烦人工确认一下。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T34",
+    "question": "图片里的东西都一起给吗？",
+    "answer": "图片中的物品还没有确认，麻烦人工确认一下。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T35",
+    "question": "有没有说明书或者包装？",
+    "answer": "说明书或包装还没有确认，麻烦人工确认一下。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T36",
+    "question": "什么时候能发？",
+    "answer": "发货时间：付款后 24 小时内发出。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T37",
+    "question": "今天买今天能发吗？",
+    "answer": "发货时间：付款后 24 小时内发出。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T38",
+    "question": "从哪里发货？",
+    "answer": "发货地：上海。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T39",
+    "question": "包邮吗？",
+    "answer": "运费：包邮。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T40",
+    "question": "用什么快递？",
+    "answer": "快递：中通快递。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T41",
+    "question": "这个具体是什么型号？",
+    "answer": "这件的型号是：复古胶片相机套装。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T42",
+    "question": "哪一年生产的？",
+    "answer": "这件的生产年份还没有确认，麻烦人工确认一下。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T43",
+    "question": "这个适合新手吗？",
+    "answer": "适合新手；建议先阅读基础使用教程再开始使用。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T44",
+    "question": "这个东西怎么用？",
+    "answer": "使用方法：装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T45",
+    "question": "为什么要卖？",
+    "answer": "出售原因：整理闲置。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T46",
+    "question": "可以走闲鱼交易吗？",
+    "answer": "可以走闲鱼平台交易。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T47",
+    "question": "收到发现有问题怎么办？",
+    "answer": "这件的退货和售后规则需要人工确认，暂不做承诺。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T48",
+    "question": "可以退吗？",
+    "answer": "这件的退货和售后规则需要人工确认，暂不做承诺。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  },
+  {
+    "id": "T49",
+    "question": "能保证和描述的一样吗？",
+    "answer": "商品按现有描述发布；下单前可把在意的细节再确认一次。",
+    "action": "reply",
+    "can_answer": true,
+    "route": "xianyu"
+  },
+  {
+    "id": "T50",
+    "question": "可以验货以后再确认收货吗？",
+    "answer": "这件的验货和确认收货方式需要人工确认，暂不做承诺。",
+    "action": "handoff",
+    "can_answer": false,
+    "route": "xianyu"
+  }
+]

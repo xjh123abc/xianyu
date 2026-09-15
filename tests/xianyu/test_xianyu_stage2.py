@@ -49,7 +49,7 @@ def _service(rag: FakeRag | None = None) -> ChatService:
     mcp = Mock()
     mcp.get_item_info = AsyncMock(side_effect=lambda item_id: ItemService().get_item_info(item_id))
     generator = Mock()
-    generator.generate.return_value = "基于商品资料的回答"
+    generator.generate_xianyu.return_value = "基于商品资料的回答"
     return ChatService(
         mcp_service=mcp,
         xianyu_rag_service=rag or FakeRag(),
@@ -119,11 +119,11 @@ def test_price_uses_readonly_mcp_without_rag() -> None:
         )
     )
     assert result["action"] == "reply"
-    assert "1280.00" in str(result["answer"])
+    assert result["answer"] == "这件标价是 ¥1280.00。"
     assert rag.item_ids == []
 
 
-def test_combined_price_and_item_details_use_mcp_and_scoped_rag() -> None:
+def test_combined_price_and_missing_item_details_handoffs() -> None:
     rag = FakeRag()
 
     result = asyncio.run(
@@ -133,12 +133,10 @@ def test_combined_price_and_item_details_use_mcp_and_scoped_rag() -> None:
         )
     )
 
-    assert result["action"] == "reply"
-    assert "1280.00" in str(result["answer"])
-    assert "基于商品资料的回答" in str(result["answer"])
-    assert rag.item_ids == ["DEMO_ITEM_001"]
-    assert rag.queries == ["复古胶片相机套装 带哪些配件"]
-    assert rag.warm_up_calls == 1
+    assert result["action"] == "handoff"
+    assert result["answer"] == "稍等我看看"
+    assert rag.item_ids == []
+    assert rag.warm_up_calls == 0
 
 
 def test_combined_price_and_unsupported_detail_keeps_fact_and_handoffs() -> None:
@@ -153,16 +151,17 @@ def test_combined_price_and_unsupported_detail_keeps_fact_and_handoffs() -> None
 
     assert result["action"] == "handoff"
     assert result["can_answer"] is False
-    assert "1280.00" in str(result["answer"])
-    assert rag.item_ids == ["DEMO_ITEM_001"]
-    assert rag.queries == ["复古胶片相机套装 有完整维修记录吗"]
+    assert result["answer"] == "稍等我看看"
+    assert rag.item_ids == []
 
 
 def test_combined_price_and_status_use_structured_facts_without_rag() -> None:
     rag = FakeRag()
+    service = _service(rag)
+    service.generator.generate_xianyu.return_value = "这件标价是 ¥560.00，已经出掉了。"
 
     result = asyncio.run(
-        _service(rag).chat_async(
+        service.chat_async(
             "这个商品多少钱，是否已经售出？",
             item_id="DEMO_ITEM_002",
         )
@@ -170,8 +169,9 @@ def test_combined_price_and_status_use_structured_facts_without_rag() -> None:
 
     assert result["action"] == "reply"
     assert "560.00" in str(result["answer"])
-    assert "已售出" in str(result["answer"])
+    assert "出掉了" in str(result["answer"])
     assert rag.item_ids == []
+    assert service.generator.generate_xianyu.call_args.args[0] == "这个商品多少钱，是否已经售出？"
 
 
 def test_item_independent_question_uses_existing_rag_without_item_lookup() -> None:
@@ -194,11 +194,12 @@ def test_item_independent_question_uses_existing_rag_without_item_lookup() -> No
     service.mcp_service.get_item_info.assert_not_awaited()
 
 
-def test_unknown_item_is_clarified_and_items_do_not_cross_talk() -> None:
+def test_unknown_item_handoffs_and_items_do_not_cross_talk() -> None:
     rag = FakeRag()
     service = _service(rag)
     missing = asyncio.run(service.chat_async("这个东西多少钱？"))
-    assert missing["action"] == "clarify"
+    assert missing["action"] == "handoff"
+    assert missing["answer"] == "稍等我看看"
 
     first = asyncio.run(
         service.chat_async("配件有哪些？", item_id="DEMO_ITEM_001")
@@ -208,11 +209,10 @@ def test_unknown_item_is_clarified_and_items_do_not_cross_talk() -> None:
     )
     assert first["item_id"] == "DEMO_ITEM_001"
     assert second["item_id"] == "DEMO_ITEM_002"
-    assert rag.item_ids == ["DEMO_ITEM_001", "DEMO_ITEM_002"]
-    assert rag.queries == [
-        "复古胶片相机套装 配件有哪些",
-        "八成新机械键盘 配件有哪些",
-    ]
+    assert first["action"] == second["action"] == "reply"
+    assert "相机机身" in str(first["answer"])
+    assert "键盘本体" in str(second["answer"])
+    assert rag.item_ids == []
 
 
 def test_insufficient_item_documents_handoff() -> None:
@@ -231,7 +231,7 @@ def test_chat_api_accepts_unified_item_fields_without_mode(monkeypatch) -> None:
     fake_service.chat_async = AsyncMock(
         return_value={
             "query": "价格？",
-            "answer": "¥1280.00",
+            "answer": "¥128000.00",
             "route": "xianyu",
             "action": "reply",
             "can_answer": True,
@@ -300,6 +300,37 @@ def test_text_item_id_is_confirmed_and_saved_for_same_chat_followup() -> None:
         "DEMO_ITEM_001",
         "DEMO_ITEM_001",
     ]
+
+
+def test_known_item_with_missing_fact_handoffs_without_internal_id() -> None:
+    result = asyncio.run(
+        _service().chat_async(
+            "这是 50mm 镜头吗？",
+            "buyer_chat_known_item_unknown_attribute",
+            item_id="DEMO_ITEM_001",
+        )
+    )
+
+    assert result["action"] == "handoff"
+    assert result["item_id"] == "DEMO_ITEM_001"
+    assert result["next_step"] == "human_handoff"
+    assert result["answer"] == "稍等我看看"
+    assert "商品编号" not in str(result["answer"])
+    assert "DEMO_ITEM_001" not in str(result["answer"])
+
+
+def test_vague_question_about_known_item_handoffs() -> None:
+    result = asyncio.run(
+        _service().chat_async(
+            "这个怎么样？",
+            "buyer_chat_known_item_vague_question",
+            item_id="DEMO_ITEM_001",
+        )
+    )
+
+    assert result["action"] == "handoff"
+    assert result["next_step"] == "human_handoff"
+    assert result["answer"] == "稍等我看看"
 
 
 def test_chat_api_restores_current_item_for_same_chat(monkeypatch) -> None:
@@ -391,7 +422,7 @@ def test_chat_api_current_items_are_isolated_by_chat_id(monkeypatch) -> None:
     assert buyer_b.json()["item_id"] == "DEMO_ITEM_002"
 
 
-def test_structured_and_text_item_conflict_requires_clarification() -> None:
+def test_structured_and_text_item_conflict_handoffs() -> None:
     service = _service()
 
     result = asyncio.run(
@@ -402,13 +433,13 @@ def test_structured_and_text_item_conflict_requires_clarification() -> None:
         )
     )
 
-    assert result["action"] == "clarify"
+    assert result["action"] == "handoff"
     assert result["can_answer"] is False
-    assert "不一致" in str(result["answer"])
+    assert result["answer"] == "稍等我看看"
     service.mcp_service.get_item_info.assert_not_awaited()
 
 
-def test_multiple_text_items_require_clarification() -> None:
+def test_multiple_text_items_handoff() -> None:
     service = _service()
 
     result = asyncio.run(
@@ -418,8 +449,8 @@ def test_multiple_text_items_require_clarification() -> None:
         )
     )
 
-    assert result["action"] == "clarify"
-    assert "多个商品" in str(result["answer"])
+    assert result["action"] == "handoff"
+    assert result["answer"] == "稍等我看看"
     service.mcp_service.get_item_info.assert_not_awaited()
 
 
@@ -437,7 +468,7 @@ def test_valid_item_switch_replaces_old_item_without_cross_session_leak() -> Non
 
     assert switched["item_id"] == followup["item_id"] == "DEMO_ITEM_002"
     assert "560.00" in str(followup["answer"])
-    assert other_chat["action"] == "clarify"
+    assert other_chat["action"] == "handoff"
     assert other_chat.get("item_id") is None
 
 
@@ -451,9 +482,10 @@ def test_unknown_explicit_item_does_not_fall_back_to_remembered_item() -> None:
         service.chat_async("这个多少钱？", "buyer_chat_missing", item_id="XXX999")
     )
 
-    assert result["action"] == "clarify"
+    assert result["action"] == "handoff"
     assert result["item_id"] == "XXX999"
-    assert "未找到商品 XXX999" in str(result["answer"])
+    assert result["answer"] == "稍等我看看"
+    assert "XXX999" not in str(result["answer"])
 
 
 def test_unknown_text_item_id_does_not_fall_back_to_remembered_item() -> None:
@@ -469,6 +501,7 @@ def test_unknown_text_item_id_does_not_fall_back_to_remembered_item() -> None:
         )
     )
 
-    assert result["action"] == "clarify"
+    assert result["action"] == "handoff"
     assert result["item_id"] == "XXX999"
-    assert "未找到商品 XXX999" in str(result["answer"])
+    assert result["answer"] == "稍等我看看"
+    assert "XXX999" not in str(result["answer"])

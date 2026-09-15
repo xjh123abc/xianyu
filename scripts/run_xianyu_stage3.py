@@ -123,6 +123,12 @@ async def run(args: argparse.Namespace) -> int:
         account_id=account_id,
         chat_client=ChatApiClient(args.chat_api, args.chat_timeout),
         notifier=WeComWebhookNotifier(webhook),
+        diagnostic_sink=lambda details: _log(
+            args.log_file,
+            "conversation_guard",
+            str(details.get("decision", "unknown")).lower(),
+            **dict(details),
+        ),
     )
     if args.enable:
         worker.enable_account()

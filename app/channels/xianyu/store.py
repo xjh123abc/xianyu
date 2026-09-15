@@ -44,6 +44,7 @@ class ChannelStore:
                     mode TEXT NOT NULL DEFAULT 'AUTO' CHECK (mode IN ('AUTO', 'HUMAN')),
                     takeover_reason TEXT,
                     control_version INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (account_id, chat_id)
                 );
                 CREATE TABLE IF NOT EXISTS channel_messages (
@@ -82,6 +83,7 @@ class ChannelStore:
             # The stage-2 database may already exist.  Keep this migration local
             # and additive so its accepted delivery ledger remains intact.
             self._add_column_if_missing(connection, "channel_sessions", "current_item_id TEXT")
+            self._add_column_if_missing(connection, "channel_sessions", "updated_at TEXT")
             self._add_column_if_missing(connection, "channel_messages", "action TEXT")
             self._add_column_if_missing(connection, "channel_messages", "platform_chat_id TEXT")
             self._add_column_if_missing(connection, "channel_messages", "handoff_reason TEXT")
@@ -141,9 +143,11 @@ class ChannelStore:
     def _ensure_session(self, connection: sqlite3.Connection, account_id: str, chat_id: str, buyer_id: str) -> None:
         connection.execute(
             """
-            INSERT INTO channel_sessions(account_id, chat_id, buyer_id)
-            VALUES (?, ?, ?)
-            ON CONFLICT(account_id, chat_id) DO UPDATE SET buyer_id=excluded.buyer_id
+            INSERT INTO channel_sessions(account_id, chat_id, buyer_id, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(account_id, chat_id) DO UPDATE SET
+                buyer_id=excluded.buyer_id,
+                updated_at=CURRENT_TIMESTAMP
             """,
             (account_id, chat_id, buyer_id),
         )
@@ -164,7 +168,8 @@ class ChannelStore:
             connection.execute(
                 """
                 UPDATE channel_sessions
-                SET mode = ?, takeover_reason = ?, control_version = control_version + 1
+                SET mode = ?, takeover_reason = ?, control_version = control_version + 1,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE account_id = ? AND chat_id = ?
                 """,
                 (mode, reason, account_id, chat_id),
@@ -174,6 +179,47 @@ class ChannelStore:
                 (account_id, chat_id),
             ).fetchone()
             return int(row[0])
+
+    def resume_session_auto(self, account_id: str, chat_id: str) -> dict[str, Any] | None:
+        """Return one existing conversation to automatic replies.
+
+        This deliberately updates only the durable conversation-control fields.
+        It does not create a missing session or alter its buyer/item context.
+        """
+
+        normalized_account_id = account_id.strip()
+        normalized_chat_id = chat_id.strip()
+        if not normalized_account_id or not normalized_chat_id:
+            raise ValueError("account_id and chat_id must not be empty")
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT account_id, chat_id FROM channel_sessions
+                WHERE account_id = ? AND chat_id = ?
+                """,
+                (normalized_account_id, normalized_chat_id),
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute(
+                """
+                UPDATE channel_sessions
+                SET mode = 'AUTO', takeover_reason = NULL,
+                    control_version = control_version + 1, updated_at = CURRENT_TIMESTAMP
+                WHERE account_id = ? AND chat_id = ?
+                """,
+                (normalized_account_id, normalized_chat_id),
+            )
+            state = connection.execute(
+                """
+                SELECT account_id, chat_id, buyer_id, mode, takeover_reason, control_version
+                FROM channel_sessions
+                WHERE account_id = ? AND chat_id = ?
+                """,
+                (normalized_account_id, normalized_chat_id),
+            ).fetchone()
+        return dict(state) if state is not None else None
 
     def session_state(self, account_id: str, chat_id: str, buyer_id: str) -> dict[str, Any]:
         with self._connect() as connection:
@@ -200,6 +246,54 @@ class ChannelStore:
                 (account_id, platform_item_id, internal_item_id),
             )
 
+    def is_item_bound(self, account_id: str, platform_item_id: str) -> bool:
+        """Return whether this account actively owns the platform listing."""
+
+        return self.get_bound_item_id(account_id, platform_item_id) is not None
+
+    def get_bound_item_id(self, account_id: str, platform_item_id: str) -> str | None:
+        """Read the local item mapped to an active platform listing, if any."""
+
+        if not platform_item_id.strip():
+            return None
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT internal_item_id FROM xianyu_item_bindings
+                WHERE account_id = ? AND platform_item_id = ? AND enabled = 1
+                """,
+                (account_id, platform_item_id),
+            ).fetchone()
+        return str(row["internal_item_id"]) if row else None
+
+    def get_current_bound_item_id(self, account_id: str, chat_id: str) -> str | None:
+        """Read a chat's remembered item only while it remains actively bound.
+
+        The context is established from a previously verified platform listing.
+        Rechecking the active binding prevents a stale or disabled listing from
+        reopening AI handling for a later item-less message.
+        """
+
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT session.current_item_id
+                FROM channel_sessions AS session
+                WHERE session.account_id = ?
+                  AND session.chat_id = ?
+                  AND session.current_item_id IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM xianyu_item_bindings AS binding
+                      WHERE binding.account_id = session.account_id
+                        AND binding.internal_item_id = session.current_item_id
+                        AND binding.enabled = 1
+                  )
+                """,
+                (account_id, chat_id),
+            ).fetchone()
+        return str(row["current_item_id"]) if row else None
+
     def resolve_item(self, account_id: str, chat_id: str, buyer_id: str, platform_item_id: str | None) -> str | None:
         """Resolve a trusted listing ID, otherwise retain the session's prior item.
 
@@ -223,14 +317,27 @@ class ChannelStore:
                 item_id = str(row["internal_item_id"])
                 connection.execute(
                     """
-                    UPDATE channel_sessions SET current_item_id = ?
+                    UPDATE channel_sessions SET current_item_id = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE account_id = ? AND chat_id = ?
                     """,
                     (item_id, account_id, chat_id),
                 )
                 return item_id
             row = connection.execute(
-                "SELECT current_item_id FROM channel_sessions WHERE account_id = ? AND chat_id = ?",
+                """
+                SELECT session.current_item_id
+                FROM channel_sessions AS session
+                WHERE session.account_id = ?
+                  AND session.chat_id = ?
+                  AND session.current_item_id IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM xianyu_item_bindings AS binding
+                      WHERE binding.account_id = session.account_id
+                        AND binding.internal_item_id = session.current_item_id
+                        AND binding.enabled = 1
+                  )
+                """,
                 (account_id, chat_id),
             ).fetchone()
             return str(row["current_item_id"]) if row and row["current_item_id"] else None

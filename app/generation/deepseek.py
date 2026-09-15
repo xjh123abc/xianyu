@@ -1,6 +1,8 @@
 """DeepSeek answer generation through the OpenAI-compatible API."""
 
 from collections.abc import Mapping, Sequence
+import json
+import re
 from typing import Any
 
 from openai import OpenAI
@@ -9,6 +11,7 @@ from app.generation.prompt import (
     build_combined_messages,
     build_messages,
     build_order_messages,
+    build_xianyu_messages,
 )
 from config.settings import settings
 
@@ -33,6 +36,20 @@ class DeepSeekGenerator:
 
         return self._generate_messages(build_order_messages(query, order_data))
 
+    def generate_xianyu(
+        self,
+        query: str,
+        item: Mapping[str, Any],
+        context: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+    ) -> str:
+        """Generate a natural, evidence-bound reply for a seller conversation."""
+
+        return self._generate_messages(
+            build_xianyu_messages(query, item, context, history)
+        )
+
     def generate_combined(
         self,
         query: str,
@@ -45,6 +62,37 @@ class DeepSeekGenerator:
         return self._generate_messages(
             build_combined_messages(query, rag_result, mcp_result, history)
         )
+
+    def classify_intent(self, query: str) -> str | None:
+        """Return one routing label from a deliberately decision-free prompt.
+
+        This is only the fallback after local rules.  The model never receives
+        seller facts and therefore cannot choose a price, discount, or policy.
+        """
+
+        content = self._generate_messages(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "你是闲鱼买家问题分类器。只输出 JSON 对象，格式为 "
+                        '{"intent":"..."}。intent 必须是以下之一：'
+                        "AVAILABILITY, PRICE, BARGAIN, CONDITION, DEFECT, "
+                        "REPAIR_HISTORY, FUNCTION, ACCESSORIES, SHIPPING_TIME, "
+                        "SHIPPING_FEE, PRODUCT_INFO, AFTER_SALE, GREETING, OTHER。"
+                        "不要回答买家，不要添加事实或解释。"
+                    ),
+                },
+                {"role": "user", "content": query},
+            ]
+        )
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError:
+            match = re.search(r'"intent"\s*:\s*"([A-Z_]+)"', content.upper())
+            return match.group(1) if match else None
+        intent = payload.get("intent") if isinstance(payload, dict) else None
+        return intent.strip().upper() if isinstance(intent, str) else None
 
     def _generate_messages(self, messages: list[dict[str, str]]) -> str:
         if settings is None:

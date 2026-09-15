@@ -53,10 +53,11 @@ def test_client_extracts_structured_item_result() -> None:
             "found": True,
             "item_id": "DEMO_ITEM_001",
             "title": "camera",
-            "listed_price_cents": 128000,
+            "listed_price_cents": 12800000,
             "sale_status": "listed",
             "data_source": "seller_manual",
             "updated_at": "2026-09-09T09:00:00+08:00",
+            "facts": {},
         },
         content=[],
     )

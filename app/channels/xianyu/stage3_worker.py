@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from app.channels.xianyu.action_mapper import map_chat_response
 from app.channels.xianyu.chat_client import ChatClient
 from app.channels.xianyu.client import TextSender
+from app.channels.xianyu.conversation_guard import ConversationGuard
 from app.channels.xianyu.models import InboundMessage, SendReceipt
 from app.channels.xianyu.store import ChannelStore
 from app.channels.xianyu.wecom import HandoffNotifier
 
 
-HANDOFF_NOTICE = "这个问题需要卖家确认，已记录，卖家看到后会处理。"
+HANDOFF_NOTICE = "稍等我看看"
 
 
 class XianyuStage3Worker:
@@ -25,11 +27,17 @@ class XianyuStage3Worker:
         account_id: str,
         chat_client: ChatClient,
         notifier: HandoffNotifier,
+        diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
     ) -> None:
         self.store = store
         self.account_id = account_id
         self.chat_client = chat_client
         self.notifier = notifier
+        self.conversation_guard = ConversationGuard(
+            store,
+            account_id=account_id,
+            diagnostic_sink=diagnostic_sink,
+        )
 
     def enable_account(self) -> int:
         return self.store.set_enabled(self.account_id, True)
@@ -48,16 +56,24 @@ class XianyuStage3Worker:
             return {"action": "ignored", "reason": "wrong_account"}
         if not self.store.record_inbound(message):
             return {"action": "duplicate", "message_id": message.platform_message_id}
-        if message.sender_is_seller:
-            self.store.mark_ignored(self.account_id, message.platform_message_id, "seller_echo")
-            return {"action": "ignored", "reason": "seller_echo"}
-        if message.is_system_event or message.message_type != "text" or not message.text.strip():
-            self.store.mark_ignored(self.account_id, message.platform_message_id, "non_text_or_system")
-            return {"action": "ignored", "reason": "non_text_or_system"}
+
+        guard = self.conversation_guard.check(message)
+        if guard.action == "IGNORE":
+            self.store.mark_ignored(self.account_id, message.platform_message_id, guard.reason)
+            return {"action": "ignored", "reason": guard.reason}
 
         item_id = self.store.resolve_item(
             self.account_id, message.chat_id, message.buyer_id, message.platform_item_id
         )
+        if item_id is None:
+            # The binding can be removed after the guard check.  Never call
+            # /chat for a listing whose ownership can no longer be verified.
+            self.store.mark_ignored(
+                self.account_id,
+                message.platform_message_id,
+                "item_not_bound_to_seller",
+            )
+            return {"action": "ignored", "reason": "item_not_bound_to_seller"}
         claim = self.store.claim_for_generation(self.account_id, message.platform_message_id)
         if claim is None:
             return {"action": "blocked", "reason": "account_paused_human_or_claimed"}
@@ -71,7 +87,7 @@ class XianyuStage3Worker:
             return await self._handoff(message, sender, item_id, "客服服务暂时不可用")
         except Exception:
             # Do not surface stack traces, endpoint details, or model errors to a buyer.
-            return await self._handoff(message, sender, item_id, "客服回答需要卖家确认")
+            return await self._handoff(message, sender, item_id, "chat_service_unexpected_error")
 
         if decision.action == "ignore":
             self.store.mark_ignored(self.account_id, message.platform_message_id, decision.reason)

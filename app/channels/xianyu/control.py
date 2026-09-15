@@ -26,3 +26,8 @@ class ChannelControl:
 
     def release(self, chat_id: str, buyer_id: str) -> int:
         return self.store.set_session_mode(self.account_id, chat_id, buyer_id, "AUTO")
+
+    def resume_auto(self, chat_id: str) -> dict[str, Any] | None:
+        """Restore one existing conversation without changing its buyer binding."""
+
+        return self.store.resume_session_auto(self.account_id, chat_id)
