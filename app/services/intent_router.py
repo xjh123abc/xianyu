@@ -119,7 +119,7 @@ def is_simple_single_question(query: str) -> bool:
 
 
 class IntentRouter:
-    """Classify buyer messages with deterministic rules before optional AI fallback."""
+    """Classify buyer messages without deciding prices or seller policy."""
 
     def __init__(self, classifier: Classifier | None = None) -> None:
         self._classifier = classifier
@@ -154,9 +154,10 @@ class IntentRouter:
         # Narrower categories intentionally precede broader ones.
         if any(term in lowered for term in ("闲鱼交易", "可以退", "退货", "退款", "收到发现", "描述一样", "保证", "确认收货", "验货")):
             return "AFTER_SALE"
-        if any(term in lowered for term in ("最低", "便宜", "少一点", "刀吗", "优惠", "出价", "报价", "还价")) or re.search(
+        if any(term in lowered for term in ("最低", "便宜", "少一点", "少点", "刀吗", "优惠", "出价", "报价", "还价")) or re.search(
             r"我\s*(?:出|给)\s*[¥￥]?\s*\d"
-            r"|(?<!\d)[¥￥]?\s*\d+(?:\.\d{1,2})?\s*(?:元|块)?\s*(?:可以|行吗|能出|能收|卖吗)",
+            r"|(?<!\d)[¥￥]?\s*\d+(?:\.\d{1,2})?\s*(?:元|块)?"
+            r"\s*(?:包邮|不包邮|自提|自取|面交)?\s*(?:可以|行吗|能出|能收|卖吗)",
             lowered,
         ):
             return "BARGAIN"

@@ -467,7 +467,7 @@ def test_valid_item_switch_replaces_old_item_without_cross_session_leak() -> Non
     other_chat = asyncio.run(service.chat_async("这个多少钱？", "buyer_chat_b"))
 
     assert switched["item_id"] == followup["item_id"] == "DEMO_ITEM_002"
-    assert "560.00" in str(followup["answer"])
+    assert followup["answer"] == "这件已经出掉了。"
     assert other_chat["action"] == "handoff"
     assert other_chat.get("item_id") is None
 

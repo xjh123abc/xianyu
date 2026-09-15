@@ -60,8 +60,8 @@ def test_item_service_preserves_public_seller_structured_facts() -> None:
     assert item["facts"]["lens"]["model"] == "FD 50mm F1.8"
     assert item["facts"]["included_items"] == ["Canon FTb 机身", "50mm 镜头", "镜头盖"]
     assert item["facts"]["shipping"]["shipping_fee"] == "包邮"
-    assert item["facts"]["shipping"]["negotiation_policy"] == "小刀10元，1490元可以拍"
-    assert item["facts"]["shipping"]["negotiation_express_policy"] == "不包邮售价减20 1480元"
+    assert item["facts"]["shipping"]["negotiation_policy"] == "累计最多小刀10元"
+    assert item["facts"]["shipping"]["negotiation_express_policy"] == "不包邮商品价减20元，可叠加小刀"
     assert item["facts"]["listing_description"]
     assert "platform_item_id" not in item
     assert ItemService().resolve_item_ids("我想问 CANON_FTB_001") == ["CANON_FTB_001"]
@@ -222,7 +222,7 @@ def test_explicit_fact_conflict_handoffs_without_selecting_a_value() -> None:
     ("query", "expected"),
     [
         ("我出1490元可以吗？", "可以，¥1490.00 可以拍。"),
-        ("我出1495元能出吗？", "可以，¥1490.00 可以拍。"),
+        ("我出1495元能出吗？", "可以，¥1495.00 可以拍。"),
         ("1490元可以吗？", "可以，¥1490.00 可以拍。"),
         ("能便宜点吗？", "最低 ¥1490.00 可以拍。"),
     ],
@@ -255,7 +255,7 @@ def test_bargain_below_automatic_limit_handoffs_with_fixed_buyer_reply() -> None
     assert result["action"] == "handoff"
     assert result["can_answer"] is False
     assert result["answer"] == BUYER_HANDOFF_REPLY
-    assert "下限 ¥1490.00" in str(result["reason"])
+    assert "minimum=¥1490.00" in str(result["reason"])
 
 
 def test_no_shipping_policy_applies_before_the_minor_bargain_discount() -> None:
@@ -283,18 +283,38 @@ def test_offer_below_known_no_shipping_minimum_handoffs() -> None:
 
     assert result["action"] == "handoff"
     assert result["answer"] == BUYER_HANDOFF_REPLY
-    assert "下限 ¥1470.00" in str(result["reason"])
+    assert "minimum=¥1470.00" in str(result["reason"])
+
+
+def test_shipping_included_offer_below_shipping_included_minimum_handoffs() -> None:
+    result = asyncio.run(
+        _service(_canon_item(), NoRag()).chat_async(
+            "1470包邮可以吗？",
+            "shipping_included_offer_below_minimum",
+            item_id="CANON_FTB_001",
+        )
+    )
+
+    assert result["action"] == "handoff"
+    assert result["answer"] == BUYER_HANDOFF_REPLY
+    assert "minimum=¥1490.00" in str(result["reason"])
 
 
 def test_bargain_discount_is_not_accumulated_across_conversation_turns() -> None:
-    service = _service(_canon_item(), NoRag())
+    rag = NoRag()
+    service = _service(_canon_item(), rag)
 
     first = asyncio.run(
-        service.chat_async("能便宜点吗？", "automatic_bargain_no_accumulation", item_id="CANON_FTB_001")
+        service.chat_async("不包邮最低多少？", "automatic_bargain_no_accumulation", item_id="CANON_FTB_001")
     )
     second = asyncio.run(
         service.chat_async("还能再便宜 10 元吗？", "automatic_bargain_no_accumulation", item_id="CANON_FTB_001")
     )
 
-    assert first["answer"] == "最低 ¥1490.00 可以拍。"
-    assert second["answer"] == "最低 ¥1490.00 可以拍。"
+    assert first["answer"] == "不包邮的话最低 ¥1470.00 可以拍。"
+    assert second["action"] == "handoff"
+    assert second["answer"] == BUYER_HANDOFF_REPLY
+    assert "1460" not in str(second["answer"])
+    assert second["reason"] == "additional_discount_not_authorised"
+    assert rag.item_ids == []
+    service.generator.generate_xianyu.assert_not_called()

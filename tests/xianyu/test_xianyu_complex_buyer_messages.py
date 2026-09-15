@@ -79,7 +79,6 @@ def test_complex_message_with_confirmed_facts_uses_full_message_and_replies(
     [
         ("不用包邮，能便宜吗？", "不包邮的话最低 ¥1470.00 可以拍。"),
         ("我出邮费，价格能少一点吗？", "不包邮的话最低 ¥1470.00 可以拍。"),
-        ("自提的话能便宜吗？", "最低 ¥1490.00 可以拍。"),
     ],
 )
 def test_conditional_bargain_uses_the_automatic_discount_limit(
@@ -100,6 +99,22 @@ def test_conditional_bargain_uses_the_automatic_discount_limit(
     assert result["answer"] == expected_answer
     assert result["answer"] != "包邮。"
     assert rag.prepare_calls == 0
+    generator.generate_xianyu.assert_not_called()
+
+
+def test_unauthorised_pickup_condition_handoffs_instead_of_using_shipping_price() -> None:
+    generator = Mock()
+    result = asyncio.run(
+        _service(_canon_item(), NoRag(), generator).chat_async(
+            "自提的话能便宜吗？",
+            "bargain_unsupported_pickup",
+            item_id="CANON_FTB_001",
+        )
+    )
+
+    assert result["action"] == "handoff"
+    assert result["answer"] == "稍等我看看"
+    assert result["reason"] == "unsupported_price_condition"
     generator.generate_xianyu.assert_not_called()
 
 
