@@ -28,12 +28,13 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.channels.xianyu.adapter import iter_sync_events
+from app.channels.xianyu.acceptance_gate import load_s6_acceptance_report
 from app.channels.xianyu.chat_client import ChatApiClient
 from app.channels.xianyu.client import WebSocketTextSender
 from app.channels.xianyu.stage3_worker import XianyuStage3Worker
 from app.channels.xianyu.store import ChannelStore
 from app.channels.xianyu.wecom import WeComWebhookNotifier
-from probe_xianyu_channel import (
+from scripts.probe_xianyu_channel import (
     DEFAULT_REFERENCE_COMMIT,
     DEFAULT_WS_URL,
     _install_reference_imports,
@@ -83,6 +84,14 @@ async def run(args: argparse.Namespace) -> int:
     ).stdout.strip()
     if actual_commit != DEFAULT_REFERENCE_COMMIT:
         raise ValueError("reference checkout does not match the accepted pinned template commit")
+    current_commit = subprocess.run(
+        ["git", "-C", str(project_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.strip()
+    _authorise_start(args, current_commit)
     cookie_header, parsed_cookie, metadata = _load_cookie(project_root)
     values = dotenv_values(project_root / ".env")
     webhook = str(os.getenv("WECOM_WEBHOOK_URL") or values.get("WECOM_WEBHOOK_URL") or "").strip()
@@ -130,7 +139,7 @@ async def run(args: argparse.Namespace) -> int:
             **dict(details),
         ),
     )
-    if args.enable:
+    if args.enable or args.controlled_acceptance:
         worker.enable_account()
     if not store.account_state(account_id)["enabled"]:
         raise RuntimeError("account is paused; run with --enable or use the control script to resume")
@@ -142,6 +151,7 @@ async def run(args: argparse.Namespace) -> int:
     key = "additional_headers" if "additional_headers" in inspect.signature(websockets.connect).parameters else "extra_headers"
     registration, acknowledgement = _registration_messages(token, device_id, generate_mid)
     stop = asyncio.Event()
+    accepted_messages = 0
     try:
         async with websockets.connect(DEFAULT_WS_URL, open_timeout=15.0, **{key: headers}) as websocket:
             # The platform requires its reference client's message UUID format;
@@ -177,6 +187,17 @@ async def run(args: argparse.Namespace) -> int:
                                 ack_headers[header] = headers_in[header]
                         await websocket.send(json.dumps({"code": 200, "headers": ack_headers}))
                     for event in iter_sync_events(payload, account_id=account_id, seller_id=seller_id, decrypt=decrypt):
+                        if args.controlled_acceptance and (
+                            event.chat_id != args.acceptance_chat
+                            or event.text.strip() not in args.acceptance_query
+                        ):
+                            if store.record_inbound(event):
+                                store.mark_ignored(
+                                    account_id,
+                                    event.platform_message_id,
+                                    "controlled_acceptance_scope",
+                                )
+                            continue
                         result = await worker.process(event, sender)
                         _log(
                             args.log_file,
@@ -187,6 +208,13 @@ async def run(args: argparse.Namespace) -> int:
                             delivery=result.get("delivery"),
                             reason_hash=_digest(result.get("reason")),
                         )
+                        if (
+                            args.controlled_acceptance
+                            and _counts_acceptance_delivery(result)
+                        ):
+                            accepted_messages += 1
+                            if accepted_messages >= args.acceptance_max_messages:
+                                return 0
             finally:
                 stop.set()
                 heartbeat.cancel()
@@ -197,6 +225,47 @@ async def run(args: argparse.Namespace) -> int:
     except Exception as exc:
         _log(args.log_file, "websocket", "failed", error_type=type(exc).__name__)
         return 1
+    finally:
+        if args.controlled_acceptance:
+            worker.pause_account()
+            _log(
+                args.log_file,
+                "controlled_acceptance",
+                "paused",
+                processed=accepted_messages,
+            )
+    return 0
+
+
+def _authorise_start(args: argparse.Namespace, current_commit: str) -> None:
+    """Allow either a tightly scoped trial or a fully approved production run."""
+
+    if args.controlled_acceptance:
+        if args.enable:
+            raise ValueError("--enable cannot be combined with --controlled-acceptance")
+        if not str(args.account or "").strip():
+            raise ValueError("--account is required for controlled acceptance")
+        if not str(args.acceptance_chat or "").strip():
+            raise ValueError("--acceptance-chat is required for controlled acceptance")
+        if not args.acceptance_query:
+            raise ValueError("at least one --acceptance-query is required")
+        if args.acceptance_max_messages <= 0:
+            raise ValueError("--acceptance-max-messages must be greater than zero")
+        return
+    if args.acceptance_report is None:
+        raise ValueError("--acceptance-report is required before real automatic sending")
+    load_s6_acceptance_report(
+        args.acceptance_report,
+        expected_commit=current_commit,
+    )
+
+
+def _counts_acceptance_delivery(result: Mapping[str, object]) -> bool:
+    """Count only a buyer-visible submission, never duplicates or failed sends."""
+
+    return result.get("action") in {"answer", "human_handoff"} and result.get(
+        "delivery"
+    ) in {"confirmed", "local_submitted"}
 
 
 def main() -> int:
@@ -208,6 +277,24 @@ def main() -> int:
     parser.add_argument("--account", default="")
     parser.add_argument("--chat-api", default="http://127.0.0.1:8000")
     parser.add_argument("--chat-timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--acceptance-report",
+        type=Path,
+        help="S6 report approving this exact Git commit for real automatic sending",
+    )
+    parser.add_argument(
+        "--controlled-acceptance",
+        action="store_true",
+        help="temporarily enable only one explicitly named test conversation",
+    )
+    parser.add_argument("--acceptance-chat", default="")
+    parser.add_argument(
+        "--acceptance-query",
+        action="append",
+        default=[],
+        help="exact buyer text allowed in controlled acceptance; repeat as needed",
+    )
+    parser.add_argument("--acceptance-max-messages", type=int, default=1)
     parser.add_argument("--enable", action="store_true", help="explicitly enable this account before listening")
     args = parser.parse_args()
     args.project_root = args.project_root.resolve()
