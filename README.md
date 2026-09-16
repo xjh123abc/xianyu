@@ -75,6 +75,46 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
 & "D:\conda_envs\rag-customer-service\python.exe" -m scripts.smoke_unified_chat --base-url http://127.0.0.1:8000
 ```
 
+## 专家 Agent S6 验收与启用
+
+真实自动发送默认保持暂停。先运行代码测试和 60 条真实 `/chat` 批测；批测结果包含每题的独立 `chat_id`、确定性任务规划、答案、动作、来源、内部接管原因和耗时：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" -m pytest tests/xianyu tests/api tests/orders tests/regression -q
+& "D:\conda_envs\rag-customer-service\python.exe" -m pytest -q
+& "D:\conda_envs\rag-customer-service\python.exe" -m eval.batch_chat_test `
+  --base-url http://127.0.0.1:8000 `
+  --item-id CANON_FTB_001 `
+  --output eval/results/expert_agent_s6_batch.json
+```
+
+真实渠道验收只能在明确的测试会话中临时开启。必须同时指定账号、唯一会话、允许的买家原文和处理条数；其他会话及其他文本均被忽略，进程退出时账号自动暂停：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" scripts/run_xianyu_stage3.py `
+  --reference-root .runtime/xianyu-template `
+  --db logs/xianyu_stage3.sqlite3 `
+  --log-file logs/xianyu_s6_acceptance.log `
+  --account TEST_SELLER `
+  --controlled-acceptance `
+  --acceptance-chat TEST_CHAT `
+  --acceptance-query "包邮最低多少？" `
+  --acceptance-max-messages 1
+```
+
+正式常驻前，复制 [S6 验收报告模板](eval/baselines/expert_agent_s6_acceptance.template.json)，填写当前 Git 提交及实际结果。只有代码测试、60 条批测、A01—A18、真实模型、真实渠道均为 `passed` 且 `approved_for_auto_send=true` 时，运行器才接受该报告：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" scripts/run_xianyu_stage3.py `
+  --reference-root .runtime/xianyu-template `
+  --db logs/xianyu_stage3.sqlite3 `
+  --log-file logs/xianyu_stage3.log `
+  --acceptance-report logs/expert_agent_s6_acceptance.json `
+  --enable
+```
+
+可在 `.env` 设置 `XIANYU_EXPERT_BUDGET_SECONDS=25`；该值应小于渠道 HTTP 超时。Mock、真实模型和真实渠道结果必须分开记录，任一项未运行都不能批准正式自动发送。
+
 ## MCP 模拟订单
 
 当前 MCP 部分提供本地模拟订单，不接真实数据库、淘宝或物流平台；订单查询已经通过简单分流接回 `/chat`，普通知识问题仍走原有 RAG。

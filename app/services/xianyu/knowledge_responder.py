@@ -305,6 +305,36 @@ class XianyuKnowledgeResponder:
                 )
             return response
 
+    async def prepare_evidence(
+        self,
+        question: str,
+        *,
+        item: Mapping[str, object] | None,
+        scope: str,
+    ) -> dict[str, object]:
+        """Prepare scoped evidence for one expert task without generating a reply.
+
+        The returned mapping intentionally preserves the existing RAG evidence
+        shape and adds only ``issues``.  Product tasks may search the selected
+        item's scope; seller-rule tasks may search only the common scope.
+        """
+
+        if scope not in {"item", "common"}:
+            bundle = self._knowledge_bundle([], [], [], None)
+            bundle["issues"] = ["knowledge_scope_unavailable"]
+            return bundle
+        if scope == "item" and item is None:
+            bundle = self._knowledge_bundle([], [], [], None)
+            bundle["issues"] = ["item_context_unavailable"]
+            return bundle
+        collector_item = item or {"item_id": "common", "title": ""}
+        prepared = await self._prepare_evidence_needs(
+            ({"question": question, "scope": scope},),
+            collector_item,
+            remove_facts=False,
+        )
+        return prepared
+
     async def _collect_knowledge(
         self,
         plan: QuestionPlan,
@@ -312,7 +342,29 @@ class XianyuKnowledgeResponder:
         *,
         remove_facts: bool,
     ) -> tuple[dict[str, object], list[str]]:
-        """Evaluate each knowledge subquestion independently and merge evidence."""
+        """Compatibility wrapper for the legacy whole-message responder."""
+
+        prepared = await self._prepare_evidence_needs(
+            plan["knowledge_questions"],
+            item,
+            remove_facts=remove_facts,
+        )
+        issues = prepared.get("issues")
+        return (
+            prepared,
+            [issue for issue in issues if isinstance(issue, str)]
+            if isinstance(issues, list)
+            else [],
+        )
+
+    async def _prepare_evidence_needs(
+        self,
+        needs: Sequence[Mapping[str, str]],
+        item: Mapping[str, object],
+        *,
+        remove_facts: bool,
+    ) -> dict[str, object]:
+        """Shared retrieval implementation for legacy and expert callers."""
 
         rag_service = self._rag_service()
         contexts: list[str] = []
@@ -327,9 +379,11 @@ class XianyuKnowledgeResponder:
         except Exception:
             logger.exception("Xianyu RAG warm-up failed for item_id=%s", item["item_id"])
             issues.append("knowledge_warmup_failed")
-            return self._knowledge_bundle(contexts, sources, results, reliability), issues
+            bundle = self._knowledge_bundle(contexts, sources, results, reliability)
+            bundle["issues"] = issues
+            return bundle
 
-        for need in plan["knowledge_questions"]:
+        for need in needs:
             retrieval_query = self.retrieval_query(
                 need["question"],
                 remove_facts=remove_facts,
@@ -378,7 +432,9 @@ class XianyuKnowledgeResponder:
                 if source not in sources:
                     sources.append(source)
 
-        return self._knowledge_bundle(contexts, sources, results, reliability), issues
+        bundle = self._knowledge_bundle(contexts, sources, results, reliability)
+        bundle["issues"] = issues
+        return bundle
 
     @staticmethod
     def _knowledge_bundle(

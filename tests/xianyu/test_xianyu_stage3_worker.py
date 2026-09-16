@@ -4,11 +4,13 @@ import asyncio
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api import conversations as conversations_api
+from app.api import chat as chat_api
 from app.channels.xianyu.action_mapper import map_chat_response
 from app.channels.xianyu.models import InboundMessage, SendReceipt
 from app.channels.xianyu.conversation_guard import ConversationGuard
@@ -50,6 +52,24 @@ class BlockingChat(FakeChat):
         self.started.set()
         await self.release.wait()
         return self.response
+
+
+class InProcessHttpChat:
+    """Exercise the real FastAPI serializer before returning to the S3 worker."""
+
+    async def ask(
+        self,
+        *,
+        query: str,
+        chat_id: str,
+        item_id: str | None,
+    ) -> Mapping[str, Any]:
+        response = TestClient(app).post(
+            "/chat",
+            json={"query": query, "chat_id": chat_id, "item_id": item_id},
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 class FakeNotifier:
@@ -194,6 +214,64 @@ def test_pause_during_generation_supersedes_old_answer(tmp_path: Path) -> None:
     assert result["action"] == "superseded"
     assert sender.calls == []
     assert store.message("seller", "m6")["status"] == "SUPERSEDED"
+
+
+def test_seller_takeover_during_generation_supersedes_old_answer(tmp_path: Path) -> None:
+    chat = BlockingChat()
+    instance, store = worker(tmp_path, chat)
+    sender = FakeSender()
+
+    async def scenario() -> dict[str, Any]:
+        task = asyncio.create_task(instance.process(message("seller-takeover"), sender))
+        await chat.started.wait()
+        instance.takeover("xianyu:seller:chat-1", "buyer-1")
+        chat.release.set()
+        return await task
+
+    result = asyncio.run(scenario())
+
+    assert result == {"action": "superseded", "reason": "control_changed_during_generation"}
+    assert sender.calls == []
+    assert store.message("seller", "seller-takeover")["status"] == "SUPERSEDED"
+
+
+def test_http_handoff_reaches_s3_once_with_reason_and_human_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reason = "缺少测光对比记录；已确认不包邮最低1470元"
+    service = Mock()
+    service.chat_async = AsyncMock(
+        return_value={
+            "query": "测光和手机对比过吗？不包邮最低多少？",
+            "route": "xianyu",
+            "action": "handoff",
+            "answer": HANDOFF_NOTICE,
+            "can_answer": False,
+            "next_step": "human_handoff",
+            "reason": reason,
+        }
+    )
+    monkeypatch.setattr(chat_api, "chat_service", service)
+    notifier = FakeNotifier()
+    instance, store = worker(tmp_path, InProcessHttpChat(), notifier)  # type: ignore[arg-type]
+    sender = FakeSender()
+    inbound = message(
+        "http-s3-handoff",
+        text="测光和手机对比过吗？不包邮最低多少？",
+    )
+
+    first = asyncio.run(instance.process(inbound, sender))
+    duplicate = asyncio.run(instance.process(inbound, sender))
+
+    assert first["action"] == "human_handoff"
+    assert duplicate == {"action": "duplicate", "message_id": "http-s3-handoff"}
+    assert [call[2] for call in sender.calls] == [HANDOFF_NOTICE]
+    assert len(notifier.calls) == 1
+    assert notifier.calls[0]["reason"] == reason
+    state = store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")
+    assert state["mode"] == "HUMAN"
+    assert state["takeover_reason"] == reason
 
 
 def test_unbound_listing_is_ignored_without_calling_chat(tmp_path: Path) -> None:

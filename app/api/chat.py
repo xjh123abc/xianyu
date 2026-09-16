@@ -84,6 +84,7 @@ class Response(BaseModel):
 
     query: str
     answer: str | None = None
+    reason: str | None = None
     sources: list[SourceReference] = Field(default_factory=list)
     can_answer: bool | None = None
     next_step: str | None = None

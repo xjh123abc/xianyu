@@ -1,16 +1,23 @@
-"""批量调用本地 /chat 接口，测试 50 条闲鱼买家问题。"""
+"""批量调用真实本地 /chat 接口，记录 60 条闲鱼专家验收结果。"""
 
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
+import time
 from typing import Any
 from urllib import error, request
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.services.query_planner import build_expert_plan
+
+
 DEFAULT_OUTPUT = PROJECT_ROOT / "eval" / "results" / "batch_chat_results.json"
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 DEFAULT_ITEM_ID = "DEMO_ITEM_001"
@@ -67,6 +74,16 @@ QUESTIONS: tuple[tuple[str, str, str], ...] = (
     ("T48", "交易/售后", "可以退吗？"),
     ("T49", "交易/售后", "能保证和描述的一样吗？"),
     ("T50", "交易/售后", "可以验货以后再确认收货吗？"),
+    ("T51", "复合问题", "还在吗？有没有维修过？包邮吗？"),
+    ("T52", "复合问题", "还在吗有没有维修过不包邮最低多少"),
+    ("T53", "复合问题", "今天能发吗？走顺丰吗？"),
+    ("T54", "价格条件", "包邮最低多少？不包邮呢？"),
+    ("T55", "价格条件", "包邮1495可以吗？"),
+    ("T56", "价格条件", "1470包邮可以吗？"),
+    ("T57", "未知事实", "测光和手机对比过吗？"),
+    ("T58", "条件依赖", "如果没修过，1470不包邮我就买"),
+    ("T59", "型号知识", "Canon FTb 应该怎么上卷？"),
+    ("T60", "复合问题", "多少钱？带哪些配件？你们店售后怎么处理？"),
 )
 
 
@@ -94,12 +111,39 @@ def _post_chat(base_url: str, payload: dict[str, str], timeout: float) -> dict[s
 
     if not isinstance(decoded, dict):
         raise RuntimeError(f"/chat 返回的 JSON 不是对象: {decoded!r}")
+    _validate_response(decoded)
     return decoded
+
+
+def _validate_response(response: dict[str, Any]) -> None:
+    """Fail the batch on an unsafe or contradictory expert response contract."""
+
+    action = response.get("action")
+    answer = response.get("answer")
+    can_answer = response.get("can_answer")
+    if response.get("route") != "xianyu":
+        raise RuntimeError("响应没有进入 xianyu 专家链路")
+    if action not in {"reply", "handoff"}:
+        raise RuntimeError(f"响应 action 无效: {action!r}")
+    if not isinstance(answer, str) or not answer.strip():
+        raise RuntimeError("响应 answer 为空")
+    if action == "reply" and can_answer is not True:
+        raise RuntimeError("reply 与 can_answer 状态矛盾")
+    if action == "handoff":
+        if answer != "稍等我看看" or can_answer is not False:
+            raise RuntimeError("handoff 未使用固定等待话术或状态矛盾")
+        if not isinstance(response.get("reason"), str) or not response["reason"].strip():
+            raise RuntimeError("handoff 缺少内部原因")
 
 
 def _result_record(
     question_id: str,
+    category: str,
     question: str,
+    chat_id: str,
+    item_id: str,
+    tasks: list[dict[str, Any]],
+    elapsed_ms: float,
     response: dict[str, Any] | None = None,
     error_message: str | None = None,
 ) -> dict[str, Any]:
@@ -107,22 +151,55 @@ def _result_record(
     if error_message is not None:
         return {
             "id": question_id,
+            "category": category,
             "question": question,
+            "chat_id": chat_id,
+            "item_id": item_id,
             "answer": f"请求失败：{error_message}",
             "action": "error",
             "can_answer": False,
             "route": None,
+            "tasks": tasks,
+            "reason": error_message,
+            "sources": [],
+            "elapsed_ms": elapsed_ms,
         }
 
     assert response is not None
     return {
         "id": question_id,
+        "category": category,
         "question": question,
+        "chat_id": chat_id,
+        "item_id": item_id,
         "answer": response.get("answer"),
         "action": response.get("action"),
         "can_answer": response.get("can_answer"),
         "route": response.get("route"),
+        "tasks": tasks,
+        "reason": response.get("reason"),
+        "sources": response.get("sources", []),
+        "elapsed_ms": elapsed_ms,
     }
+
+
+def _task_records(question: str, item_id: str) -> list[dict[str, Any]]:
+    """Record the validated deterministic task baseline without exposing it via HTTP."""
+
+    return [
+        {
+            "task_id": task.task_id,
+            "expert": task.expert,
+            "question_fragment": task.question_fragment,
+            "knowledge_scope": task.knowledge_scope,
+            "transaction_conditions": dict(task.transaction_conditions),
+            "depends_on_task_ids": list(task.depends_on_task_ids),
+        }
+        for task in build_expert_plan(
+            question,
+            xianyu_context={"item_id": item_id},
+        )
+    ]
 
 
 def run_batch(
@@ -133,18 +210,41 @@ def run_batch(
 ) -> list[dict[str, Any]]:
     """按顺序测试全部问题；每题使用独立 chat_id，避免跨题共享会话。"""
     results: list[dict[str, Any]] = []
-    for question_id, _category, question in QUESTIONS:
+    for question_id, category, question in QUESTIONS:
+        chat_id = f"qa_batch_chat_{question_id.lower()}"
         payload = {
             "query": question,
-            "chat_id": f"qa_batch_chat_{question_id.lower()}",
+            "chat_id": chat_id,
             "item_id": item_id,
         }
+        tasks = _task_records(question, item_id)
+        started = time.perf_counter()
         try:
             response = _post_chat(base_url, payload, timeout)
-            result = _result_record(question_id, question, response=response)
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+            result = _result_record(
+                question_id,
+                category,
+                question,
+                chat_id,
+                item_id,
+                tasks,
+                elapsed_ms,
+                response=response,
+            )
             print(f"{question_id} OK: {question}")
         except Exception as exc:
-            result = _result_record(question_id, question, error_message=str(exc))
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+            result = _result_record(
+                question_id,
+                category,
+                question,
+                chat_id,
+                item_id,
+                tasks,
+                elapsed_ms,
+                error_message=str(exc),
+            )
             print(f"{question_id} ERROR: {question} - {exc}", file=sys.stderr)
         results.append(result)
     return results
@@ -167,11 +267,25 @@ def main() -> None:
         timeout=args.timeout,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(results, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    failed = sum(result["action"] == "error" for result in results)
+    report = {
+        "schema_version": 1,
+        "kind": "xianyu_expert_fixed_batch",
+        "generated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "base_url": args.base_url,
+        "item_id": args.item_id,
+        "summary": {
+            "status": "completed" if failed == 0 else "failed",
+            "total": len(results),
+            "failed": failed,
+            "requires_manual_review": True,
+        },
+        "cases": results,
+    }
+    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"已完成 {len(results)} 条测试，结果写入：{args.output.resolve()}")
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

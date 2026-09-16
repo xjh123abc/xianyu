@@ -51,3 +51,10 @@ def test_batch_buyer_phrasings_use_rules_before_ai(query: str, expected: str) ->
 def test_ai_fallback_accepts_only_known_classification_labels() -> None:
     assert IntentRouter(classifier=lambda _: "BARGAIN").route("能不能再商量一下呀").intent == "BARGAIN"
     assert IntentRouter(classifier=lambda _: "give_discount").route("能不能再商量一下呀").intent == "OTHER"
+
+
+def test_shipping_conditioned_numeric_offer_is_a_bargain_not_a_shipping_question() -> None:
+    match = IntentRouter().route("1470包邮可以吗？")
+
+    assert match.intent == "BARGAIN"
+    assert match.source == "rule"

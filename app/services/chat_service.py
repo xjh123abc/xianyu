@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+from collections.abc import Mapping
 
 from app.generation.deepseek import DeepSeekGenerator
 from app.infrastructure.order_mcp_client import get_order_via_mcp
@@ -18,7 +20,7 @@ from app.retrieval.hybrid_search import HybridSearch
 from app.retrieval.reranker import Reranker
 from app.retrieval.vector_search import VectorSearch
 from app.services.chat_response import non_rag_response
-from app.services.intent_router import IntentRouter, is_simple_single_question
+from app.services.intent_router import IntentRouter
 from app.services.item_service import ItemService
 from app.services.mcp_service import MCPService
 from app.services.order_chat_handler import OrderChatHandler
@@ -33,11 +35,14 @@ from app.services.query_planner import (
     build_question_plan,
     common_knowledge_query,
     is_seller_scoped_query,
+    xianyu_context_updates,
 )
 from app.services.rag_service import RAGService
 from app.services.session_manager import SessionManager
 from app.services.xianyu.item_context_resolver import ItemContextResolver
 from app.services.xianyu.item_fact_responder import ItemFactResponder
+from app.services.xianyu.expert_orchestrator import XianyuExpertOrchestrator
+from app.services.xianyu.experts.price_agent import PriceAgent
 from app.services.xianyu.knowledge_responder import XianyuKnowledgeResponder
 from app.services.xianyu.responses import clarification, merge_partial_response
 from config.settings import settings
@@ -62,6 +67,7 @@ class ChatService:
         xianyu_rag_service: RAGService | None = None,
         item_service: ItemService | None = None,
         intent_router: IntentRouter | None = None,
+        expert_orchestrator: XianyuExpertOrchestrator | None = None,
     ) -> None:
         self.rag_service = rag_service or RAGService(
             vector_search=vector_search,
@@ -99,12 +105,20 @@ class ChatService:
             self.item_service,
             lambda item_id: self.mcp_service.get_item_info(item_id),
         )
-        self.item_fact_responder = ItemFactResponder()
+        self.price_agent = PriceAgent(route_intent=self.intent_router.route)
+        self.item_fact_responder = ItemFactResponder(price_agent=self.price_agent)
         self.xianyu_knowledge_responder = XianyuKnowledgeResponder(
             rag_service=self._get_xianyu_rag_service,
             generator=self._get_generator,
             fact_responder=self.item_fact_responder,
             route_intent=lambda query: self.intent_router.route(query),
+        )
+        self.expert_orchestrator = expert_orchestrator or XianyuExpertOrchestrator(
+            fact_responder=self.item_fact_responder,
+            knowledge_responder=self.xianyu_knowledge_responder,
+            intent_router=self.intent_router,
+            generator=self._get_generator,
+            price_agent=self.price_agent,
         )
 
     async def chat_async(
@@ -140,10 +154,14 @@ class ChatService:
         resolved_chat_id, session = self.session_manager.get_or_create(chat_id)
         history, session_state = self.session_manager.read_context(session)
         current_item_id = self.session_manager.get_current_item_id(resolved_chat_id)
-        intent_match = self.intent_router.route(query)
+        # The expert planner owns the one optional model call for a compound
+        # Xianyu turn.  This pre-check must stay rule-only so a sub-question
+        # cannot trigger a second classifier call.
+        intent_match = self.intent_router.route(query, allow_ai=False)
         plan = build_question_plan(query)
         needs_item = bool(
             item_id
+            or current_item_id
             or plan["item_fields"]
             or any(
                 question["scope"] == "item"
@@ -214,27 +232,26 @@ class ChatService:
 
         route, order_id = route_query(query, history, session_state)
         if route == "rag":
-            if intent_match.intent == "GREETING":
-                response = self._xianyu_greeting(query)
-            elif (
-                item is not None
-                and intent_match.intent != "OTHER"
-                and is_simple_single_question(query)
+            if self._should_use_xianyu_experts(
+                query,
+                item=item,
+                current_item_id=current_item_id,
             ):
-                response = self.item_fact_responder.answer_intent(
+                expert_context = self.session_manager.get_xianyu_context(resolved_chat_id)
+                response = await self.expert_orchestrator.handle(
                     query,
-                    item,
-                    intent_match,
-                )
-            elif item is not None:
-                response = await self.xianyu_knowledge_responder.handle_item(
-                    query,
-                    item,
-                    plan=plan,
+                    item=item,
                     history=history,
-                    intent_match=intent_match,
-                    force_full_item_answer=intent_match.intent != "OTHER",
+                    session_state={"xianyu_context": expert_context},
                 )
+                if item is not None:
+                    updates = xianyu_context_updates(query, expert_context)
+                    if updates:
+                        self.session_manager.update_xianyu_context(
+                            resolved_chat_id,
+                            item_id=str(item["item_id"]),
+                            **updates,
+                        )
             elif is_rule_followup(query, session_order_id(session_state)):
                 response = await asyncio.to_thread(self.chat, query)
             elif any(
@@ -359,6 +376,25 @@ class ChatService:
                 return self.generator
         self.generator = DeepSeekGenerator()
         return self.generator
+
+    @staticmethod
+    def _should_use_xianyu_experts(
+        query: str,
+        *,
+        item: Mapping[str, object] | None,
+        current_item_id: str | None,
+    ) -> bool:
+        """Select the unified Xianyu path without capturing ordinary RAG."""
+
+        if item is not None:
+            return True
+        if is_seller_scoped_query(query):
+            return True
+        if current_item_id is not None:
+            return True
+        return bool(
+            re.fullmatch(r"(?:你好|您好|哈喽|hello|hi)[！!。？? ]*", query.casefold())
+        )
 
     def chat(self, query: str) -> dict[str, object]:
         """Delegate the ordinary RAG path to RAGService."""

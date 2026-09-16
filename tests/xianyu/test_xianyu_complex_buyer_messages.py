@@ -28,6 +28,26 @@ class NoRag:
         raise AssertionError("confirmed item facts should not require RAG")
 
 
+class ItemEvidenceRag:
+    """Provide grounded item evidence for model-knowledge boundary tests."""
+
+    def warm_up(self) -> None:
+        return None
+
+    def prepare(self, *args: object, **kwargs: object) -> dict[str, object]:
+        source = {"source": "CANON_FTB_001.md", "index": 0}
+        return {
+            "can_answer": True,
+            "context": {
+                "context": "商品说明包含这台相机支持的外接闪光灯信息。",
+                "sources": [source],
+            },
+            "sources": [source],
+            "results": [],
+            "reliability": None,
+        }
+
+
 def _canon_item() -> dict[str, object]:
     return ItemService().get_item_info("CANON_FTB_001")
 
@@ -43,23 +63,31 @@ def _service(item: dict[str, object], rag: NoRag, generator: Mock) -> ChatServic
 
 
 @pytest.mark.parametrize(
-    ("query", "generated_answer"),
+    ("query", "expected_answer"),
     [
-        ("还在吗？有没有维修过？包邮吗？", "还在，没有维修过，包邮。"),
-        ("还在吗有没有维修过包邮吗", "还在，没有维修过，包邮。"),
-        ("这台还没卖吧？修过没有？邮费怎么算？", "还在，没有维修过，包邮。"),
-        ("今天能发吗？走顺丰吗？", "付款后 48 小时内发出，默认走中通。"),
+        (
+            "还在吗？有没有维修过？包邮吗？",
+            "还在的，这台目前还没出。\n没有维修过。\n包邮。",
+        ),
+        (
+            "还在吗有没有维修过包邮吗",
+            "还在的，这台目前还没出。\n没有维修过。\n包邮。",
+        ),
+        (
+            "这台还没卖吧？修过没有？邮费怎么算？",
+            "还在的，这台目前还没出。\n没有维修过。\n包邮。",
+        ),
+        ("今天能发吗？走顺丰吗？", "付款后 48 小时内发出。\n中通。"),
     ],
 )
 def test_complex_message_with_confirmed_facts_uses_full_message_and_replies(
     query: str,
-    generated_answer: str,
+    expected_answer: str,
 ) -> None:
     """Multiple buyer needs must not be reduced to one keyword or a handoff."""
 
     rag = NoRag()
     generator = Mock()
-    generator.generate_xianyu.return_value = generated_answer
     service = _service(_canon_item(), rag, generator)
 
     result = asyncio.run(
@@ -68,10 +96,10 @@ def test_complex_message_with_confirmed_facts_uses_full_message_and_replies(
 
     assert result["action"] == "reply"
     assert result["can_answer"] is True
-    assert result["answer"] == generated_answer
+    assert result["answer"] == expected_answer
     assert rag.prepare_calls == 0
-    generator.generate_xianyu.assert_called_once()
-    assert generator.generate_xianyu.call_args.args[0] == query
+    generator.generate_xianyu.assert_not_called()
+    generator.generate_xianyu_expert.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -79,7 +107,6 @@ def test_complex_message_with_confirmed_facts_uses_full_message_and_replies(
     [
         ("不用包邮，能便宜吗？", "不包邮的话最低 ¥1470.00 可以拍。"),
         ("我出邮费，价格能少一点吗？", "不包邮的话最低 ¥1470.00 可以拍。"),
-        ("自提的话能便宜吗？", "最低 ¥1490.00 可以拍。"),
     ],
 )
 def test_conditional_bargain_uses_the_automatic_discount_limit(
@@ -100,6 +127,22 @@ def test_conditional_bargain_uses_the_automatic_discount_limit(
     assert result["answer"] == expected_answer
     assert result["answer"] != "包邮。"
     assert rag.prepare_calls == 0
+    generator.generate_xianyu.assert_not_called()
+
+
+def test_unauthorised_pickup_condition_handoffs_instead_of_using_shipping_price() -> None:
+    generator = Mock()
+    result = asyncio.run(
+        _service(_canon_item(), NoRag(), generator).chat_async(
+            "自提的话能便宜吗？",
+            "bargain_unsupported_pickup",
+            item_id="CANON_FTB_001",
+        )
+    )
+
+    assert result["action"] == "handoff"
+    assert result["answer"] == "稍等我看看"
+    assert result["reason"] == "unsupported_price_condition"
     generator.generate_xianyu.assert_not_called()
 
 
@@ -197,6 +240,10 @@ def test_xianyu_prompt_exposes_all_confirmed_facts_without_conflicts() -> None:
         "我帮你问卖家。",
         "请等待卖家确认。",
         "需要人工确认后才能答复。",
+        "缺少依据",
+        "缺少依据。当前资料没有对应说明。",
+        "资料不足。",
+        "无法确认",
     ],
 )
 def test_buyer_visible_human_review_language_is_rejected(text: str) -> None:
@@ -205,12 +252,12 @@ def test_buyer_visible_human_review_language_is_rejected(text: str) -> None:
 
 def test_generated_human_review_language_becomes_the_fixed_handoff_reply() -> None:
     generator = Mock()
-    generator.generate_xianyu.return_value = "这个需要卖家确认。"
-    service = _service(_canon_item(), NoRag(), generator)
+    generator.generate_xianyu_expert.return_value = "这个需要卖家确认。"
+    service = _service(_canon_item(), ItemEvidenceRag(), generator)
 
     result = asyncio.run(
         service.chat_async(
-            "这台成色怎么样，带哪些配件？",
+            "这台支持外接闪光灯吗？",
             "generated_human_review_language",
             item_id="CANON_FTB_001",
         )
@@ -219,3 +266,5 @@ def test_generated_human_review_language_becomes_the_fixed_handoff_reply() -> No
     assert result["action"] == "handoff"
     assert result["answer"] == "稍等我看看"
     assert result["reason"] == "generated_reply_requires_human_review"
+    generator.generate_xianyu_expert.assert_called_once()
+    generator.generate_xianyu.assert_not_called()

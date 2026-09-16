@@ -119,18 +119,25 @@ def is_simple_single_question(query: str) -> bool:
 
 
 class IntentRouter:
-    """Classify buyer messages with deterministic rules before optional AI fallback."""
+    """Classify buyer messages without deciding prices or seller policy."""
 
     def __init__(self, classifier: Classifier | None = None) -> None:
         self._classifier = classifier
 
-    def route(self, query: str) -> IntentMatch:
+    def route(self, query: str, *, allow_ai: bool = True) -> IntentMatch:
+        """Classify one question, optionally disabling the model fallback.
+
+        Expert planning performs its own single model call for a full compound
+        message.  Its local pre-checks therefore set ``allow_ai=False`` so one
+        sub-question cannot trigger an additional classification request.
+        """
+
         normalized = str(query or "").strip()
         rule_intent = self._rule_intent(normalized)
         if rule_intent is not None:
             return self._match(rule_intent, "rule")
 
-        if self._classifier is not None and normalized:
+        if allow_ai and self._classifier is not None and normalized:
             try:
                 candidate = self._classifier(normalized)
             except Exception:
@@ -154,9 +161,10 @@ class IntentRouter:
         # Narrower categories intentionally precede broader ones.
         if any(term in lowered for term in ("闲鱼交易", "可以退", "退货", "退款", "收到发现", "描述一样", "保证", "确认收货", "验货")):
             return "AFTER_SALE"
-        if any(term in lowered for term in ("最低", "便宜", "少一点", "刀吗", "优惠", "出价", "报价", "还价")) or re.search(
+        if any(term in lowered for term in ("最低", "便宜", "少一点", "少点", "刀吗", "优惠", "出价", "报价", "还价")) or re.search(
             r"我\s*(?:出|给)\s*[¥￥]?\s*\d"
-            r"|(?<!\d)[¥￥]?\s*\d+(?:\.\d{1,2})?\s*(?:元|块)?\s*(?:可以|行吗|能出|能收|卖吗)",
+            r"|(?<!\d)[¥￥]?\s*\d+(?:\.\d{1,2})?\s*(?:元|块)?"
+            r"\s*(?:包邮|不包邮|自提|自取|面交)?\s*(?:可以|行吗|能出|能收|卖吗)",
             lowered,
         ):
             return "BARGAIN"
@@ -172,7 +180,7 @@ class IntentRouter:
             return "DEFECT"
         if any(term in lowered for term in ("成色", "外观", "新不新", "使用痕迹")):
             return "CONDITION"
-        if any(term in lowered for term in ("配件", "带什么", "包含", "一起给", "说明书", "包装")):
+        if any(term in lowered for term in ("配件", "带什么", "包含", "一起给", "说明书", "包装", "镜头")):
             return "ACCESSORIES"
         if any(term in lowered for term in ("型号", "哪一年", "哪年生产", "新手", "怎么用", "为什么卖", "为什么要卖")):
             return "PRODUCT_INFO"

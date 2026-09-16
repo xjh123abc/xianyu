@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 import json
 import re
+import time
 from typing import Any
 
 from openai import OpenAI
@@ -13,11 +14,19 @@ from app.generation.prompt import (
     build_order_messages,
     build_xianyu_messages,
 )
+from app.generation.xianyu_expert_prompt import (
+    build_xianyu_expert_plan_messages,
+    build_xianyu_product_expert_messages,
+    build_xianyu_service_expert_messages,
+)
 from config.settings import settings
 
 
 class DeepSeekGenerator:
     """Generate a grounded answer from a query and ContextBuilder text."""
+
+    _EMPTY_CONTENT_RETRIES = 1
+    _RETRY_MAX_TOKENS = 2048
 
     def __init__(self, client: Any | None = None) -> None:
         """Accept an injected client for tests; otherwise build it lazily."""
@@ -49,6 +58,44 @@ class DeepSeekGenerator:
         return self._generate_messages(
             build_xianyu_messages(query, item, context, history)
         )
+
+    def plan_xianyu_questions(
+        self,
+        query: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
+    ) -> str:
+        """Return a planner payload; S4 validates it before creating tasks."""
+
+        return self._generate_messages(
+            build_xianyu_expert_plan_messages(query, history),
+            timeout_seconds=timeout_seconds,
+        )
+
+    def generate_xianyu_expert(
+        self,
+        expert: str,
+        question: str,
+        item: Mapping[str, Any] | None,
+        evidence: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
+    ) -> str:
+        """Generate one product or service answer from its bounded evidence."""
+
+        if expert == "product":
+            messages = build_xianyu_product_expert_messages(
+                question, item, evidence, history
+            )
+        elif expert == "service":
+            messages = build_xianyu_service_expert_messages(
+                question, item, evidence, history
+            )
+        else:
+            raise ValueError("expert must be 'product' or 'service'")
+        return self._generate_messages(messages, timeout_seconds=timeout_seconds)
 
     def generate_combined(
         self,
@@ -94,27 +141,57 @@ class DeepSeekGenerator:
         intent = payload.get("intent") if isinstance(payload, dict) else None
         return intent.strip().upper() if isinstance(intent, str) else None
 
-    def _generate_messages(self, messages: list[dict[str, str]]) -> str:
+    def _generate_messages(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        timeout_seconds: float | None = None,
+    ) -> str:
         if settings is None:
             raise RuntimeError("Project settings are unavailable")
 
         client = self.client or self._build_client()
-        response = client.chat.completions.create(
-            model=settings.deepseek_model,
-            messages=messages,
-            temperature=settings.deepseek_temperature,
-            max_tokens=settings.deepseek_max_tokens,
-            stream=False,
+        request: dict[str, object] = {
+            "model": settings.deepseek_model,
+            "messages": messages,
+            "temperature": settings.deepseek_temperature,
+            "max_tokens": settings.deepseek_max_tokens,
+            "stream": False,
+        }
+        if settings.deepseek_model == "deepseek-flash":
+            request["extra_body"] = {"thinking": {"type": "disabled"}}
+        deadline = (
+            time.monotonic() + max(float(timeout_seconds), 0.01)
+            if timeout_seconds is not None
+            else None
         )
 
-        try:
-            content = response.choices[0].message.content
-        except (AttributeError, IndexError, TypeError) as error:
-            raise RuntimeError("DeepSeek response did not contain an answer") from error
+        for attempt in range(self._EMPTY_CONTENT_RETRIES + 1):
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                request["timeout"] = max(remaining, 0.01)
 
-        if not isinstance(content, str) or not content.strip():
-            raise RuntimeError("DeepSeek response contained an empty answer")
-        return content.strip()
+            response = client.chat.completions.create(**request)
+            try:
+                content = response.choices[0].message.content
+            except (AttributeError, IndexError, TypeError) as error:
+                raise RuntimeError(
+                    "DeepSeek response did not contain an answer"
+                ) from error
+
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+
+            if attempt < self._EMPTY_CONTENT_RETRIES:
+                current_max_tokens = int(request["max_tokens"])
+                request["max_tokens"] = min(
+                    current_max_tokens * 2,
+                    self._RETRY_MAX_TOKENS,
+                )
+
+        raise RuntimeError("DeepSeek response contained an empty answer")
 
     @staticmethod
     def _build_client() -> OpenAI:
@@ -130,4 +207,5 @@ class DeepSeekGenerator:
             api_key=api_key,
             base_url=settings.deepseek_base_url,
             timeout=settings.deepseek_timeout,
+            max_retries=0,
         )

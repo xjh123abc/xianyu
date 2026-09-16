@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-import re
 
 from app.services.intent_router import IntentMatch
 from app.services.query_planner import QuestionPlan
+from app.services.xianyu.experts.price_agent import PriceAgent
 from app.services.xianyu.responses import clarification, handoff, reply
 
 
@@ -24,31 +23,8 @@ class PlannedFactAnswer:
 class ItemFactResponder:
     """Answer only facts explicitly supplied by the seller/MCP item record."""
 
-    _NO_SHIPPING_TERMS = (
-        "不用包邮",
-        "不包邮",
-        "出邮费",
-        "出运费",
-        "我出邮费",
-        "承担运费",
-        "自付运费",
-    )
-    _POLICY_DISCOUNT_PATTERN = re.compile(
-        r"(?:小刀|优惠|减)\s*(\d{1,7}(?:\.\d{1,2})?)",
-        re.IGNORECASE,
-    )
-    _OFFER_PATTERNS = (
-        re.compile(
-            r"(?:我\s*(?:出|给)|(?:出|报)价|按|到手价)\s*"
-            r"[¥￥]?\s*(\d{1,7}(?:\.\d{1,2})?)\s*(?:元|块|rmb)?",
-            re.IGNORECASE,
-        ),
-        re.compile(
-            r"(?<!\d)[¥￥]\s*(\d{1,7}(?:\.\d{1,2})?)"
-            r"|(?<!\d)(\d{1,7}(?:\.\d{1,2})?)\s*(?:元|块|rmb)",
-            re.IGNORECASE,
-        ),
-    )
+    def __init__(self, price_agent: PriceAgent | None = None) -> None:
+        self._price_agent = price_agent or PriceAgent()
 
     def answer_intent(
         self,
@@ -57,6 +33,13 @@ class ItemFactResponder:
         match: IntentMatch,
     ) -> dict[str, object]:
         """Answer a classified buyer intent from explicit seller facts only."""
+
+        if match.intent in {"PRICE", "BARGAIN"}:
+            decision = self._price_agent.decide(query, item, match)
+            if decision.status == "answered":
+                assert decision.answer is not None
+                return reply(query, decision.answer, item)
+            return handoff(query, decision.reason or "price_decision_unavailable", item)
 
         facts = self.structured_facts(item)
         if set(match.required_fields) & self.fact_conflicts(facts):
@@ -92,56 +75,6 @@ class ItemFactResponder:
             if status == "sold":
                 return answer("这件已经出掉了。")
             return needs_human("sale_status_unavailable")
-
-        if intent == "PRICE":
-            cents = item.get("listed_price_cents")
-            if isinstance(cents, int) and not isinstance(cents, bool):
-                return answer(f"这件标价是 ¥{cents / 100:.2f}。")
-            return needs_human("listed_price_unavailable")
-
-        if intent == "BARGAIN":
-            cents = item.get("listed_price_cents")
-            if not isinstance(cents, int) or isinstance(cents, bool) or cents < 0:
-                return needs_human("商品原始售价不可用，无法计算自动议价范围。")
-            minor_discount_cents = self._policy_discount_cents(
-                mapping_value("shipping", "negotiation_policy")
-            )
-            if minor_discount_cents is None:
-                if known(facts.get("negotiation")) == "firm":
-                    minor_discount_cents = 0
-                else:
-                    return needs_human("minor_discount_policy_unavailable")
-            no_shipping = any(term in lowered for term in self._NO_SHIPPING_TERMS)
-            condition_discount_cents = 0
-            if no_shipping:
-                condition_discount_cents = self._policy_discount_cents(
-                    mapping_value("shipping", "negotiation_express_policy")
-                )
-                if condition_discount_cents is None:
-                    return needs_human("no_shipping_discount_policy_unavailable")
-            effective_cents = max(0, cents - condition_discount_cents)
-            lowest_cents = max(0, effective_cents - minor_discount_cents)
-            offer_cents = self._buyer_offer_cents(query)
-            if offer_cents is not None and offer_cents < lowest_cents:
-                return needs_human(
-                    "买家报价低于自动议价下限："
-                    f"报价 {self._format_cents(offer_cents)}，"
-                    f"下限 {self._format_cents(lowest_cents)}。"
-                )
-            lowest_price = self._format_cents(lowest_cents)
-            base_lowest_price = self._format_cents(max(0, cents - minor_discount_cents))
-            if no_shipping:
-                if lowered.count("最低") >= 2:
-                    return answer(
-                        f"包邮最低 {base_lowest_price}；"
-                        f"不包邮的话最低 {lowest_price}。"
-                    )
-                return answer(f"不包邮的话最低 {lowest_price} 可以拍。")
-            if offer_cents is not None:
-                return answer(f"可以，{lowest_price} 可以拍。")
-            if minor_discount_cents:
-                return answer(f"最低 {lowest_price} 可以拍。")
-            return answer(f"标价 {lowest_price}，这个价格可以拍。")
 
         if intent == "CONDITION":
             key = "summary"
@@ -346,55 +279,6 @@ class ItemFactResponder:
 
         text = value.strip()
         return text if text.endswith(("。", "！", "？", "!", "?")) else f"{text}。"
-
-    @classmethod
-    def _buyer_offer_cents(cls, query: str) -> int | None:
-        """Extract an explicit buyer offer; never infer one from conversation history."""
-
-        for pattern in cls._OFFER_PATTERNS:
-            match = pattern.search(query)
-            if match is None:
-                continue
-            group_index = next(
-                (index for index, value in enumerate(match.groups(), start=1) if value is not None),
-                None,
-            )
-            raw_value = match.group(group_index) if group_index is not None else None
-            if raw_value is None:
-                continue
-            prefix = query[max(0, match.start(group_index) - 8) : match.start(group_index)]
-            if any(term in prefix for term in ("便宜", "优惠", "少", "减")):
-                continue
-            try:
-                cents = (
-                    Decimal(raw_value) * 100
-                ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-            except (InvalidOperation, ValueError):
-                continue
-            if cents >= 0:
-                return int(cents)
-        return None
-
-    @classmethod
-    def _policy_discount_cents(cls, policy: str | None) -> int | None:
-        """Read one explicit seller discount from a policy string in the item data."""
-
-        if not policy:
-            return None
-        match = cls._POLICY_DISCOUNT_PATTERN.search(policy)
-        if match is None:
-            return None
-        try:
-            cents = (
-                Decimal(match.group(1)) * 100
-            ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        except (InvalidOperation, ValueError):
-            return None
-        return max(0, int(cents))
-
-    @staticmethod
-    def _format_cents(cents: int) -> str:
-        return f"¥{cents / 100:.2f}"
 
     @classmethod
     def history_fact_answer(cls, query: str, value: object) -> tuple[str, bool]:

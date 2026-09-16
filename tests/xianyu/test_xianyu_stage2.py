@@ -49,7 +49,7 @@ def _service(rag: FakeRag | None = None) -> ChatService:
     mcp = Mock()
     mcp.get_item_info = AsyncMock(side_effect=lambda item_id: ItemService().get_item_info(item_id))
     generator = Mock()
-    generator.generate_xianyu.return_value = "基于商品资料的回答"
+    generator.generate_xianyu_expert.return_value = None
     return ChatService(
         mcp_service=mcp,
         xianyu_rag_service=rag or FakeRag(),
@@ -123,7 +123,7 @@ def test_price_uses_readonly_mcp_without_rag() -> None:
     assert rag.item_ids == []
 
 
-def test_combined_price_and_missing_item_details_handoffs() -> None:
+def test_combined_price_and_confirmed_item_details_use_structured_facts() -> None:
     rag = FakeRag()
 
     result = asyncio.run(
@@ -133,8 +133,10 @@ def test_combined_price_and_missing_item_details_handoffs() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["action"] == "reply"
+    assert result["answer"] == (
+        "这件标价是 ¥1280.00。\n一起出的有 相机机身、相机背带、镜头盖。"
+    )
     assert rag.item_ids == []
     assert rag.warm_up_calls == 0
 
@@ -158,7 +160,6 @@ def test_combined_price_and_unsupported_detail_keeps_fact_and_handoffs() -> None
 def test_combined_price_and_status_use_structured_facts_without_rag() -> None:
     rag = FakeRag()
     service = _service(rag)
-    service.generator.generate_xianyu.return_value = "这件标价是 ¥560.00，已经出掉了。"
 
     result = asyncio.run(
         service.chat_async(
@@ -168,10 +169,10 @@ def test_combined_price_and_status_use_structured_facts_without_rag() -> None:
     )
 
     assert result["action"] == "reply"
-    assert "560.00" in str(result["answer"])
-    assert "出掉了" in str(result["answer"])
+    assert result["answer"] == "这件已经出掉了。"
     assert rag.item_ids == []
-    assert service.generator.generate_xianyu.call_args.args[0] == "这个商品多少钱，是否已经售出？"
+    service.generator.generate_xianyu.assert_not_called()
+    service.generator.generate_xianyu_expert.assert_not_called()
 
 
 def test_item_independent_question_uses_existing_rag_without_item_lookup() -> None:
@@ -467,7 +468,7 @@ def test_valid_item_switch_replaces_old_item_without_cross_session_leak() -> Non
     other_chat = asyncio.run(service.chat_async("这个多少钱？", "buyer_chat_b"))
 
     assert switched["item_id"] == followup["item_id"] == "DEMO_ITEM_002"
-    assert "560.00" in str(followup["answer"])
+    assert followup["answer"] == "这件已经出掉了。"
     assert other_chat["action"] == "handoff"
     assert other_chat.get("item_id") is None
 
