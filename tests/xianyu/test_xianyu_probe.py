@@ -9,10 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from scripts.probe_xianyu_channel import (
+from app.channels.xianyu.reference_runtime import (
     _decode_payload,
-    _hash_identifier,
     _load_cookie,
+    _registration_messages,
+    _set_request_timeout,
+)
+from scripts.probe_xianyu_channel import (
+    _hash_identifier,
     _record_message,
 )
 
@@ -29,6 +33,37 @@ def test_probe_decodes_plain_base64_json_without_raw_logging() -> None:
     encoded = base64.b64encode(json.dumps(event).encode("utf-8")).decode("ascii")
 
     assert _decode_payload(encoded, lambda value: "unused") == event
+
+
+def test_shared_reference_helpers_preserve_registration_and_timeout_contract() -> None:
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    class Session:
+        @staticmethod
+        def request(method: str, url: str, **kwargs: object) -> str:
+            calls.append((method, url, kwargs))
+            return "response"
+
+    session = Session()
+    _set_request_timeout(session, timeout=12.0)
+    assert session.request("GET", "https://example.test") == "response"
+    assert session.request("POST", "https://example.test", timeout=3.0) == "response"
+    assert calls == [
+        ("GET", "https://example.test", {"timeout": 12.0}),
+        ("POST", "https://example.test", {"timeout": 3.0}),
+    ]
+
+    registration, acknowledgement = _registration_messages(
+        "token-value", "device-value", lambda: "mid-value"
+    )
+    registration_payload = json.loads(registration)
+    acknowledgement_payload = json.loads(acknowledgement)
+    assert registration_payload["lwp"] == "/reg"
+    assert registration_payload["headers"]["token"] == "token-value"
+    assert registration_payload["headers"]["did"] == "device-value"
+    assert registration_payload["headers"]["mid"] == "mid-value"
+    assert acknowledgement_payload["lwp"] == "/r/SyncStatus/ackDiff"
+    assert acknowledgement_payload["body"][0]["pipeline"] == "sync"
 
 
 def test_probe_classifies_buyer_event_and_counts_sync_package() -> None:

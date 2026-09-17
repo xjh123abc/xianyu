@@ -36,7 +36,7 @@ from app.channels.xianyu.store import ChannelStore
 from app.channels.xianyu.wecom import WeComWebhookNotifier
 from config.paths import resolve_project_path
 from config.settings import settings
-from scripts.probe_xianyu_channel import (
+from app.channels.xianyu.reference_runtime import (
     DEFAULT_REFERENCE_COMMIT,
     DEFAULT_WS_URL,
     _install_reference_imports,
