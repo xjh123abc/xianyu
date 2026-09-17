@@ -161,7 +161,11 @@ def test_resume_auto_endpoint_restores_one_human_conversation_to_buyer_processin
 
     first = asyncio.run(instance.process(message("resume-handoff"), sender))
     store.set_session_mode("seller", other_chat_id, "other-buyer", "HUMAN", "other reason")
-    monkeypatch.setattr(conversations_api, "channel_store", store)
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        conversations_api.get_channel_store,
+        lambda: store,
+    )
 
     response = TestClient(app).post(
         "/conversations/xianyu:seller:chat-1/resume-auto",

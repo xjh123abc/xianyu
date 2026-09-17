@@ -3,15 +3,28 @@
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Path as FastAPIPath
+from fastapi import APIRouter, Depends, HTTPException, Path as FastAPIPath
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.channels.xianyu.control import ChannelControl
 from app.channels.xianyu.store import ChannelStore
+from config.paths import resolve_project_path
+from config.settings import settings
 
 
 router = APIRouter()
-channel_store = ChannelStore(Path("logs/xianyu_stage3.sqlite3"))
+
+
+def resolve_channel_database_path() -> Path:
+    """Return the configured Xianyu channel database as an absolute path."""
+
+    return resolve_project_path(settings.xianyu_channel_database_path)
+
+
+def get_channel_store() -> ChannelStore:
+    """Create the configured store only when a control request needs it."""
+
+    return ChannelStore(resolve_channel_database_path())
 
 
 class ResumeAutoRequest(BaseModel):
@@ -46,14 +59,15 @@ class ResumeAutoResponse(BaseModel):
 )
 async def resume_auto(
     chat_id: str = FastAPIPath(min_length=1),
-    request: ResumeAutoRequest = ..., 
+    request: ResumeAutoRequest = ...,
+    store: ChannelStore = Depends(get_channel_store),
 ) -> ResumeAutoResponse:
     """Clear the HUMAN control state for exactly one existing conversation."""
 
     normalized_chat_id = chat_id.strip()
     if not normalized_chat_id:
         raise HTTPException(status_code=422, detail="chat_id must not be blank")
-    state = ChannelControl(channel_store, request.account_id).resume_auto(normalized_chat_id)
+    state = ChannelControl(store, request.account_id).resume_auto(normalized_chat_id)
     if state is None:
         raise HTTPException(status_code=404, detail="conversation not found")
     return ResumeAutoResponse(

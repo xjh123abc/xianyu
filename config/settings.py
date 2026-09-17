@@ -1,11 +1,13 @@
 """Project settings loaded from environment variables."""
 
+from config.paths import PROJECT_ROOT
+
 try:
     from pydantic_settings import BaseSettings, SettingsConfigDict
 
     class Settings(BaseSettings):
         model_config = SettingsConfigDict(
-            env_file=".env",
+            env_file=PROJECT_ROOT / ".env",
             env_file_encoding="utf-8",
             extra="ignore",
         )
@@ -32,6 +34,7 @@ try:
         answer_reliability_threshold: float = 5.3
         answer_reliability_model_id: str = "Qwen3-Reranker-0.6B"
         session_database_path: str = "chat_sessions.sqlite3"
+        xianyu_channel_database_path: str = "logs/xianyu_stage3.sqlite3"
         session_ttl_seconds: int = 3600
         session_max_count: int = 10000
         session_lock_timeout_seconds: float = 60.0

@@ -10,7 +10,7 @@
 | 摄取普通电商知识 | `python -m app.ingestion.pipeline` |
 | 摄取闲鱼知识域 | `python -m app.ingestion.pipeline --scenario xianyu` |
 | 运行闲鱼监听器 | `python scripts/run_xianyu_stage3.py --reference-root .runtime/xianyu-template ...` |
-| 暂停、恢复或接管会话 | `python scripts/xianyu_stage3_control.py --db logs/xianyu_stage3.sqlite3 ...` |
+| 暂停、恢复或接管会话 | `python scripts/xianyu_stage3_control.py --account SELLER ...` |
 | 验证与排查 | `python -m pytest -q`、`python -m scripts.smoke_order_mcp`、`python -m scripts.smoke_unified_chat` |
 | 查看代码与资料路径 | [项目索引（临时）](文档/当前/项目索引.md)；该索引不包含 `文档/` 与 `review/` 的内容 |
 
@@ -90,6 +90,12 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
 ```
 
 ## 专家 Agent S6 验收与启用
+
+### 闲鱼渠道数据库
+
+`XIANYU_CHANNEL_DATABASE_PATH` 是闲鱼 AUTO/HUMAN 状态、商品绑定、消息去重和发送记录使用的渠道库；它与 `SESSION_DATABASE_PATH` 的对话记忆库用途不同，不能合并或互相替换。API、监听运行器和控制 CLI 未传 `--db` 时都读取前者，并将相对路径从项目根目录解析为绝对路径。
+
+监听运行器和控制 CLI 仍支持显式 `--db`，它只覆盖该次命令，不会让 API 自动切换数据库。两个入口启动时会输出最终数据库绝对路径；若需共同控制同一会话，三个入口必须显示为同一实际路径。正常从项目根目录运行；监听器的 `--project-root` 应指向本项目根目录，以便读取同一份 `.env`。
 
 真实自动发送默认保持暂停。先运行代码测试和 60 条真实 `/chat` 批测；批测结果包含每题的独立 `chat_id`、确定性任务规划、答案、动作、来源、内部接管原因和耗时：
 
