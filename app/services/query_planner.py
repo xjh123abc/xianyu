@@ -301,8 +301,13 @@ def _validated_model_drafts(payload: object | None, query: str) -> list[_Draft]:
         task_id, expert = raw.get("task_id"), raw.get("expert")
         fragment = raw.get("original_question", raw.get("question_fragment", raw.get("question")))
         normalized = raw.get("normalized_question", raw.get("question"))
-        target = raw.get("query_target")
         scope = raw.get("knowledge_scope", raw.get("scope"))
+        target = raw.get("query_target")
+        # ``product/model_knowledge`` has exactly one valid query target.  Older
+        # planner responses did not emit it, so retain that evidence-bound task
+        # instead of silently reducing a compound buyer turn to its other facts.
+        if target is None and expert == "product" and scope == "model_knowledge":
+            target = "product.model_knowledge"
         if not (isinstance(task_id, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,31}", task_id) and task_id not in identifiers):
             continue
         if expert not in _VALID_EXPERTS or scope not in _VALID_SCOPES or not _scope_allowed(expert, scope):
@@ -638,7 +643,11 @@ def _price_conditions(query: str, context: Mapping[str, object] | None) -> dict[
         conditions.update({"request_kind": "offer", "offer_cents": offers[0]})
     elif any(term in lowered for term in ("再少", "再便宜", "再优惠", "再刀")):
         conditions.update({"request_kind": "additional_discount", "follow_up": True})
-    elif "最低" in lowered or (buyer_pays and "呢" in lowered and _context_price_topic(context)):
+    elif (
+        "最低" in lowered
+        or any(term in lowered for term in _BARGAIN_TERMS)
+        or (buyer_pays and "呢" in lowered and _context_price_topic(context))
+    ):
         conditions["request_kind"] = "minimum"
     else:
         conditions["request_kind"] = "listed_price"
@@ -780,7 +789,7 @@ def _target_terms(target: str) -> Sequence[str]:
         "shipping.dispatch_time": _DISPATCH_TERMS,
         "shipping.ship_from": ("从哪里发",),
         "shipping.carrier": _CARRIER_TERMS,
-        "shipping.fee": _SHIPPING_PRICE_TERMS,
+        "shipping.fee": (*_SHIPPING_PRICE_TERMS, "包邮"),
         "after_sale.return_policy": _AFTER_SALE_TERMS,
         "after_sale.transaction_channel": ("闲鱼交易",),
         "after_sale.description_policy": ("描述",),
