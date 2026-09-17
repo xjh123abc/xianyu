@@ -16,7 +16,7 @@ from config.settings import settings
 
 
 def test_chunks_and_vectors_are_written_to_qdrant() -> None:
-    document = load_txt("data/raw/ingestion_test.txt")
+    document = load_txt("tests/fixtures/ingestion_test.txt")
     chunks = chunk_document(document, chunk_size=100)
     vectors = EmbeddingService().embed_chunks(chunks)
     client = QdrantClient(location=":memory:")

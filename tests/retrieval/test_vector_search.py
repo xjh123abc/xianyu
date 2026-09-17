@@ -15,7 +15,7 @@ class StaticEmbeddingService:
 
 
 def test_query_returns_top_five_points_from_qdrant() -> None:
-    document = load_txt("data/raw/ingestion_test.txt")
+    document = load_txt("tests/fixtures/ingestion_test.txt")
     chunks = chunk_document(document, chunk_size=100)
     embedding_service = EmbeddingService()
     vectors = embedding_service.embed_chunks(chunks)

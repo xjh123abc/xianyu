@@ -20,7 +20,7 @@
 
 - `app/`：应用 API、数据摄取、检索、RAG 和生成逻辑
 - `config/`：配置
-- `data/raw/`：原始业务文档
+- `tests/fixtures/`：入库与检索测试样例
 - `eval/`：评测数据与评测脚本
 - `mcp_servers/`：独立 MCP Server 入口与模拟订单工具
 - `scripts/`：MCP 与统一 `/chat` 端到端验收脚本

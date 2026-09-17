@@ -18,9 +18,7 @@ try:
         deepseek_max_tokens: int = 512
         qdrant_url: str = "http://localhost:6333"
         qdrant_collection: str = "ecommerce_documents"
-        knowledge_base_path: str = (
-            "data/ecommerce_rag_test_data/ecommerce_rag_test_data/knowledge_base"
-        )
+        knowledge_base_path: str = "data/ecommerce/knowledge"
         knowledge_base_chunk_size: int = 500
         embedding_model_path: str = ""
         reranker_model_path: str = ""
