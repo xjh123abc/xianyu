@@ -23,14 +23,71 @@ class PlannedFactAnswer:
 class ItemFactResponder:
     """Answer only facts explicitly supplied by the seller/MCP item record."""
 
+    _TARGET_MATCHES: dict[str, IntentMatch] = {
+        "availability.sale_status": IntentMatch("AVAILABILITY", ("sale_status",), "rule"),
+        "history.repair_history": IntentMatch("REPAIR_HISTORY", ("history",), "rule"),
+        "history.disassembly_history": IntentMatch("REPAIR_HISTORY", ("history",), "rule"),
+        "history.drop_history": IntentMatch("REPAIR_HISTORY", ("history",), "rule"),
+        "function.shutter": IntentMatch("FUNCTION", ("function",), "rule"),
+        "function.overall": IntentMatch("FUNCTION", ("function",), "rule"),
+        "condition.summary": IntentMatch("CONDITION", ("condition",), "rule"),
+        "condition.scratches": IntentMatch("DEFECT", ("condition",), "rule"),
+        "condition.dents": IntentMatch("DEFECT", ("condition",), "rule"),
+        "condition.known_issues": IntentMatch("DEFECT", ("condition",), "rule"),
+        "lens.details": IntentMatch("ACCESSORIES", ("accessories", "accessory_details"), "rule"),
+        "lens.focal_length_mm": IntentMatch("ACCESSORIES", ("accessories", "accessory_details"), "rule"),
+        "accessories.items": IntentMatch("ACCESSORIES", ("accessories", "accessory_details"), "rule"),
+        "accessories.completeness": IntentMatch("ACCESSORIES", ("accessories", "accessory_details"), "rule"),
+        "accessories.original": IntentMatch("ACCESSORIES", ("accessories", "accessory_details"), "rule"),
+        "accessories.manual_or_packaging": IntentMatch("ACCESSORIES", ("accessories", "accessory_details"), "rule"),
+        "identity.model": IntentMatch("PRODUCT_INFO", ("identity", "product_info"), "rule"),
+        "product_info.production_year": IntentMatch("PRODUCT_INFO", ("identity", "product_info"), "rule"),
+        "product_info.beginner_suitability": IntentMatch("PRODUCT_INFO", ("identity", "product_info"), "rule"),
+        "product_info.usage": IntentMatch("PRODUCT_INFO", ("identity", "product_info"), "rule"),
+        "product_info.sale_reason": IntentMatch("PRODUCT_INFO", ("identity", "product_info"), "rule"),
+        "shipping.dispatch_time": IntentMatch("SHIPPING_TIME", ("shipping",), "rule"),
+        "shipping.ship_from": IntentMatch("SHIPPING_TIME", ("shipping",), "rule"),
+        "shipping.carrier": IntentMatch("SHIPPING_TIME", ("shipping",), "rule"),
+        "shipping.fee": IntentMatch("SHIPPING_FEE", ("shipping",), "rule"),
+        "after_sale.return_policy": IntentMatch("AFTER_SALE", ("after_sale",), "rule"),
+        "after_sale.transaction_channel": IntentMatch("AFTER_SALE", ("after_sale",), "rule"),
+        "after_sale.description_policy": IntentMatch("AFTER_SALE", ("after_sale",), "rule"),
+        "after_sale.inspection_confirmation": IntentMatch("AFTER_SALE", ("after_sale",), "rule"),
+    }
+
     def __init__(self, price_agent: PriceAgent | None = None) -> None:
         self._price_agent = price_agent or PriceAgent()
+
+    def answer_target(
+        self,
+        question: str,
+        item: Mapping[str, object],
+        query_target: str,
+    ) -> dict[str, object]:
+        """Answer the planner-selected target without rerouting buyer text."""
+
+        match = self._TARGET_MATCHES.get(query_target)
+        if match is None:
+            return handoff(question, "unsupported_query_target", item)
+        return self.answer_intent(
+            question,
+            item,
+            match,
+            query_target=query_target,
+        )
+
+    @classmethod
+    def required_fields_for_target(cls, query_target: str) -> tuple[str, ...]:
+        match = cls._TARGET_MATCHES.get(query_target)
+        return match.required_fields if match is not None else ()
 
     def answer_intent(
         self,
         query: str,
         item: Mapping[str, object],
         match: IntentMatch,
+        *,
+        query_target: str | None = None,
     ) -> dict[str, object]:
         """Answer a classified buyer intent from explicit seller facts only."""
 
@@ -79,9 +136,13 @@ class ItemFactResponder:
         if intent == "CONDITION":
             key = "summary"
             label = "成色"
-            if "划痕" in lowered:
+            if query_target == "condition.scratches" or (
+                query_target is None and "划痕" in lowered
+            ):
                 key, label = "scratches", "划痕"
-            elif "磕碰" in lowered:
+            elif query_target == "condition.dents" or (
+                query_target is None and "磕碰" in lowered
+            ):
                 key, label = "dents", "磕碰"
             value = mapping_value("condition", key)
             if value:
@@ -89,8 +150,10 @@ class ItemFactResponder:
             return needs_human(f"{label}_unavailable")
 
         if intent == "DEFECT":
-            if "划痕" in lowered or "磕碰" in lowered:
-                key = "scratches" if "划痕" in lowered else "dents"
+            if query_target in {"condition.scratches", "condition.dents"} or (
+                query_target is None and ("划痕" in lowered or "磕碰" in lowered)
+            ):
+                key = "scratches" if query_target == "condition.scratches" or "划痕" in lowered else "dents"
                 label = "划痕" if key == "scratches" else "磕碰"
                 value = mapping_value("condition", key)
                 if value:
@@ -109,9 +172,13 @@ class ItemFactResponder:
         if intent == "REPAIR_HISTORY":
             key = "repair_history"
             label = "维修历史"
-            if "拆" in lowered:
+            if query_target == "history.disassembly_history" or (
+                query_target is None and "拆" in lowered
+            ):
                 key, label = "disassembly_history", "拆修记录"
-            elif "摔" in lowered or "跌" in lowered:
+            elif query_target == "history.drop_history" or (
+                query_target is None and ("摔" in lowered or "跌" in lowered)
+            ):
                 key, label = "drop_history", "摔碰历史"
             value = mapping_value("history", key)
             if value:
@@ -119,7 +186,9 @@ class ItemFactResponder:
             return needs_human(f"{label}_unavailable")
 
         if intent == "FUNCTION":
-            key = "shutter" if "快门" in lowered else "overall"
+            key = "shutter" if query_target == "function.shutter" or (
+                query_target is None and "快门" in lowered
+            ) else "overall"
             value = mapping_value("function", key)
             if value == "working":
                 return answer(
@@ -134,20 +203,28 @@ class ItemFactResponder:
             return needs_human("function_status_unavailable")
 
         if intent == "ACCESSORIES":
-            if "镜头" in lowered:
+            if query_target in {"lens.details", "lens.focal_length_mm"} or (
+                query_target is None and "镜头" in lowered
+            ):
                 if "lens" in self.fact_conflicts(facts):
                     return needs_human("lens_fact_conflict")
                 text, unresolved = self.lens_fact_answer(facts.get("lens"))
                 return needs_human(text) if unresolved else answer(text)
             detail_key = None
             label = "配件"
-            if "齐全" in lowered:
+            if query_target == "accessories.completeness" or (
+                query_target is None and "齐全" in lowered
+            ):
                 detail_key, label = "completeness", "配件是否齐全"
-            elif "原装" in lowered:
+            elif query_target == "accessories.original" or (
+                query_target is None and "原装" in lowered
+            ):
                 detail_key, label = "original_accessories", "原装配件"
-            elif "图片" in lowered:
+            elif query_target is None and "图片" in lowered:
                 detail_key, label = "image_items", "图片中的物品"
-            elif "说明书" in lowered or "包装" in lowered:
+            elif query_target == "accessories.manual_or_packaging" or (
+                query_target is None and ("说明书" in lowered or "包装" in lowered)
+            ):
                 detail_key, label = "manual_or_packaging", "说明书或包装"
             if detail_key is not None:
                 value = mapping_value("accessory_details", detail_key)
@@ -167,11 +244,16 @@ class ItemFactResponder:
                 if intent == "SHIPPING_FEE"
                 else ("dispatch_time", "发货时间")
             )
-            if "从哪里" in lowered:
+            if query_target == "shipping.ship_from" or (
+                query_target is None and "从哪里" in lowered
+            ):
                 key, label = "ship_from", "发货地"
-            elif any(
-                term in lowered
-                for term in ("快递", "顺丰", "中通", "圆通", "韵达", "京东")
+            elif query_target == "shipping.carrier" or (
+                query_target is None
+                and any(
+                    term in lowered
+                    for term in ("快递", "顺丰", "中通", "圆通", "韵达", "京东")
+                )
             ):
                 key, label = "carrier", "快递"
             value = mapping_value("shipping", key)
@@ -180,7 +262,9 @@ class ItemFactResponder:
             return needs_human(f"{label}_unavailable")
 
         if intent == "PRODUCT_INFO":
-            if "型号" in lowered:
+            if query_target == "identity.model" or (
+                query_target is None and "型号" in lowered
+            ):
                 identity = facts.get("identity")
                 model = known(identity.get("model")) if isinstance(identity, Mapping) else None
                 brand = known(identity.get("brand")) if isinstance(identity, Mapping) else None
@@ -192,11 +276,17 @@ class ItemFactResponder:
                     )
                 return needs_human("model_unavailable")
             key, label = "production_year", "生产年份"
-            if "新手" in lowered:
+            if query_target == "product_info.beginner_suitability" or (
+                query_target is None and "新手" in lowered
+            ):
                 key, label = "beginner_suitability", "是否适合新手"
-            elif "怎么用" in lowered:
+            elif query_target == "product_info.usage" or (
+                query_target is None and "怎么用" in lowered
+            ):
                 key, label = "usage", "使用方法"
-            elif "为什么" in lowered or "卖" in lowered:
+            elif query_target == "product_info.sale_reason" or (
+                query_target is None and ("为什么" in lowered or "卖" in lowered)
+            ):
                 key, label = "sale_reason", "出售原因"
             value = mapping_value("product_info", key)
             if value == "yes":
@@ -209,11 +299,17 @@ class ItemFactResponder:
 
         if intent == "AFTER_SALE":
             key, label = "return_policy", "退货和售后规则"
-            if "闲鱼交易" in lowered:
+            if query_target == "after_sale.transaction_channel" or (
+                query_target is None and "闲鱼交易" in lowered
+            ):
                 key, label = "transaction_channel", "交易方式"
-            elif "描述" in lowered:
+            elif query_target == "after_sale.description_policy" or (
+                query_target is None and "描述" in lowered
+            ):
                 key, label = "description_policy", "描述一致性"
-            elif "验货" in lowered or "确认收货" in lowered:
+            elif query_target == "after_sale.inspection_confirmation" or (
+                query_target is None and ("验货" in lowered or "确认收货" in lowered)
+            ):
                 key, label = "inspection_confirmation", "验货和确认收货方式"
             value = mapping_value("after_sale", key)
             if key == "transaction_channel" and value == "xianyu":

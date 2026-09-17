@@ -38,14 +38,15 @@ def build_xianyu_expert_plan_messages(
             + query.strip()
             + "\n\n只输出 JSON，格式为：\n"
             + '{"tasks":[{"task_id":"q1","expert":"product|price|service",'
-            + '"question_fragment":"买家原文中的连续片段",'
+            + '"original_question":"买家原文中的完整子问题",'
             + '"normalized_question":"规范化问题",'
+            + '"query_target":"例如 shipping.carrier",'
             + '"knowledge_scope":"item_fact|model_knowledge|seller_rule|greeting",'
             + '"transaction_conditions":{},"depends_on_task_ids":[]}]}。\n'
             + "expert 只能是 product、price、service。price 只能使用 item_fact；"
             + "product 只能使用 item_fact 或 model_knowledge；service 只能使用 "
             + "item_fact、seller_rule 或 greeting。\n"
-            + "question_fragment 必须逐字来自当前买家消息；不得虚构金额、运费方案、"
+            + "original_question 必须逐字来自当前买家消息，且必须是完整子问题；不得虚构金额、运费方案、"
             + "卖家承诺或历史事实。买家给出报价时，offer_cents 用整数分且必须等于原文金额；"
             + "不包邮写 shipping=buyer_pays，包邮写 shipping=seller_pays；"
             + "同时比较包邮与不包邮时只写 shipping_comparison=true，不能当成买家已选择。\n"

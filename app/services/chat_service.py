@@ -105,7 +105,7 @@ class ChatService:
             self.item_service,
             lambda item_id: self.mcp_service.get_item_info(item_id),
         )
-        self.price_agent = PriceAgent(route_intent=self.intent_router.route)
+        self.price_agent = PriceAgent()
         self.item_fact_responder = ItemFactResponder(price_agent=self.price_agent)
         self.xianyu_knowledge_responder = XianyuKnowledgeResponder(
             rag_service=self._get_xianyu_rag_service,

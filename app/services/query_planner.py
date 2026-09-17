@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Literal, TypedDict
 
 from app.services.intent_router import IntentRouter, is_simple_single_question
-from app.services.xianyu.experts.contracts import ExpertTask
+from app.services.xianyu.experts.contracts import ExpertTask, VALID_QUERY_TARGETS
 
 
 logger = logging.getLogger(__name__)
@@ -166,8 +166,22 @@ def _rule_drafts(query: str, context: Mapping[str, object] | None) -> list[_Draf
     drafts: list[_Draft] = []
 
     def add(expert: str, fragment: str, normalized_question: str, scope: str, conditions: Mapping[str, object] | None = None) -> None:
-        task = ExpertTask(f"rule-{len(drafts) + 1}", expert, fragment, normalized_question, scope, dict(conditions or {}))  # type: ignore[arg-type]
-        drafts.append(_Draft(task, _position(query, fragment), len(drafts)))
+        target = _rule_query_target(
+            expert,
+            normalized_question,
+            query,
+            conditions or {},
+        )
+        task = ExpertTask(
+            f"rule-{len(drafts) + 1}",
+            expert,  # type: ignore[arg-type]
+            fragment,
+            normalized_question,
+            scope,  # type: ignore[arg-type]
+            query_target=target,
+            transaction_conditions=dict(conditions or {}),
+        )
+        drafts.append(_Draft(task, _target_position(query, target, fragment), len(drafts)))
 
     if _asks_item_status(query):
         add("product", _fragment(query, ("还在", "还没出", "还没卖", "还能拍", "卖掉", "有货", "在售")), "是否在售", "item_fact")
@@ -212,10 +226,6 @@ def _rule_drafts(query: str, context: Mapping[str, object] | None) -> list[_Draf
     if (
         any(term in lowered for term in ("包邮", "运费", "邮费", "快递费"))
         and not _is_price_question(query, context)
-        and not any(
-            task.expert == "service" and task.normalized_question == "快递方式"
-            for task in (draft.task for draft in drafts)
-        )
     ):
         add("service", _fragment(query, ("包邮", "运费", "邮费", "快递费")), "包邮或运费条件", service_scope)
     if any(term in lowered for term in _AFTER_SALE_TERMS):
@@ -240,7 +250,20 @@ def _rule_drafts(query: str, context: Mapping[str, object] | None) -> list[_Draf
     if repair is not None and price is not None and "如果" in lowered and any(term in lowered for term in ("我就买", "才买", "才要", "可以吗")):
         index = next(index for index, draft in enumerate(drafts) if draft.task.task_id == price.task_id)
         old = drafts[index].task
-        drafts[index] = _Draft(ExpertTask(old.task_id, old.expert, old.question_fragment, old.normalized_question, old.knowledge_scope, old.transaction_conditions, (repair.task_id,)), drafts[index].position, drafts[index].order)
+        drafts[index] = _Draft(
+            ExpertTask(
+                old.task_id,
+                old.expert,
+                old.question_fragment,
+                old.normalized_question,
+                old.knowledge_scope,
+                old.query_target,
+                old.transaction_conditions,
+                (repair.task_id,),
+            ),
+            drafts[index].position,
+            drafts[index].order,
+        )
     return drafts
 
 
@@ -276,21 +299,45 @@ def _validated_model_drafts(payload: object | None, query: str) -> list[_Draft]:
         if not isinstance(raw, Mapping):
             continue
         task_id, expert = raw.get("task_id"), raw.get("expert")
-        fragment = raw.get("question_fragment", raw.get("question"))
+        fragment = raw.get("original_question", raw.get("question_fragment", raw.get("question")))
         normalized = raw.get("normalized_question", raw.get("question"))
+        target = raw.get("query_target")
         scope = raw.get("knowledge_scope", raw.get("scope"))
         if not (isinstance(task_id, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,31}", task_id) and task_id not in identifiers):
             continue
         if expert not in _VALID_EXPERTS or scope not in _VALID_SCOPES or not _scope_allowed(expert, scope):
             continue
-        if not (isinstance(fragment, str) and fragment.strip() and _in_query(fragment, query) and isinstance(normalized, str) and normalized.strip()):
+        if not (
+            isinstance(fragment, str)
+            and fragment.strip()
+            and _in_query(fragment, query)
+            and isinstance(normalized, str)
+            and normalized.strip()
+            and isinstance(target, str)
+            and target in VALID_QUERY_TARGETS
+            and _target_matches_expert(target, expert, scope)
+            and _is_complete_model_question(fragment, target)
+        ):
             continue
         conditions = _validate_model_conditions(raw.get("transaction_conditions", raw.get("conditions", {})), query, fragment, expert)
         dependencies = raw.get("depends_on_task_ids", raw.get("depends_on", []))
         if conditions is None or not isinstance(dependencies, list) or not all(isinstance(value, str) for value in dependencies):
             continue
+        if expert == "price" and target != "price." + str(
+            conditions.get("request_kind", "listed_price")
+        ):
+            continue
         identifiers.add(task_id)
-        task = ExpertTask(task_id, expert, fragment.strip(), normalized.strip(), scope, conditions, tuple(dependencies))  # type: ignore[arg-type]
+        task = ExpertTask(
+            task_id,
+            expert,  # type: ignore[arg-type]
+            fragment.strip(),
+            normalized.strip(),
+            scope,  # type: ignore[arg-type]
+            target,
+            conditions,
+            tuple(dependencies),
+        )
         drafts.append(_Draft(task, _position(query, fragment), order))
     valid_ids = {draft.task.task_id for draft in drafts}
     normalized_drafts = [
@@ -301,6 +348,7 @@ def _validated_model_drafts(payload: object | None, query: str) -> list[_Draft]:
                 draft.task.question_fragment,
                 draft.task.normalized_question,
                 draft.task.knowledge_scope,
+                draft.task.query_target,
                 draft.task.transaction_conditions,
                 tuple(dep for dep in draft.task.depends_on_task_ids if dep in valid_ids),
             ),
@@ -326,27 +374,192 @@ def _validated_model_drafts(payload: object | None, query: str) -> list[_Draft]:
 
 
 def _merge_drafts(model_drafts: list[_Draft], rule_drafts: list[_Draft], router: IntentRouter) -> list[_Draft]:
-    # Rules are the trusted completeness baseline.  A model may add a valid
-    # uncovered task, but cannot replace a rule task and accidentally drop its
-    # source-derived conditions or dependencies.
-    merged, identities = list(rule_drafts), {_task_identity(draft.task, router) for draft in rule_drafts}
+    """Merge task candidates by planner-owned target, not re-routed text.
+
+    Rules establish required targets and transaction terms.  A validated model
+    task for the same target may replace only the source question, so it can
+    repair a coarse rule segment without dropping buyer conditions or task
+    dependencies.
+    """
+
+    del router  # Kept in the signature for callers using the older seam.
+    merged = list(rule_drafts)
+    indexes = {_task_identity(draft.task): index for index, draft in enumerate(merged)}
     for draft in model_drafts:
-        identity = _task_identity(draft.task, router)
-        if identity not in identities:
+        identity = _task_identity(draft.task)
+        existing_index = indexes.get(identity)
+        if existing_index is None:
             merged.append(draft)
-            identities.add(identity)
+            indexes[identity] = len(merged) - 1
+            continue
+        rule_draft = merged[existing_index]
+        if _prefer_model_question(draft.task, rule_draft.task):
+            merged[existing_index] = _Draft(
+                ExpertTask(
+                    rule_draft.task.task_id,
+                    rule_draft.task.expert,
+                    draft.task.original_question,
+                    draft.task.normalized_question,
+                    rule_draft.task.knowledge_scope,
+                    rule_draft.task.query_target,
+                    dict(rule_draft.task.transaction_conditions),
+                    rule_draft.task.depends_on_task_ids,
+                ),
+                rule_draft.position,
+                rule_draft.order,
+            )
     return sorted(merged, key=lambda draft: (draft.position, draft.order))
 
 
 def _finalize_drafts(drafts: list[_Draft]) -> list[ExpertTask]:
     id_map = {draft.task.task_id: f"q{index}" for index, draft in enumerate(drafts, start=1)}
-    return [ExpertTask(id_map[draft.task.task_id], draft.task.expert, draft.task.question_fragment, draft.task.normalized_question, draft.task.knowledge_scope, dict(draft.task.transaction_conditions), tuple(id_map[dep] for dep in draft.task.depends_on_task_ids if dep in id_map)) for draft in drafts]
+    return [
+        ExpertTask(
+            id_map[draft.task.task_id],
+            draft.task.expert,
+            draft.task.original_question,
+            draft.task.normalized_question,
+            draft.task.knowledge_scope,
+            draft.task.query_target,
+            dict(draft.task.transaction_conditions),
+            tuple(id_map[dep] for dep in draft.task.depends_on_task_ids if dep in id_map),
+        )
+        for draft in drafts
+    ]
 
 
-def _task_identity(task: ExpertTask, router: IntentRouter) -> tuple[str, str, str]:
-    if task.expert == "price":
-        return task.expert, task.knowledge_scope, str(task.transaction_conditions.get("request_kind", "listed_price"))
-    return task.expert, task.knowledge_scope, router.route(task.question_fragment, allow_ai=False).intent
+def _task_identity(task: ExpertTask) -> tuple[str, str, str]:
+    """The query target is the only deduplication key for expert tasks."""
+
+    return task.expert, task.knowledge_scope, task.query_target
+
+
+def _target_matches_expert(target: str, expert: object, scope: object) -> bool:
+    if target.startswith("price."):
+        return expert == "price" and scope == "item_fact"
+    if target == "product.model_knowledge":
+        return expert == "product" and scope == "model_knowledge"
+    if target.startswith(("availability.", "history.", "function.", "condition.", "lens.", "accessories.", "identity.", "product_info.")):
+        return expert == "product" and scope == "item_fact"
+    if target == "seller_rule.general":
+        return expert == "service" and scope == "seller_rule"
+    if target == "greeting":
+        return expert == "service" and scope == "greeting"
+    return target.startswith(("shipping.", "after_sale.")) and expert == "service" and scope == "item_fact"
+
+
+def _prefer_model_question(model: ExpertTask, rule: ExpertTask) -> bool:
+    """Accept a checked model sub-question without changing rule semantics."""
+
+    candidate = model.original_question.strip()
+    return (
+        candidate != rule.original_question.strip()
+        and len(candidate) >= 2
+        and _target_matches_expert(
+            model.query_target,
+            model.expert,
+            model.knowledge_scope,
+        )
+    )
+
+
+def _is_complete_model_question(question: str, target: str) -> bool:
+    """Reject model keyword slices before they can replace a rule question."""
+
+    candidate = question.strip()
+    if len(candidate) < 2:
+        return False
+    terms = _target_terms(target)
+    if terms and not any(term in candidate.casefold() for term in terms):
+        return False
+    # A model may return one compact Chinese question without punctuation.  If
+    # it includes explicit separators, however, it must contain only the one
+    # target-bearing question rather than a partial run into the next question.
+    parts = [
+        part.strip()
+        for part in re.split(r"[。！？?!；;\r\n]+|(?<=\S)\s+(?=\S)", candidate)
+        if part.strip()
+    ]
+    return len(parts) == 1 or not terms or sum(
+        any(term in part.casefold() for term in terms) for part in parts
+    ) == len(parts)
+
+
+def _rule_query_target(
+    expert: str,
+    normalized_question: str,
+    query: str,
+    conditions: Mapping[str, object],
+) -> str:
+    """Give every deterministic task one stable retrieval target."""
+
+    lowered = query.casefold()
+    if expert == "price":
+        request_kind = str(conditions.get("request_kind", "listed_price"))
+        return {
+            "minimum": "price.minimum",
+            "offer": "price.offer",
+            "additional_discount": "price.additional_discount",
+            "listed_price": "price.listed_price",
+        }.get(request_kind, "price.listed_price")
+    if expert == "service":
+        if normalized_question == "发货时限或地点":
+            return "shipping.ship_from" if "从哪里发" in lowered else "shipping.dispatch_time"
+        if normalized_question == "快递方式":
+            return "shipping.carrier"
+        if normalized_question == "包邮或运费条件":
+            return "shipping.fee"
+        if normalized_question == "售后或交易规则":
+            if "闲鱼交易" in lowered:
+                return "after_sale.transaction_channel"
+            if "描述" in lowered:
+                return "after_sale.description_policy"
+            if "验货" in lowered or "确认收货" in lowered:
+                return "after_sale.inspection_confirmation"
+            return "after_sale.return_policy"
+        if normalized_question == "普通招呼":
+            return "greeting"
+        return "seller_rule.general"
+    if normalized_question == "是否在售":
+        return "availability.sale_status"
+    if normalized_question == "是否有拆修记录":
+        return "history.disassembly_history"
+    if normalized_question == "是否摔过":
+        return "history.drop_history"
+    if normalized_question == "是否维修过":
+        return "history.repair_history"
+    if normalized_question == "功能是否正常":
+        return "function.shutter" if "快门" in lowered else "function.overall"
+    if normalized_question == "商品瑕疵情况":
+        if "划痕" in lowered:
+            return "condition.scratches"
+        if "磕碰" in lowered:
+            return "condition.dents"
+        return "condition.known_issues"
+    if normalized_question == "商品成色":
+        return "condition.summary"
+    if normalized_question == "商品配件":
+        if "镜头" in lowered:
+            return "lens.focal_length_mm" if re.search(r"\d+\s*mm|焦段|焦距", lowered) else "lens.details"
+        if "齐全" in lowered:
+            return "accessories.completeness"
+        if "原装" in lowered:
+            return "accessories.original"
+        if "说明书" in lowered or "包装" in lowered:
+            return "accessories.manual_or_packaging"
+        return "accessories.items"
+    if normalized_question == "商品型号或使用信息":
+        if "型号" in lowered:
+            return "identity.model"
+        if "哪一年" in lowered or "哪年生产" in lowered:
+            return "product_info.production_year"
+        if "新手" in lowered:
+            return "product_info.beginner_suitability"
+        if "怎么用" in lowered:
+            return "product_info.usage"
+        if "为什么卖" in lowered or "为什么要卖" in lowered:
+            return "product_info.sale_reason"
+    return "product.model_knowledge"
 
 
 def _scope_allowed(expert: object, scope: object) -> bool:
@@ -479,84 +692,45 @@ def _is_repair_task(task: ExpertTask) -> bool:
 
 
 def _fragment(query: str, terms: Sequence[str]) -> str:
-    positions = [(query.casefold().find(term), term) for term in terms if query.casefold().find(term) >= 0]
-    if not positions:
-        return query
-    start, term = min(positions)
-    initial_length = _contiguous_term_length(query, start, term, terms)
-    return _fragment_from_position(
-        query,
-        start,
-        query[start : start + initial_length],
-        initial_length=initial_length,
-    )
+    """Return a whole source sub-question, never a keyword-to-keyword slice.
 
+    Explicit punctuation and whitespace separate independent buyer questions.
+    When a compact Chinese turn provides no trustworthy separator, preserving
+    the complete turn is safer than cutting at the next domain keyword: each
+    task already carries a target, so its expert does not need a short phrase
+    to infer intent.
+    """
 
-def _contiguous_term_length(
-    query: str,
-    start: int,
-    first_term: str,
-    terms: Sequence[str],
-) -> int:
-    """Keep adjacent facet words such as ``带什么镜头`` in one fragment."""
-
-    lowered = query.casefold()
-    end = start + len(first_term)
-    while True:
-        adjacent = [term for term in terms if lowered.startswith(term, end)]
-        if not adjacent:
-            return end - start
-        end += len(max(adjacent, key=len))
+    return _complete_subquestion(query, terms)
 
 
 def _price_fragment(query: str) -> str:
-    """Keep the price clause in source order, even when punctuation is absent."""
+    """Keep a complete price question and all of its explicit conditions."""
 
-    positions = [
-        query.casefold().find(term)
-        for term in (*_BARGAIN_TERMS, *_BUYER_PAYS_TERMS, "包邮")
-        if query.casefold().find(term) >= 0
-    ]
-    positions.extend(match.start() for match in _OFFER_PATTERN.finditer(query))
-    if not positions:
-        return query
-    start = min(positions)
-    start_terms = [
-        term
-        for term in (*_BARGAIN_TERMS, *_BUYER_PAYS_TERMS, "包邮")
-        if query.casefold().startswith(term, start)
-    ]
-    initial_length = max((len(term) for term in start_terms), default=1)
-    return _fragment_from_position(
+    return _complete_subquestion(
         query,
-        start,
-        query[start:],
-        initial_length=initial_length,
+        (*_BARGAIN_TERMS, *_BUYER_PAYS_TERMS, "包邮", "价格", "多少钱"),
     )
 
 
-def _fragment_from_position(
-    query: str,
-    start: int,
-    fallback: str,
-    *,
-    initial_length: int = 1,
-) -> str:
-    punctuation_end = min(
-        (index for index in (query.find(mark, start) for mark in "，,。.!！?？、；;") if index >= 0),
-        default=len(query),
-    )
-    boundary_end = min(
-        (
-            index
-            for term in _EXPERT_BOUNDARY_TERMS
-            for index in (query.casefold().find(term, start + max(initial_length, 1)),)
-            if index >= 0
-        ),
-        default=len(query),
-    )
-    end = min(punctuation_end, boundary_end)
-    return query[start:end].strip() or fallback
+def _complete_subquestion(query: str, terms: Sequence[str]) -> str:
+    """Select one explicitly delimited source question or preserve all text."""
+
+    normalized = query.strip()
+    if not normalized:
+        return normalized
+    parts = [
+        part.strip()
+        for part in re.split(r"[。！？?!；;\r\n]+|(?<=\S)\s+(?=\S)", normalized)
+        if part.strip()
+    ]
+    if len(parts) <= 1:
+        return normalized
+    for part in parts:
+        lowered_part = part.casefold()
+        if any(term in lowered_part for term in terms):
+            return part
+    return normalized
 
 
 def _mentions_seller_pays(lowered: str) -> bool:
@@ -572,6 +746,55 @@ def _mentions_seller_pays(lowered: str) -> bool:
 def _position(query: str, fragment: str) -> int:
     found = query.casefold().find(fragment.casefold())
     return found if found >= 0 else len(query)
+
+
+def _target_terms(target: str) -> Sequence[str]:
+    """Source words that can verify and position one explicit target."""
+
+    return {
+        "availability.sale_status": _STATUS_TERMS,
+        "history.repair_history": _HISTORY_TERMS,
+        "history.disassembly_history": _HISTORY_TERMS,
+        "history.drop_history": _HISTORY_TERMS,
+        "function.shutter": ("快门",),
+        "function.overall": ("功能",),
+        "condition.summary": _CONDITION_TERMS,
+        "condition.scratches": ("划痕",),
+        "condition.dents": ("磕碰",),
+        "condition.known_issues": ("瑕疵", "问题"),
+        "lens.details": _LENS_TERMS,
+        "lens.focal_length_mm": _LENS_TERMS,
+        "accessories.items": _INCLUDED_ITEMS_TERMS,
+        "accessories.completeness": ("齐全",),
+        "accessories.original": ("原装",),
+        "accessories.manual_or_packaging": ("说明书", "包装"),
+        "identity.model": ("型号",),
+        "product_info.production_year": ("哪一年", "哪年生产"),
+        "product_info.beginner_suitability": ("新手",),
+        "product_info.usage": ("怎么用",),
+        "product_info.sale_reason": ("为什么卖", "为什么要卖"),
+        "price.listed_price": _PRICE_TERMS,
+        "price.minimum": (*_BARGAIN_TERMS, *_BUYER_PAYS_TERMS),
+        "price.offer": (*_BARGAIN_TERMS, *_BUYER_PAYS_TERMS),
+        "price.additional_discount": _BARGAIN_TERMS,
+        "shipping.dispatch_time": _DISPATCH_TERMS,
+        "shipping.ship_from": ("从哪里发",),
+        "shipping.carrier": _CARRIER_TERMS,
+        "shipping.fee": _SHIPPING_PRICE_TERMS,
+        "after_sale.return_policy": _AFTER_SALE_TERMS,
+        "after_sale.transaction_channel": ("闲鱼交易",),
+        "after_sale.description_policy": ("描述",),
+        "after_sale.inspection_confirmation": ("验货", "确认收货"),
+    }.get(target, ())
+
+
+def _target_position(query: str, target: str, fallback: str) -> int:
+    """Keep responses in buyer order even when one compact turn is retained."""
+
+    target_terms = _target_terms(target)
+    positions = [query.casefold().find(term) for term in target_terms]
+    found = min((position for position in positions if position >= 0), default=-1)
+    return found if found >= 0 else _position(query, fallback)
 
 
 def _in_query(fragment: str, query: str) -> bool:

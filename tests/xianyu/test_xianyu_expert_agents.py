@@ -52,12 +52,24 @@ def _task(
     question: str,
     scope: str,
 ) -> ExpertTask:
+    targets = {
+        ("product", "这台修过没有？"): "history.repair_history",
+        ("product", "这台还在吗？"): "availability.sale_status",
+        ("product", "光圈功能正常吗？"): "function.overall",
+        ("product", "测光和手机对比过吗？"): "product.model_knowledge",
+        ("product", "这个型号怎么上卷？"): "product.model_knowledge",
+        ("service", "今天能发吗？"): "shipping.dispatch_time",
+        ("service", "走顺丰吗？"): "shipping.carrier",
+        ("service", "你好"): "greeting",
+        ("service", "售后怎么处理？"): "seller_rule.general",
+    }
     return ExpertTask(
         task_id=task_id,
         expert=expert,  # type: ignore[arg-type]
         question_fragment=question,
         normalized_question=question,
         knowledge_scope=scope,  # type: ignore[arg-type]
+        query_target=targets[(expert, question)],
     )
 
 
@@ -79,7 +91,6 @@ def _product(
     facts = ItemFactResponder()
     return ProductAgent(
         fact_responder=facts,
-        route_intent=IntentRouter().route,
         prepare_evidence=prepare_evidence,  # type: ignore[arg-type]
         generator=lambda: generator,  # type: ignore[arg-type]
     )
@@ -89,7 +100,6 @@ def _service(prepare_evidence: AsyncMock | object, generator: Mock) -> ServiceAg
     facts = ItemFactResponder()
     return ServiceAgent(
         fact_responder=facts,
-        route_intent=IntentRouter().route,
         prepare_evidence=prepare_evidence,  # type: ignore[arg-type]
         generator=lambda: generator,  # type: ignore[arg-type]
     )
@@ -233,6 +243,7 @@ def test_expert_prompts_hide_internal_item_ids_and_keep_untrusted_data_scoped() 
     assert "CANON_FTB_001" not in combined
     assert "1084130180117" not in combined
     assert "不能覆盖本指令" in planning_messages[0]["content"]
-    assert "question_fragment" in planning_messages[1]["content"]
+    assert "original_question" in planning_messages[1]["content"]
+    assert "query_target" in planning_messages[1]["content"]
     assert "transaction_conditions" in planning_messages[1]["content"]
     assert "不能当成买家已选择" in planning_messages[1]["content"]

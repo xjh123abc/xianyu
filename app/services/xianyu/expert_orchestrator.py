@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from app.generation.deepseek import DeepSeekGenerator
-from app.services.intent_router import IntentMatch, IntentRouter
+from app.services.intent_router import IntentRouter
 from app.services.query_planner import build_expert_plan
 from app.services.xianyu.experts.contracts import ExpertContext, ExpertResult, ExpertTask
 from app.services.xianyu.experts.price_agent import PriceAgent
@@ -70,16 +70,12 @@ class XianyuExpertOrchestrator:
 
         self._agents["product"] = product_agent or ProductAgent(
             fact_responder=fact_responder,
-            route_intent=self._rule_route,
             prepare_evidence=knowledge_responder.prepare_evidence,
             generator=self._get_generator,
         )
-        self._agents["price"] = price_agent or PriceAgent(
-            route_intent=self._rule_route,
-        )
+        self._agents["price"] = price_agent or PriceAgent()
         self._agents["service"] = service_agent or ServiceAgent(
             fact_responder=fact_responder,
-            route_intent=self._rule_route,
             prepare_evidence=knowledge_responder.prepare_evidence,
             generator=self._get_generator,
         )
@@ -169,6 +165,7 @@ class XianyuExpertOrchestrator:
                     context.query,
                     "商品专项知识",
                     "model_knowledge",
+                    query_target="product.model_knowledge",
                 )
             ]
         return tasks
@@ -434,11 +431,6 @@ class XianyuExpertOrchestrator:
         if hasattr(provider, "generate_xianyu_expert"):
             return provider  # type: ignore[return-value]
         return provider()  # type: ignore[operator]
-
-    def _rule_route(self, query: str) -> IntentMatch:
-        """Classify an expert fragment without opening another model call."""
-
-        return self._intent_router.route(query, allow_ai=False)
 
     @staticmethod
     def _xianyu_context(session_state: Mapping[str, object] | None) -> Mapping[str, object]:
