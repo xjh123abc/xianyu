@@ -11,13 +11,21 @@ def _fake_chat(payload: dict[str, str]) -> dict[str, object]:
     chat_id = payload["chat_id"]
 
     if chat_id == "qa_a05_missing_item" or chat_id == "qa_a08_fresh":
-        return {"action": "clarify", "answer": "请提供具体商品编号", "item_id": None}
+        return {
+            "action": "handoff",
+            "answer": "稍等我看看",
+            "item_id": None,
+            "can_answer": False,
+            "reason": "buyer_question_requires_clarification",
+        }
     if item_id == "XXX999":
         return {
+            "action": "handoff",
             "item_id": "XXX999",
             "item_info": {"found": False},
-            "answer": "没有找到该商品",
+            "answer": "稍等我看看",
             "can_answer": False,
+            "reason": "item_context_conflict",
         }
 
     remembered = "DEMO_ITEM_002" if chat_id == "qa_a08_switch" and item_id is None else item_id
@@ -32,10 +40,18 @@ def _fake_chat(payload: dict[str, str]) -> dict[str, object]:
         answer += "标价为 1280.00 元。"
     if "还能买" in query or "在售" in query:
         if remembered == "DEMO_ITEM_002":
-            answer += "已售出。"
+            answer += "这件已经出掉了。"
         elif remembered == "DEMO_ITEM_003":
-            answer += "状态未知。"
-            can_answer = False
+            return {
+                "action": "handoff",
+                "answer": "稍等我看看",
+                "item_id": remembered,
+                "item_info": {"found": True, "sale_status": "unknown"},
+                "can_answer": False,
+                "reason": "sale_status_unavailable",
+                "sources": sources,
+                "results": [],
+            }
     if any(term in query for term in ("售后", "质量问题", "退货")):
         sources.append({"source": "common/seller_rules.md", "index": 0})
         answer += "按卖家已确认规则处理。"
@@ -46,7 +62,14 @@ def _fake_chat(payload: dict[str, str]) -> dict[str, object]:
         "action": "reply",
         "answer": answer,
         "item_id": remembered,
-        "item_info": {"found": True} if remembered else None,
+        "item_info": {
+            "found": True,
+            "sale_status": "sold" if remembered == "DEMO_ITEM_002" else "listed",
+            "listed_price_cents": 128000 if remembered == "DEMO_ITEM_001" else None,
+            "facts": {"history": {"drop_history": "unknown"}},
+        }
+        if remembered
+        else None,
         "can_answer": can_answer,
         "sources": sources,
         "results": sources,
@@ -63,6 +86,9 @@ def test_runner_records_every_acceptance_case_without_mode_parameters() -> None:
         for payload in record["input"]
     )
     assert all(payload["chat_id"].startswith("qa_") for record in records for payload in record["input"])
+    assert not [record for record in records if record["status"] == "失败"]
+    assert sum(record["status"] == "通过" for record in records) == 5
+    assert sum(record["status"] == "阻塞" for record in records) == 9
 
 
 def test_open_ended_answer_is_not_automatically_marked_passed() -> None:

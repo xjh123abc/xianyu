@@ -56,7 +56,20 @@ _HISTORY_TERMS = ("维修", "修过", "拆修", "改装", "摔", "磕碰", "维�
 _IDENTITY_TERMS = ("型号", "品牌", "品类", "类别", "model", "brand")
 _DISPATCH_TERMS = ("今天能发", "什么时候发", "什么时候能发", "多久发", "发货", "从哪里发")
 _CARRIER_TERMS = ("快递", "顺丰", "中通", "圆通", "韵达", "京东")
-_AFTER_SALE_TERMS = ("闲鱼交易", "可以退", "退货", "退款", "收到发现", "描述一样", "保证", "确认收货", "验货")
+_AFTER_SALE_ITEM_TERMS = ("闲鱼交易", "确认收货", "验货")
+_SELLER_RULE_TERMS = (
+    "售后",
+    "质量问题",
+    "可以退",
+    "退货",
+    "退款",
+    "收到发现",
+    "描述一样",
+    "保证",
+    "规则",
+    "政策",
+)
+_AFTER_SALE_TERMS = (*_AFTER_SALE_ITEM_TERMS, *_SELLER_RULE_TERMS)
 _FOLLOW_UP_TERMS = ("那不包邮", "不包邮呢", "再少", "再便宜", "再优惠", "再刀")
 _OFFER_PATTERN = re.compile(r"(?<!\d)[¥￥]?\s*(\d{1,7}(?:\.\d{1,2})?)\s*(?:元|块|rmb)?")
 _VALID_EXPERTS = {"product", "price", "service"}
@@ -228,17 +241,12 @@ def _rule_drafts(query: str, context: Mapping[str, object] | None) -> list[_Draf
         and not _is_price_question(query, context)
     ):
         add("service", _fragment(query, ("包邮", "运费", "邮费", "快递费")), "包邮或运费条件", service_scope)
-    if any(term in lowered for term in _AFTER_SALE_TERMS):
+    if any(term in lowered for term in _AFTER_SALE_ITEM_TERMS):
         add("service", _fragment(query, _AFTER_SALE_TERMS), "售后或交易规则", service_scope)
-    if (
-        not item_scoped
-        and any(term in lowered for term in ("售后", "退货", "退款", "规则", "政策"))
-        and not any(task.expert == "service" for task in (draft.task for draft in drafts))
-    ):
-        seller_rule_terms = ("售后", "退货", "退款", "规则", "政策")
+    if any(term in lowered for term in _SELLER_RULE_TERMS):
         add(
             "service",
-            _fragment(query, seller_rule_terms),
+            _fragment(query, _SELLER_RULE_TERMS),
             "售后或店铺通用规则",
             "seller_rule",
         )

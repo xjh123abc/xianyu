@@ -175,3 +175,47 @@ def test_model_price_target_must_agree_with_its_validated_conditions() -> None:
     tasks = build_expert_plan("不包邮最低多少", planner=planner)
 
     assert [task.query_target for task in tasks] == ["price.minimum"]
+
+
+def test_quality_problem_keeps_common_rule_when_model_only_plans_price() -> None:
+    """Deterministic rules must retain every known need from a compound turn."""
+
+    def planner(*args: object, **kwargs: object) -> dict[str, object]:
+        return {
+            "tasks": [
+                {
+                    "task_id": "price",
+                    "expert": "price",
+                    "original_question": "多少钱",
+                    "normalized_question": "商品标价",
+                    "query_target": "price.listed_price",
+                    "knowledge_scope": "item_fact",
+                    "transaction_conditions": {"request_kind": "listed_price"},
+                    "depends_on_task_ids": [],
+                }
+            ]
+        }
+
+    tasks = build_expert_plan(
+        "多少钱？收到有质量问题怎么办？",
+        planner=planner,
+        xianyu_context={"item_id": "DEMO_ITEM_001"},
+    )
+
+    assert [task.query_target for task in tasks] == [
+        "price.listed_price",
+        "seller_rule.general",
+    ]
+    assert tasks[1].knowledge_scope == "seller_rule"
+
+
+def test_after_sale_follow_up_uses_common_rule_with_current_item() -> None:
+    tasks = build_expert_plan(
+        "那售后怎么处理？",
+        xianyu_context={"item_id": "DEMO_ITEM_001"},
+    )
+
+    assert len(tasks) == 1
+    assert tasks[0].expert == "service"
+    assert tasks[0].knowledge_scope == "seller_rule"
+    assert tasks[0].query_target == "seller_rule.general"
