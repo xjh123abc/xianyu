@@ -74,6 +74,7 @@ class SessionContext:
     current_order_id: str | None = None
     last_task_type: TaskType | None = None
     negotiation: dict[str, object] = field(default_factory=default_negotiation_state)
+    platform_context: dict[str, dict[str, object]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.history, list) or any(
@@ -102,6 +103,16 @@ class SessionContext:
             raise ValueError("negotiation.round must be a non-negative integer")
         state["item_id"] = _optional_text(state["item_id"], "negotiation.item_id")
         object.__setattr__(self, "negotiation", state)
+        if not isinstance(self.platform_context, Mapping) or any(
+            not isinstance(name, str) or not isinstance(value, Mapping)
+            for name, value in self.platform_context.items()
+        ):
+            raise ValueError("platform_context must map platform names to mappings")
+        object.__setattr__(
+            self,
+            "platform_context",
+            {name: dict(value) for name, value in self.platform_context.items()},
+        )
 
 
 @dataclass(frozen=True, slots=True)

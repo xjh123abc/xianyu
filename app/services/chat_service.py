@@ -151,9 +151,11 @@ class ChatService:
     ) -> dict[str, object]:
         """Resolve context, select a domain handler, then persist the turn."""
 
-        resolved_chat_id, session = self.session_manager.get_or_create(chat_id)
-        history, session_state = self.session_manager.read_context(session)
-        current_item_id = self.session_manager.get_current_item_id(resolved_chat_id)
+        resolved_chat_id = chat_id
+        context = self.session_manager.load(resolved_chat_id)
+        history = context.history
+        session_state = {"order_id": context.current_order_id}
+        current_item_id = context.current_item_id
         # The expert planner owns the one optional model call for a compound
         # Xianyu turn.  This pre-check must stay rule-only so a sub-question
         # cannot trigger a second classifier call.
@@ -208,11 +210,11 @@ class ChatService:
                     resolution_response,
                     common_response,
                 )
-            self.session_manager.append_turn(
+            self.session_manager.save_turn(
                 resolved_chat_id,
                 query,
                 str(resolution_response.get("answer") or ""),
-                last_intent="item_clarification",
+                legacy_intent="item_clarification",
             )
             if resolution_response.get("item_id") is not None:
                 self.item_fact_responder.attach_intent_metadata(
@@ -224,20 +226,21 @@ class ChatService:
                 resolution_response["chat_id"] = resolved_chat_id
             return resolution_response
 
-        if item is not None:
-            self.session_manager.set_current_item_id(
-                resolved_chat_id,
-                str(item["item_id"]),
-            )
-
         route, order_id = route_query(query, history, session_state)
+        pending_xianyu_context_updates: dict[str, object] | None = None
         if route == "rag":
             if self._should_use_xianyu_experts(
                 query,
                 item=item,
                 current_item_id=current_item_id,
             ):
-                expert_context = self.session_manager.get_xianyu_context(resolved_chat_id)
+                expert_context = dict(context.platform_context.get("xianyu", {}))
+                if item is not None and current_item_id != str(item["item_id"]):
+                    expert_context = {
+                        "item_id": str(item["item_id"]),
+                        "recent_price_topic": None,
+                        "shipping_condition": None,
+                    }
                 response = await self.expert_orchestrator.handle(
                     query,
                     item=item,
@@ -247,11 +250,7 @@ class ChatService:
                 if item is not None:
                     updates = xianyu_context_updates(query, expert_context)
                     if updates:
-                        self.session_manager.update_xianyu_context(
-                            resolved_chat_id,
-                            item_id=str(item["item_id"]),
-                            **updates,
-                        )
+                        pending_xianyu_context_updates = updates
             elif is_rule_followup(query, session_order_id(session_state)):
                 response = await asyncio.to_thread(self.chat, query)
             elif any(
@@ -307,17 +306,24 @@ class ChatService:
                 intent_match,
                 item,
             )
-        remembered_order_id = order_id or session_state.get("order_id")
-        self.session_manager.append_turn(
-            resolved_chat_id,
-            query,
-            str(response.get("answer") or ""),
-            order_id=remembered_order_id,
-            last_intent=(
+        remembered_order_id = order_id or context.current_order_id
+        turn_kwargs: dict[str, object] = {
+            "current_order_id": remembered_order_id,
+            "legacy_intent": (
                 intent_match.intent.lower()
                 if intent_match.intent != "OTHER"
                 else self._intent_for_route(route)
             ),
+        }
+        if item is not None:
+            turn_kwargs["current_item_id"] = str(item["item_id"])
+        if pending_xianyu_context_updates:
+            turn_kwargs["xianyu_context_updates"] = pending_xianyu_context_updates
+        self.session_manager.save_turn(
+            resolved_chat_id,
+            query,
+            str(response.get("answer") or ""),
+            **turn_kwargs,
         )
         if chat_id is not None:
             response["chat_id"] = resolved_chat_id
