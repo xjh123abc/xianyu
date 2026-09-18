@@ -7,9 +7,11 @@ from typing import Any, Protocol
 
 import httpx
 
+from app.services.chat_contracts import ChatMessage
+
 
 class ChatClient(Protocol):
-    async def ask(self, *, query: str, chat_id: str, item_id: str | None) -> Mapping[str, Any]:
+    async def ask(self, message: ChatMessage) -> Mapping[str, Any]:
         ...
 
 
@@ -18,10 +20,12 @@ class ChatApiClient:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
 
-    async def ask(self, *, query: str, chat_id: str, item_id: str | None) -> Mapping[str, Any]:
-        body: dict[str, Any] = {"query": query, "chat_id": chat_id}
-        if item_id:
-            body["item_id"] = item_id
+    async def ask(self, message: ChatMessage) -> Mapping[str, Any]:
+        """Send one unified message through the unchanged /chat wire format."""
+
+        body: dict[str, Any] = {"query": message.text, "chat_id": message.chat_id}
+        if message.item_id:
+            body["item_id"] = message.item_id
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(f"{self.base_url}/chat", json=body)
             response.raise_for_status()

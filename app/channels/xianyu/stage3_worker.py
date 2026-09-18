@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from app.channels.xianyu.action_mapper import map_chat_response
+from app.channels.xianyu.adapter import to_chat_message
 from app.channels.xianyu.chat_client import ChatClient
 from app.channels.xianyu.client import TextSender
 from app.channels.xianyu.conversation_guard import ConversationGuard
@@ -79,9 +80,8 @@ class XianyuStage3Worker:
             return {"action": "blocked", "reason": "account_paused_human_or_claimed"}
 
         try:
-            response = await self.chat_client.ask(
-                query=message.text.strip(), chat_id=message.chat_id, item_id=item_id
-            )
+            chat_message = to_chat_message(message, item_id=item_id)
+            response = await self.chat_client.ask(chat_message)
             decision = map_chat_response(response)
         except (TimeoutError, ConnectionError, OSError):
             return await self._handoff(message, sender, item_id, "客服服务暂时不可用")

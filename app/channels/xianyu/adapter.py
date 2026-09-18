@@ -9,6 +9,29 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from app.channels.xianyu.models import InboundMessage
+from app.services.chat_contracts import ChatMessage
+
+
+def to_chat_message(
+    message: InboundMessage,
+    *,
+    item_id: str | None,
+) -> ChatMessage:
+    """Adapt a trusted Xianyu inbound event to the chat-core contract.
+
+    ``item_id`` is supplied only after the worker verifies listing ownership.
+    A raw Xianyu listing identifier must never become a trusted item identifier
+    in the core business flow.
+    """
+
+    return ChatMessage(
+        platform="xianyu",
+        account_id=message.account_id,
+        chat_id=message.chat_id,
+        buyer_id=message.buyer_id,
+        item_id=item_id,
+        text=message.text,
+    )
 
 
 def decode_event(raw_data: object, decrypt: Callable[[str], str]) -> Mapping[str, Any] | None:

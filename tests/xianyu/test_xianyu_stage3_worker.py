@@ -18,6 +18,18 @@ from app.channels.xianyu.stage3_worker import HANDOFF_NOTICE, XianyuStage3Worker
 from app.channels.xianyu.store import ChannelStore
 from app.channels.xianyu.wecom import WeComWebhookNotifier
 from app.main import app
+from app.services.chat_contracts import ChatMessage
+
+
+def _message_payload(message: ChatMessage) -> dict[str, str | None]:
+    return {
+        "platform": message.platform,
+        "account_id": message.account_id,
+        "buyer_id": message.buyer_id,
+        "query": message.text,
+        "chat_id": message.chat_id,
+        "item_id": message.item_id,
+    }
 
 
 class FakeSender:
@@ -34,8 +46,8 @@ class FakeChat:
         self.response = response
         self.calls: list[dict[str, Any]] = []
 
-    async def ask(self, *, query: str, chat_id: str, item_id: str | None) -> Mapping[str, Any]:
-        self.calls.append({"query": query, "chat_id": chat_id, "item_id": item_id})
+    async def ask(self, message: ChatMessage) -> Mapping[str, Any]:
+        self.calls.append(_message_payload(message))
         if isinstance(self.response, BaseException):
             raise self.response
         return self.response
@@ -47,8 +59,8 @@ class BlockingChat(FakeChat):
         self.started = asyncio.Event()
         self.release = asyncio.Event()
 
-    async def ask(self, *, query: str, chat_id: str, item_id: str | None) -> Mapping[str, Any]:
-        self.calls.append({"query": query, "chat_id": chat_id, "item_id": item_id})
+    async def ask(self, message: ChatMessage) -> Mapping[str, Any]:
+        self.calls.append(_message_payload(message))
         self.started.set()
         await self.release.wait()
         return self.response
@@ -57,16 +69,14 @@ class BlockingChat(FakeChat):
 class InProcessHttpChat:
     """Exercise the real FastAPI serializer before returning to the S3 worker."""
 
-    async def ask(
-        self,
-        *,
-        query: str,
-        chat_id: str,
-        item_id: str | None,
-    ) -> Mapping[str, Any]:
+    async def ask(self, message: ChatMessage) -> Mapping[str, Any]:
         response = TestClient(app).post(
             "/chat",
-            json={"query": query, "chat_id": chat_id, "item_id": item_id},
+            json={
+                "query": message.text,
+                "chat_id": message.chat_id,
+                "item_id": message.item_id,
+            },
         )
         response.raise_for_status()
         return response.json()
@@ -115,7 +125,14 @@ def test_answer_is_mapped_sent_and_recorded_with_trusted_item(tmp_path: Path) ->
 
     assert result["action"] == "answer"
     assert sender.calls[0][:3] == ("xianyu:seller:chat-1", "buyer-1", "商品 A 标价 99 元。")
-    assert chat.calls[0]["item_id"] == "ITEM_A"
+    assert chat.calls[0] == {
+        "platform": "xianyu",
+        "account_id": "seller",
+        "buyer_id": "buyer-1",
+        "query": "这件商品多少钱？",
+        "chat_id": "xianyu:seller:chat-1",
+        "item_id": "ITEM_A",
+    }
     row = store.message("seller", "m1")
     assert row and row["action"] == "answer" and row["delivery_state"] == "CONFIRMED"
 
@@ -287,7 +304,16 @@ def test_unbound_listing_is_ignored_without_calling_chat(tmp_path: Path) -> None
     asyncio.run(instance.process(message("m7", platform_item_id="listing-b"), sender))
     asyncio.run(instance.process(message("m8", platform_item_id="unbound"), sender))
 
-    assert chat.calls == [{"query": "这件商品多少钱？", "chat_id": "xianyu:seller:chat-1", "item_id": "ITEM_B"}]
+    assert chat.calls == [
+        {
+            "platform": "xianyu",
+            "account_id": "seller",
+            "buyer_id": "buyer-1",
+            "query": "这件商品多少钱？",
+            "chat_id": "xianyu:seller:chat-1",
+            "item_id": "ITEM_B",
+        }
+    ]
     assert store.message("seller", "m8")["status"] == "IGNORED"
     assert store.message("seller", "m8")["error"] == "item_not_bound_to_seller"
 
