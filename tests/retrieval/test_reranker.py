@@ -114,11 +114,14 @@ def test_model_load_uses_configured_local_path_without_download(
         "reranker_model_path",
         str(local_model_path),
     )
+    monkeypatch.setattr(reranker_module.settings, "model_device", "cpu")
     monkeypatch.setattr(reranker_module, "CrossEncoder", fake_cross_encoder)
 
     Reranker()
 
-    assert calls == [(str(local_model_path), {"local_files_only": True})]
+    assert calls == [
+        (str(local_model_path), {"device": "cpu", "local_files_only": True})
+    ]
 
 
 def test_model_load_rejects_missing_path(monkeypatch: pytest.MonkeyPatch) -> None:

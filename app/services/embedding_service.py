@@ -4,7 +4,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Sequence
 
-from app.infrastructure.model_runtime import configure_huggingface_loading
+from app.infrastructure.model_runtime import (
+    configure_huggingface_loading,
+    load_with_device_fallback,
+)
 
 configure_huggingface_loading()
 
@@ -17,9 +20,13 @@ from config.settings import settings
 @lru_cache(maxsize=1)
 def _load_model(model_path: str) -> SentenceTransformer:
     """Load one local embedding model instance per process."""
-    return SentenceTransformer(
-        model_path,
-        local_files_only=True,
+    return load_with_device_fallback(
+        lambda device: SentenceTransformer(
+            model_path,
+            device=device,
+            local_files_only=True,
+        ),
+        settings.model_device,
     )
 
 

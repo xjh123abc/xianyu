@@ -24,6 +24,7 @@ try:
         knowledge_base_chunk_size: int = 500
         embedding_model_path: str = ""
         reranker_model_path: str = ""
+        model_device: str = "auto"
         dense_top_k: int = 5
         bm25_top_k: int = 5
         rrf_k: int = 60
