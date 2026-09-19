@@ -88,7 +88,7 @@ def test_session_contract_reserves_independent_negotiation_state() -> None:
 
 
 def test_task_and_response_contracts_preserve_partial_task_outcomes() -> None:
-    product = Task("product-1", "product", "这个修过吗？")
+    product = Task("product-1", "product", "这个修过吗？", {"target": "history"})
     unavailable_service = TaskResult(
         task_id="service-1",
         status="unavailable",
@@ -103,6 +103,7 @@ def test_task_and_response_contracts_preserve_partial_task_outcomes() -> None:
 
     assert [result.status for result in response.results] == ["answered", "unavailable"]
     assert response.results[1].reason == "shipping_record_missing"
+    assert product.metadata == {"target": "history"}
 
 
 @pytest.mark.parametrize(
@@ -110,6 +111,7 @@ def test_task_and_response_contracts_preserve_partial_task_outcomes() -> None:
     [
         (lambda: Task("", "product", "问题"), "task_id"),
         (lambda: Task("task", "invalid", "问题"), "task_type"),
+        (lambda: Task("task", "product", "问题", []), "metadata"),
         (lambda: SessionContext(last_task_type="invalid"), "last_task_type"),
         (lambda: SessionContext(negotiation={"round": -1}), "negotiation.round"),
     ],

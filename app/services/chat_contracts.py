@@ -122,12 +122,16 @@ class Task:
     task_id: str
     task_type: TaskType
     query: str
+    metadata: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "task_id", _required_text(self.task_id, "task_id"))
         if self.task_type not in TASK_TYPES:
             raise ValueError("task_type must be product, price, service, or order")
         object.__setattr__(self, "query", _required_text(self.query, "query"))
+        if not isinstance(self.metadata, Mapping):
+            raise ValueError("metadata must be a mapping")
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
-from collections.abc import Mapping
 
 from app.generation.deepseek import DeepSeekGenerator
 from app.infrastructure.order_mcp_client import get_order_via_mcp
@@ -24,17 +22,10 @@ from app.services.intent_router import IntentRouter
 from app.services.item_service import ItemService
 from app.services.mcp_service import MCPService
 from app.services.order_chat_handler import OrderChatHandler
-from app.services.order_router import (
-    Route,
-    history_order_id,
-    is_rule_followup,
-    route_query,
-    session_order_id,
-)
+from app.services.order_router import route_query as legacy_route_query
+from app.services.planner import Planner, planner_state
 from app.services.query_planner import (
-    build_question_plan,
     common_knowledge_query,
-    is_seller_scoped_query,
     xianyu_context_updates,
 )
 from app.services.rag_service import RAGService
@@ -49,6 +40,10 @@ from config.settings import settings
 
 
 logger = logging.getLogger(__name__)
+
+# Public compatibility for older callers.  ChatService itself now receives
+# order routing only through Planner.
+route_query = legacy_route_query
 
 
 class ChatService:
@@ -68,6 +63,7 @@ class ChatService:
         item_service: ItemService | None = None,
         intent_router: IntentRouter | None = None,
         expert_orchestrator: XianyuExpertOrchestrator | None = None,
+        planner: Planner | None = None,
     ) -> None:
         self.rag_service = rag_service or RAGService(
             vector_search=vector_search,
@@ -104,6 +100,13 @@ class ChatService:
         self.item_context_resolver = ItemContextResolver(
             self.item_service,
             lambda item_id: self.mcp_service.get_item_info(item_id),
+        )
+        self.planner = planner or Planner(
+            intent_router=self.intent_router,
+            requires_item_context=self.item_context_resolver.requires_item_context,
+            may_contain_explicit_item_reference=(
+                self.item_context_resolver.may_contain_explicit_item_reference
+            ),
         )
         self.price_agent = PriceAgent()
         self.item_fact_responder = ItemFactResponder(price_agent=self.price_agent)
@@ -154,45 +157,23 @@ class ChatService:
         resolved_chat_id = chat_id
         context = self.session_manager.load(resolved_chat_id)
         history = context.history
-        session_state = {"order_id": context.current_order_id}
         current_item_id = context.current_item_id
-        # The expert planner owns the one optional model call for a compound
-        # Xianyu turn.  This pre-check must stay rule-only so a sub-question
-        # cannot trigger a second classifier call.
-        intent_match = self.intent_router.route(query, allow_ai=False)
-        plan = build_question_plan(query)
-        needs_item = bool(
-            item_id
-            or current_item_id
-            or plan["item_fields"]
-            or any(
-                question["scope"] == "item"
-                for question in plan["knowledge_questions"]
-            )
-            or (
-                intent_match.requires_item
-                and bool(
-                    item_id
-                    or current_item_id
-                    or self.item_context_resolver.requires_item_context(query)
-                )
-            )
-            or self.item_context_resolver.may_contain_explicit_item_reference(query)
-        )
+        tasks = self.planner.plan(query, context, item_id=item_id)
+        state = planner_state(tasks)
+        intent_match = state.intent_match
+        plan = state.question_plan
         text_item_ids = (
             self.item_context_resolver.resolve_text_item_ids(query)
-            if needs_item
+            if state.needs_item
             else []
         )
-        if needs_item:
+        if state.needs_item:
             item, resolution_response = await self.item_context_resolver.resolve(
                 query,
                 item_id,
                 current_item_id,
                 text_item_ids=text_item_ids,
-                defer_to_order_context=bool(
-                    session_order_id(session_state) or history_order_id(history)
-                ),
+                defer_to_order_context=state.defer_to_order_context,
             )
         else:
             item, resolution_response = None, None
@@ -226,14 +207,10 @@ class ChatService:
                 resolution_response["chat_id"] = resolved_chat_id
             return resolution_response
 
-        route, order_id = route_query(query, history, session_state)
+        route, order_id = state.route, state.order_id
         pending_xianyu_context_updates: dict[str, object] | None = None
         if route == "rag":
-            if self._should_use_xianyu_experts(
-                query,
-                item=item,
-                current_item_id=current_item_id,
-            ):
+            if item is not None or state.use_xianyu_without_item:
                 expert_context = dict(context.platform_context.get("xianyu", {}))
                 if item is not None and current_item_id != str(item["item_id"]):
                     expert_context = {
@@ -251,7 +228,7 @@ class ChatService:
                     updates = xianyu_context_updates(query, expert_context)
                     if updates:
                         pending_xianyu_context_updates = updates
-            elif is_rule_followup(query, session_order_id(session_state)):
+            elif state.is_rule_followup:
                 response = await asyncio.to_thread(self.chat, query)
             elif any(
                 question["scope"] == "item"
@@ -270,7 +247,7 @@ class ChatService:
             elif plan["knowledge_questions"] and (
                 current_item_id is not None
                 or bool(plan["item_fields"])
-                or is_seller_scoped_query(query)
+                or state.use_xianyu_without_item
             ):
                 response = await self.xianyu_knowledge_responder.handle_common(
                     common_knowledge_query(plan, query)
@@ -363,7 +340,7 @@ class ChatService:
         )
 
     @staticmethod
-    def _intent_for_route(route: Route) -> str:
+    def _intent_for_route(route: str) -> str:
         if route == "order":
             return "order_query"
         if route == "rag_mcp":
@@ -382,25 +359,6 @@ class ChatService:
                 return self.generator
         self.generator = DeepSeekGenerator()
         return self.generator
-
-    @staticmethod
-    def _should_use_xianyu_experts(
-        query: str,
-        *,
-        item: Mapping[str, object] | None,
-        current_item_id: str | None,
-    ) -> bool:
-        """Select the unified Xianyu path without capturing ordinary RAG."""
-
-        if item is not None:
-            return True
-        if is_seller_scoped_query(query):
-            return True
-        if current_item_id is not None:
-            return True
-        return bool(
-            re.fullmatch(r"(?:你好|您好|哈喽|hello|hi)[！!。？? ]*", query.casefold())
-        )
 
     def chat(self, query: str) -> dict[str, object]:
         """Delegate the ordinary RAG path to RAGService."""
