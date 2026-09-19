@@ -143,6 +143,7 @@ class TaskResult:
     answer: str
     sources: list[dict[str, object]] = field(default_factory=list)
     reason: str | None = None
+    metadata: dict[str, object] = field(default_factory=dict, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "task_id", _required_text(self.task_id, "task_id"))
@@ -154,6 +155,9 @@ class TaskResult:
             raise ValueError("sources must be a list of mappings")
         object.__setattr__(self, "sources", [dict(source) for source in self.sources])
         object.__setattr__(self, "reason", _optional_text(self.reason, "reason"))
+        if not isinstance(self.metadata, Mapping):
+            raise ValueError("metadata must be a mapping")
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True, slots=True)

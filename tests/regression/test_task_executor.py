@@ -108,22 +108,14 @@ def test_xianyu_expert_handler_adapts_existing_expert_response_to_task_result() 
     )
 
 
-def test_order_handler_keeps_the_existing_combined_order_route() -> None:
+def test_order_handler_uses_the_standalone_order_route_for_combined_plan() -> None:
     class _OrderHandler:
         def __init__(self) -> None:
-            self.combined_calls: list[tuple[str, str, list[dict[str, str]]]] = []
-
-        async def combined(
-            self,
-            query: str,
-            order_id: str,
-            history: list[dict[str, str]],
-        ) -> dict[str, object]:
-            self.combined_calls.append((query, order_id, history))
-            return {"action": "reply", "answer": "订单正在运输中。"}
+            self.order_calls: list[tuple[str, str]] = []
 
         async def order(self, query: str, order_id: str) -> dict[str, object]:
-            raise AssertionError(f"unexpected order call: {query} {order_id}")
+            self.order_calls.append((query, order_id))
+            return {"action": "reply", "answer": "订单正在运输中。"}
 
     handler = _OrderHandler()
     task = Task(
@@ -137,4 +129,4 @@ def test_order_handler_keeps_the_existing_combined_order_route() -> None:
     result = asyncio.run(OrderTaskHandler(order_handler=handler).handle(task, _message(), context))  # type: ignore[arg-type]
 
     assert result == TaskResult("order-1", "answered", "订单正在运输中。")
-    assert handler.combined_calls == [(task.query, "TEST1001", context.history)]
+    assert handler.order_calls == [(task.query, "TEST1001")]

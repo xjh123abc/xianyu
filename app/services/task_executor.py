@@ -13,6 +13,7 @@ from typing import Protocol
 
 from app.services.chat_contracts import ChatMessage, SessionContext, Task, TaskResult
 from app.services.order_chat_handler import OrderChatHandler
+from app.services.xianyu.knowledge_responder import XianyuKnowledgeResponder
 from app.services.xianyu.expert_orchestrator import XianyuExpertOrchestrator
 
 
@@ -157,7 +158,7 @@ class XianyuExpertTaskHandler:
 
 
 class OrderTaskHandler:
-    """Adapt the existing order handler while retaining the S7 combined route."""
+    """Adapt the existing order handler through its standalone MCP path."""
 
     def __init__(self, *, order_handler: OrderChatHandler) -> None:
         self._order_handler = order_handler
@@ -174,10 +175,7 @@ class OrderTaskHandler:
         order_id = _optional_text(state.get("order_id")) or context.current_order_id
         if route == "missing_order_id" or order_id is None:
             return TaskResult(task.task_id, "unavailable", "", reason="order_id_missing")
-        if route == "rag_mcp":
-            response = await self._order_handler.combined(task.query, order_id, context.history)
-        else:
-            response = await self._order_handler.order(task.query, order_id)
+        response = await self._order_handler.order(task.query, order_id)
         return _response_result(task, response, unavailable_reason="order_answer_unavailable")
 
 
@@ -204,6 +202,43 @@ def _response_result(
     if (
         response.get("action") == "reply" or response.get("can_answer") is True
     ) and isinstance(answer, str) and answer.strip():
-        return TaskResult(task.task_id, "answered", answer.strip(), safe_sources)
+        return TaskResult(
+            task.task_id,
+            "answered",
+            answer.strip(),
+            safe_sources,
+            metadata={"response": dict(response)},
+        )
     reason = _optional_text(response.get("reason")) or unavailable_reason
-    return TaskResult(task.task_id, "unavailable", "", safe_sources, reason)
+    return TaskResult(
+        task.task_id,
+        "unavailable",
+        "",
+        safe_sources,
+        reason,
+        metadata={"response": dict(response)},
+    )
+
+
+class ServiceTaskHandler:
+    """Use the knowledge boundary for the service half of a combined turn."""
+
+    def __init__(
+        self,
+        *,
+        expert_handler: XianyuExpertTaskHandler,
+        knowledge_responder: XianyuKnowledgeResponder,
+    ) -> None:
+        self._expert_handler = expert_handler
+        self._knowledge_responder = knowledge_responder
+
+    async def handle(
+        self,
+        task: Task,
+        message: ChatMessage,
+        context: SessionContext,
+    ) -> TaskResult:
+        if _planner_metadata(task).get("route") != "rag_mcp":
+            return await self._expert_handler.handle(task, message, context)
+        response = await self._knowledge_responder.handle_common(task.query)
+        return _response_result(task, response, unavailable_reason="service_answer_unavailable")

@@ -17,6 +17,7 @@ from app.retrieval.bm25 import BM25Search
 from app.retrieval.hybrid_search import HybridSearch
 from app.retrieval.reranker import Reranker
 from app.retrieval.vector_search import VectorSearch
+from app.services.chat_contracts import ChatMessage, SessionContext, Task
 from app.services.chat_response import non_rag_response
 from app.services.intent_router import IntentRouter
 from app.services.item_service import ItemService
@@ -25,6 +26,7 @@ from app.services.mcp_service import MCPService
 from app.services.order_chat_handler import OrderChatHandler
 from app.services.order_router import route_query as legacy_route_query
 from app.services.planner import Planner, planner_state
+from app.services.result_merger import ResultMerger
 from app.services.query_planner import (
     common_knowledge_query,
     xianyu_context_updates,
@@ -33,6 +35,7 @@ from app.services.rag_service import RAGService
 from app.services.session_manager import SessionManager
 from app.services.task_executor import (
     OrderTaskHandler,
+    ServiceTaskHandler,
     TaskExecutor,
     XianyuExpertTaskHandler,
 )
@@ -142,10 +145,14 @@ class ChatService:
             {
                 "product": xianyu_handler,
                 "price": xianyu_handler,
-                "service": xianyu_handler,
+                "service": ServiceTaskHandler(
+                    expert_handler=xianyu_handler,
+                    knowledge_responder=self.xianyu_knowledge_responder,
+                ),
                 "order": OrderTaskHandler(order_handler=self.order_handler),
             }
         )
+        self.result_merger = ResultMerger()
 
     async def chat_async(
         self,
@@ -175,13 +182,32 @@ class ChatService:
         *,
         item_id: str | None = None,
     ) -> dict[str, object]:
-        """Resolve context, select a domain handler, then persist the turn."""
+        """Run the stable load → plan → execute transition boundary."""
+
+        context = self.session_manager.load(chat_id)
+        tasks = self.planner.plan(query, context, item_id=item_id)
+        return await self._execute_planned_turn(
+            query,
+            chat_id,
+            context,
+            tasks,
+            item_id=item_id,
+        )
+
+    async def _execute_planned_turn(
+        self,
+        query: str,
+        chat_id: str,
+        context: SessionContext,
+        tasks: list[Task],
+        *,
+        item_id: str | None = None,
+    ) -> dict[str, object]:
+        """Compatibility executor while specialist handlers are migrated."""
 
         resolved_chat_id = chat_id
-        context = self.session_manager.load(resolved_chat_id)
         history = context.history
         current_item_id = context.current_item_id
-        tasks = self.planner.plan(query, context, item_id=item_id)
         state = planner_state(tasks)
         intent_match = state.intent_match
         plan = state.question_plan
@@ -282,8 +308,17 @@ class ChatService:
                 response = clarification(query)
             else:
                 response = await asyncio.to_thread(self.chat, query)
-        elif route == "rag_mcp":
-            response = await self.order_handler.combined(query, order_id, history)
+        elif [task.task_type for task in tasks] == ["order", "service"]:
+            message = ChatMessage(
+                "xianyu",
+                "seller",
+                chat_id,
+                "buyer",
+                item_id,
+                query,
+            )
+            results = await self.task_executor.execute(tasks, message, context)
+            response = self.result_merger.merge(query, tasks, results)
         elif route == "missing_order_id":
             response = non_rag_response(
                 query,
@@ -366,8 +401,6 @@ class ChatService:
     def _intent_for_route(route: str) -> str:
         if route == "order":
             return "order_query"
-        if route == "rag_mcp":
-            return "rag_mcp"
         if route == "rag":
             return "rag_query"
         return route

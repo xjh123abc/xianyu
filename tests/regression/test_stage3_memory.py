@@ -176,7 +176,9 @@ def test_chat_service_preserves_order_context_across_three_turns() -> None:
 
     rag_service = Mock()
     rag_service.chat.return_value = {"query": query_two, "answer": "通常 24 小时内发货", "results": []}
-    rag_service.prepare.return_value = {
+    xianyu_rag_service = Mock()
+    xianyu_rag_service.prepare.return_value = {
+        "can_answer": True,
         "query": query_three,
         "results": [{"content": "付款成功后 24 小时内发出。"}],
         "context": {"context": "付款成功后 24 小时内发出。", "sources": [{"source": "shipping.md", "index": 0}]},
@@ -187,9 +189,10 @@ def test_chat_service_preserves_order_context_across_three_turns() -> None:
     mcp_service.get_order = AsyncMock(return_value=ORDER_RESULT)
     generator = Mock()
     generator.generate_order.return_value = "TEST1001 当前待发货"
-    generator.generate_combined.return_value = "TEST1001 当前待发货，平台规则为 24 小时内发货。"
+    generator.generate_xianyu.return_value = "平台规则为 24 小时内发货。"
     service = ChatService(
         rag_service=rag_service,
+        xianyu_rag_service=xianyu_rag_service,
         mcp_service=mcp_service,
         generator=generator,
         session_manager=SessionManager(),
@@ -203,8 +206,8 @@ def test_chat_service_preserves_order_context_across_three_turns() -> None:
     assert second["answer"] == "通常 24 小时内发货"
     assert third["answer"].startswith("TEST1001 当前待发货")
     assert mcp_service.get_order.await_count == 2
-    generator.generate_combined.assert_called_once()
-    assert generator.generate_combined.call_args.kwargs["history"]
+    generator.generate_combined.assert_not_called()
+    generator.generate_xianyu.assert_called_once()
 
 
 def test_chat_api_accepts_and_returns_chat_id(monkeypatch) -> None:

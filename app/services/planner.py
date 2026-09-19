@@ -103,8 +103,16 @@ class Planner:
         )
         metadata = {_PLAN_STATE_KEY: _state_metadata(state)}
 
-        if route in {"order", "rag_mcp", "missing_order_id"}:
+        if route in {"order", "missing_order_id"}:
             return [Task("order-1", "order", query, metadata)]
+        if route == "rag_mcp":
+            # S7 replaces the old combined route with independently executable
+            # order and service work.  The legacy route remains metadata only
+            # while callers finish migrating to TaskResult merging.
+            return [
+                Task("order-1", "order", query, metadata),
+                Task("service-1", "service", query, metadata),
+            ]
         if route == "unsupported_action":
             return [Task("service-1", "service", query, metadata)]
 
