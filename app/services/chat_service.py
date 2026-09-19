@@ -30,6 +30,11 @@ from app.services.query_planner import (
 )
 from app.services.rag_service import RAGService
 from app.services.session_manager import SessionManager
+from app.services.task_executor import (
+    OrderTaskHandler,
+    TaskExecutor,
+    XianyuExpertTaskHandler,
+)
 from app.services.xianyu.item_context_resolver import ItemContextResolver
 from app.services.xianyu.item_fact_responder import ItemFactResponder
 from app.services.xianyu.expert_orchestrator import XianyuExpertOrchestrator
@@ -64,6 +69,7 @@ class ChatService:
         intent_router: IntentRouter | None = None,
         expert_orchestrator: XianyuExpertOrchestrator | None = None,
         planner: Planner | None = None,
+        task_executor: TaskExecutor | None = None,
     ) -> None:
         self.rag_service = rag_service or RAGService(
             vector_search=vector_search,
@@ -122,6 +128,18 @@ class ChatService:
             intent_router=self.intent_router,
             generator=self._get_generator,
             price_agent=self.price_agent,
+        )
+        xianyu_handler = XianyuExpertTaskHandler(
+            expert_orchestrator=self.expert_orchestrator,
+            item_loader=lambda item_id: self.mcp_service.get_item_info(item_id),
+        )
+        self.task_executor = task_executor or TaskExecutor(
+            {
+                "product": xianyu_handler,
+                "price": xianyu_handler,
+                "service": xianyu_handler,
+                "order": OrderTaskHandler(order_handler=self.order_handler),
+            }
         )
 
     async def chat_async(
