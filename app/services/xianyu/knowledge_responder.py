@@ -15,7 +15,7 @@ from app.services.query_planner import (
     QuestionPlan,
     build_question_plan,
 )
-from app.services.rag_service import RAGService
+from app.services.knowledge_service import KnowledgeService
 from app.services.xianyu.item_fact_responder import ItemFactResponder
 from app.services.xianyu.responses import (
     clarification,
@@ -49,12 +49,12 @@ class XianyuKnowledgeResponder:
     def __init__(
         self,
         *,
-        rag_service: Callable[[], RAGService],
+        knowledge_service: KnowledgeService,
         generator: Callable[[], DeepSeekGenerator],
         fact_responder: ItemFactResponder,
         route_intent: Callable[[str], IntentMatch],
     ) -> None:
-        self._rag_service = rag_service
+        self._knowledge_service = knowledge_service
         self._generator = generator
         self._fact_responder = fact_responder
         self._route_intent = route_intent
@@ -244,12 +244,14 @@ class XianyuKnowledgeResponder:
 
         prepared: Mapping[str, object] | None = None
         try:
-            rag_service = self._rag_service()
-            warm_up = getattr(rag_service, "warm_up", None)
-            if callable(warm_up):
-                warm_up()
             retrieval_query = f"{query} {COMMON_KNOWLEDGE_RETRIEVAL_HINT}".strip()
-            prepared = await asyncio.to_thread(rag_service.prepare, retrieval_query)
+            self._knowledge_service.warm_up()
+            prepared = await asyncio.to_thread(
+                self._knowledge_service.search,
+                retrieval_query,
+                "merchant",
+                platform="xianyu",
+            )
             context = prepared.get("context")
             knowledge_sources = valid_knowledge_sources(prepared)
             if (
@@ -366,16 +368,13 @@ class XianyuKnowledgeResponder:
     ) -> dict[str, object]:
         """Shared retrieval implementation for legacy and expert callers."""
 
-        rag_service = self._rag_service()
         contexts: list[str] = []
         sources: list[Mapping[str, object]] = []
         results: list[object] = []
         issues: list[str] = []
         reliability: object = None
         try:
-            warm_up = getattr(rag_service, "warm_up", None)
-            if callable(warm_up):
-                warm_up()
+            self._knowledge_service.warm_up()
         except Exception:
             logger.exception("Xianyu RAG warm-up failed for item_id=%s", item["item_id"])
             issues.append("knowledge_warmup_failed")
@@ -395,8 +394,10 @@ class XianyuKnowledgeResponder:
                 ).strip()
             try:
                 prepared = await asyncio.to_thread(
-                    rag_service.prepare,
+                    self._knowledge_service.search,
                     retrieval_query,
+                    "item" if need["scope"] == "item" else "merchant",
+                    platform="xianyu",
                     item_id=str(item["item_id"])
                     if need["scope"] == "item"
                     else None,

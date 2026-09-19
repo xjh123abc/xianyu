@@ -20,6 +20,7 @@ from app.retrieval.vector_search import VectorSearch
 from app.services.chat_response import non_rag_response
 from app.services.intent_router import IntentRouter
 from app.services.item_service import ItemService
+from app.services.knowledge_service import KnowledgeService
 from app.services.mcp_service import MCPService
 from app.services.order_chat_handler import OrderChatHandler
 from app.services.order_router import route_query as legacy_route_query
@@ -70,6 +71,7 @@ class ChatService:
         expert_orchestrator: XianyuExpertOrchestrator | None = None,
         planner: Planner | None = None,
         task_executor: TaskExecutor | None = None,
+        knowledge_service: KnowledgeService | None = None,
     ) -> None:
         self.rag_service = rag_service or RAGService(
             vector_search=vector_search,
@@ -116,8 +118,11 @@ class ChatService:
         )
         self.price_agent = PriceAgent()
         self.item_fact_responder = ItemFactResponder(price_agent=self.price_agent)
+        self.knowledge_service = knowledge_service or KnowledgeService(
+            self._get_xianyu_rag_service
+        )
         self.xianyu_knowledge_responder = XianyuKnowledgeResponder(
-            rag_service=self._get_xianyu_rag_service,
+            knowledge_service=self.knowledge_service,
             generator=self._get_generator,
             fact_responder=self.item_fact_responder,
             route_intent=lambda query: self.intent_router.route(query),

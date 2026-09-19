@@ -12,6 +12,7 @@ from app.generation.xianyu_expert_prompt import (
 )
 from app.services.intent_router import IntentRouter
 from app.services.item_service import ItemService
+from app.services.knowledge_service import KnowledgeService
 from app.services.xianyu.experts.contracts import ExpertContext, ExpertTask
 from app.services.xianyu.experts.product_agent import ProductAgent
 from app.services.xianyu.experts.service_agent import ServiceAgent
@@ -77,7 +78,7 @@ def _knowledge(rag: EvidenceRag, generator: Mock) -> XianyuKnowledgeResponder:
     facts = ItemFactResponder()
     router = IntentRouter()
     return XianyuKnowledgeResponder(
-        rag_service=lambda: rag,  # type: ignore[arg-type]
+        knowledge_service=KnowledgeService(lambda: rag),  # type: ignore[arg-type]
         generator=lambda: generator,  # type: ignore[arg-type]
         fact_responder=facts,
         route_intent=router.route,
