@@ -121,19 +121,19 @@ def _validate_response(response: dict[str, Any]) -> None:
     action = response.get("action")
     answer = response.get("answer")
     can_answer = response.get("can_answer")
-    if response.get("route") != "xianyu":
+    if response.get("route") not in {"xianyu", "unified"}:
         raise RuntimeError("响应没有进入 xianyu 专家链路")
-    if action not in {"reply", "handoff"}:
+    if action not in {"reply", "clarify"}:
         raise RuntimeError(f"响应 action 无效: {action!r}")
     if not isinstance(answer, str) or not answer.strip():
         raise RuntimeError("响应 answer 为空")
     if action == "reply" and can_answer is not True:
         raise RuntimeError("reply 与 can_answer 状态矛盾")
-    if action == "handoff":
-        if answer != "稍等我看看" or can_answer is not False:
-            raise RuntimeError("handoff 未使用固定等待话术或状态矛盾")
+    if action == "clarify":
+        if can_answer is not False:
+            raise RuntimeError("clarify 与 can_answer 状态矛盾")
         if not isinstance(response.get("reason"), str) or not response["reason"].strip():
-            raise RuntimeError("handoff 缺少内部原因")
+            raise RuntimeError("clarify 缺少内部原因")
 
 
 def _result_record(
