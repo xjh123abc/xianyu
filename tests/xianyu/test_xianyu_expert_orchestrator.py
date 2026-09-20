@@ -177,7 +177,7 @@ def test_missing_model_result_is_fail_closed() -> None:
     )
 
     assert result["action"] != "handoff"
-    assert "暂时无法确认" in result["answer"]
+    assert "暂无足够信息确认" in result["answer"]
     assert result["can_answer"] is False
 
 

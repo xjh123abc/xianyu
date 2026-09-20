@@ -42,12 +42,13 @@ def _unique_tasks(expert_tasks: list[object], metadata: dict[str, object]) -> li
     """Keep first task type in buyer order; classification remains delegated."""
 
     tasks: list[Task] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     for expert_task in expert_tasks:
         task_type = expert_task.expert  # type: ignore[attr-defined]
-        if task_type in seen:
+        identity = (task_type, expert_task.original_question)  # type: ignore[attr-defined]
+        if identity in seen:
             continue
-        seen.add(task_type)
+        seen.add(identity)
         tasks.append(Task(f"q{len(tasks) + 1}", task_type, expert_task.original_question, metadata))  # type: ignore[attr-defined]
     return tasks
 

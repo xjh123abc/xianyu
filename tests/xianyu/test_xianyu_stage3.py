@@ -151,7 +151,7 @@ def test_mcp_failure_keeps_independent_common_knowledge_answer() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     item_lookup.assert_awaited_once_with("DEMO_ITEM_001")
     assert rag.item_ids == [None]
@@ -170,7 +170,7 @@ def test_missing_item_keeps_common_answer_and_asks_for_item() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert "DEMO_ITEM_001" not in str(result["answer"])
     service.mcp_service.get_item_info.assert_not_awaited()
     assert rag.item_ids == [None]
@@ -190,7 +190,7 @@ def test_unknown_status_does_not_fall_back_to_common_shipping_rules() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert result["sources"] == [
         {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"}
     ]

@@ -72,7 +72,7 @@ def merge_partial_response(
 
     merged = dict(partial)
     if partial.get("can_answer") is False or knowledge.get("can_answer") is False:
-        merged["answer"] = BUYER_HANDOFF_REPLY
+        merged["answer"] = "该问题目前暂无足够信息确认。"
         merged["action"] = "clarify"
         merged["next_step"] = "clarify"
         merged["can_answer"] = False
