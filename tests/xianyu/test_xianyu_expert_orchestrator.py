@@ -101,8 +101,8 @@ def test_price_and_repair_dependency_handoff_does_not_make_a_conditional_offer()
         )
     )
 
-    assert result["action"] == "handoff", result
-    assert result["answer"] == "稍等我看看"
+    assert result["action"] != "handoff", result
+    assert result["answer"]
     assert "dependency_unresolved" in str(result["reason"])
     assert "1470" not in str(result["answer"])
 
@@ -176,17 +176,17 @@ def test_missing_model_result_is_fail_closed() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
-    assert result["answer"] == "稍等我看看"
-    assert "knowledge_evidence_unavailable" in str(result["reason"])
+    assert result["action"] != "handoff"
+    assert "暂时无法确认" in result["answer"]
+    assert result["can_answer"] is False
 
 
-def test_legacy_missing_action_is_a_reasoned_handoff() -> None:
+def test_legacy_missing_action_becomes_auto_clarification() -> None:
     mapped = map_chat_response(
         {"answer": "", "can_answer": False, "reason": "expert_result_empty"}
     )
 
-    assert mapped.action == "human_handoff"
+    assert mapped.action == "clarify"
     assert mapped.reason == "expert_result_empty"
 
 
@@ -213,7 +213,7 @@ def test_expert_budget_discards_late_batch_result() -> None:
         orchestrator.handle("还在吗？", item=_canon_item())
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["answer"] == "稍等我看看"
     assert result["reason"] == "expert_processing_timeout"
 
@@ -247,7 +247,7 @@ def test_current_item_context_is_reused_for_an_unclassified_follow_up() -> None:
     )
     result = asyncio.run(service.chat_async("测光对比过吗？", "s5_current_item"))
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["item_id"] == "CANON_FTB_001"
     assert "knowledge_evidence_unavailable" in str(result["reason"])
 

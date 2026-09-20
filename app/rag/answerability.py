@@ -8,7 +8,7 @@ from typing import Any, Literal, TypedDict
 from config.settings import settings
 
 
-NextStep = Literal["context_builder", "human_handoff"]
+NextStep = Literal["context_builder", "clarify"]
 ReliabilityReason = Literal[
     "sufficient_evidence",
     "no_results",
@@ -112,7 +112,7 @@ class AnswerReliability:
 
             return {
                 "can_answer": False,
-                "next_step": "human_handoff",
+                "next_step": "clarify",
                 "reason": "score_below_threshold",
                 "top_rerank_score": score,
                 "threshold": self.threshold,
@@ -125,7 +125,7 @@ class AnswerReliability:
     def _insufficient(self, reason: ReliabilityReason) -> ReliabilityResult:
         return {
             "can_answer": False,
-            "next_step": "human_handoff",
+            "next_step": "clarify",
             "reason": reason,
             "top_rerank_score": None,
             "threshold": self.threshold,

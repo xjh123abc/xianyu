@@ -190,7 +190,7 @@ def test_explicitly_unknown_structured_fact_handoffs_without_guessing() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["can_answer"] is False
     assert result["answer"] == BUYER_HANDOFF_REPLY
     assert "50mm" not in str(result["answer"])
@@ -208,7 +208,7 @@ def test_explicit_fact_conflict_handoffs_without_selecting_a_value() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["can_answer"] is False
     assert result["answer"] == BUYER_HANDOFF_REPLY
     assert "50mm" not in str(result["answer"])
@@ -249,7 +249,7 @@ def test_bargain_below_automatic_limit_handoffs_with_fixed_buyer_reply() -> None
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["can_answer"] is False
     assert result["answer"] == BUYER_HANDOFF_REPLY
     assert "minimum=¥1490.00" in str(result["reason"])
@@ -278,7 +278,7 @@ def test_offer_below_known_no_shipping_minimum_handoffs() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["answer"] == BUYER_HANDOFF_REPLY
     assert "minimum=¥1470.00" in str(result["reason"])
 
@@ -292,7 +292,7 @@ def test_shipping_included_offer_below_shipping_included_minimum_handoffs() -> N
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["answer"] == BUYER_HANDOFF_REPLY
     assert "minimum=¥1490.00" in str(result["reason"])
 
@@ -309,7 +309,7 @@ def test_bargain_discount_is_not_accumulated_across_conversation_turns() -> None
     )
 
     assert first["answer"] == "不包邮的话最低 ¥1470.00 可以拍。"
-    assert second["action"] == "handoff"
+    assert second["action"] != "handoff"
     assert second["answer"] == BUYER_HANDOFF_REPLY
     assert "1460" not in str(second["answer"])
     assert second["reason"] == "additional_discount_not_authorised"

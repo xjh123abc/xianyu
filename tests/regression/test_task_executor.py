@@ -108,6 +108,55 @@ def test_xianyu_expert_handler_adapts_existing_expert_response_to_task_result() 
     )
 
 
+def test_xianyu_expert_handler_uses_each_task_query_without_reusing_combined_answer() -> None:
+    class _ExpertOrchestrator:
+        def __init__(self) -> None:
+            self.queries: list[str] = []
+
+        async def handle(self, query: str, **kwargs: object) -> dict[str, object]:
+            del kwargs
+            self.queries.append(query)
+            answers = {
+                "这个相机修过吗？": "没有维修过。",
+                "最低多少？": "最低 ¥1490.00 可以拍。",
+                "周日能到吗？": "该问题目前暂无足够信息确认。",
+            }
+            return {"action": "reply", "can_answer": query != "周日能到吗？", "answer": answers[query]}
+
+    async def _load_item(item_id: str) -> dict[str, object]:
+        return {"found": True, "item_id": item_id}
+
+    orchestrator = _ExpertOrchestrator()
+    handler = XianyuExpertTaskHandler(expert_orchestrator=orchestrator, item_loader=_load_item)  # type: ignore[arg-type]
+    tasks = [
+        Task("product-1", "product", "这个相机修过吗？"),
+        Task("price-1", "price", "最低多少？"),
+        Task("service-1", "service", "周日能到吗？"),
+    ]
+    results = asyncio.run(TaskExecutor({kind: handler for kind in ("product", "price", "service")}).execute(tasks, _message(item_id="ITEM-001"), SessionContext()))
+
+    assert orchestrator.queries == [task.query for task in tasks]
+    assert [result.answer for result in results] == ["没有维修过。", "最低 ¥1490.00 可以拍。", "该问题目前暂无足够信息确认。"]
+    assert results[-1].status == "unavailable"
+
+
+def test_unavailable_delivery_task_replaces_legacy_handoff_wording() -> None:
+    class _ExpertOrchestrator:
+        async def handle(self, query: str, **kwargs: object) -> dict[str, object]:
+            del query, kwargs
+            return {"action": "clarify", "answer": "稍等我看看", "reason": "knowledge_evidence_unavailable"}
+
+    async def _load_item(item_id: str) -> dict[str, object]:
+        return {"found": True, "item_id": item_id}
+
+    result = asyncio.run(XianyuExpertTaskHandler(expert_orchestrator=_ExpertOrchestrator(), item_loader=_load_item).handle(  # type: ignore[arg-type]
+        Task("service-1", "service", "周日能到吗？"), _message(), SessionContext()
+    ))
+
+    assert result.status == "unavailable"
+    assert result.answer == "目前只能确认付款后48小时内发出，周日是否能送达暂时无法确认。"
+
+
 def test_order_handler_uses_the_standalone_order_route_for_combined_plan() -> None:
     class _OrderHandler:
         def __init__(self) -> None:

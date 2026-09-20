@@ -18,7 +18,7 @@ class PipelineResult(TypedDict):
     """Result returned after reliability and optional answer generation."""
 
     can_answer: bool
-    next_step: Literal["llm", "complete", "human_handoff"]
+    next_step: Literal["llm", "complete", "clarify"]
     reliability: ReliabilityResult
     context: ContextBuildResult | None
     answer: str | None
@@ -64,7 +64,7 @@ class RAGPipeline:
         if not reliability["can_answer"]:
             return {
                 "can_answer": False,
-                "next_step": "human_handoff",
+                "next_step": "clarify",
                 "reliability": reliability,
                 "context": None,
                 "answer": None,
@@ -79,7 +79,7 @@ class RAGPipeline:
         if not context["context"]:
             return {
                 "can_answer": False,
-                "next_step": "human_handoff",
+                "next_step": "clarify",
                 "reliability": reliability,
                 "context": None,
                 "answer": None,
@@ -159,7 +159,7 @@ class RAGPipeline:
             return {
                 **prepared,
                 "can_answer": False,
-                "next_step": "human_handoff",
+                "next_step": "clarify",
                 "answer": None,
                 "sources": [],
             }

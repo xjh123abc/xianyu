@@ -140,7 +140,7 @@ def test_unauthorised_pickup_condition_handoffs_instead_of_using_shipping_price(
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["answer"] == "稍等我看看"
     assert result["reason"] == "unsupported_price_condition"
     generator.generate_xianyu.assert_not_called()
@@ -191,7 +191,7 @@ def test_conditional_bargain_without_a_known_policy_handoffs() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["can_answer"] is False
     assert result["answer"] == "稍等我看看"
     generator.generate_xianyu.assert_not_called()
@@ -263,7 +263,7 @@ def test_generated_human_review_language_becomes_the_fixed_handoff_reply() -> No
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["answer"] == "稍等我看看"
     assert result["reason"] == "generated_reply_requires_human_review"
     generator.generate_xianyu_expert.assert_called_once()

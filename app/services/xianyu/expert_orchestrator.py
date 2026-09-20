@@ -18,7 +18,13 @@ from app.services.xianyu.experts.product_agent import ProductAgent
 from app.services.xianyu.experts.service_agent import ServiceAgent
 from app.services.xianyu.item_fact_responder import ItemFactResponder
 from app.services.xianyu.knowledge_responder import XianyuKnowledgeResponder
-from app.services.xianyu.responses import common_handoff, handoff, item_source, requires_human_handoff
+from app.services.xianyu.responses import (
+    clarification,
+    common_handoff,
+    handoff,
+    item_source,
+    requires_human_handoff,
+)
 from config.settings import settings
 
 
@@ -336,15 +342,6 @@ class XianyuExpertOrchestrator:
         tasks: Sequence[ExpertTask],
         results: Sequence[ExpertResult],
     ) -> dict[str, object]:
-        failures = [result for result in results if result.status != "answered"]
-        if failures:
-            return self._handoff_response(
-                query,
-                item,
-                results,
-                self._handoff_reason(tasks, results),
-            )
-
         answers: list[str] = []
         sources: list[Mapping[str, object]] = []
         seen_answers: set[str] = set()
@@ -362,18 +359,27 @@ class XianyuExpertOrchestrator:
             item_evidence = item_source(item)
             if item_evidence not in sources:
                 sources.insert(0, item_evidence)
+        failures = [result for result in results if result.status != "answered"]
+        unavailable = [
+            f"{task.question_fragment}暂时无法确认。"
+            for task, result in zip(tasks, results)
+            if result.status != "answered"
+        ]
         if not answers:
-            return self._handoff_response(query, item, results, "expert_answer_empty")
+            response = clarification(query, item_id=str(item["item_id"]) if item else None)
+            response["reason"] = self._handoff_reason(tasks, results)
+            response["sources"] = sources
+            return response
         response: dict[str, object] = {
             "query": query,
             "route": "xianyu",
             "action": "reply",
-            "answer": "\n".join(answers),
+            "answer": "\n".join([*answers, *unavailable]),
             "sources": sources,
             "results": [],
             "reliability": None,
             "next_step": None,
-            "can_answer": True,
+            "can_answer": not failures,
         }
         if item is not None:
             response.update({"item_id": item["item_id"], "item_info": dict(item)})

@@ -73,8 +73,8 @@ def merge_partial_response(
     merged = dict(partial)
     if partial.get("can_answer") is False or knowledge.get("can_answer") is False:
         merged["answer"] = BUYER_HANDOFF_REPLY
-        merged["action"] = "handoff"
-        merged["next_step"] = "human_handoff"
+        merged["action"] = "clarify"
+        merged["next_step"] = "clarify"
         merged["can_answer"] = False
         merged["reason"] = str(
             partial.get("reason") or knowledge.get("reason") or "combined_answer_unavailable"
@@ -121,11 +121,40 @@ def reply(
 
 
 def clarification(query: str, item_id: str | None = None) -> dict[str, object]:
-    """Escalate a missing item/question context instead of guessing."""
+    """Ask only for buyer information that can make the next turn answerable."""
 
     response = common_handoff(query, "buyer_question_requires_clarification")
     if item_id is not None:
         response["item_id"] = item_id
+    return response
+
+
+def unavailable(
+    query: str,
+    answer: str,
+    *,
+    item: Mapping[str, object] | None = None,
+    prepared: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return safe unavailable evidence without requesting human takeover."""
+
+    response = non_rag_response(
+        query,
+        answer.strip() or "暂无可确认的信息。",
+        can_answer=False,
+        route="xianyu",
+        action="reply",
+    )
+    if item is not None:
+        response.update({"item_id": item["item_id"], "item_info": dict(item)})
+    if prepared is not None:
+        response.update(
+            {
+                "sources": valid_knowledge_sources(prepared),
+                "results": prepared.get("results", []),
+                "reliability": prepared.get("reliability"),
+            }
+        )
     return response
 
 
@@ -150,21 +179,21 @@ def handoff(
     item: Mapping[str, object],
     prepared: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Return the fixed buyer handoff while retaining an internal reason."""
+    """Return a safe item clarification without changing channel ownership."""
 
     response = non_rag_response(
         query,
         BUYER_HANDOFF_REPLY,
         can_answer=False,
         route="xianyu",
-        action="handoff",
+        action="clarify",
     )
     response.update(
         {
             "reason": answer,
             "item_id": item["item_id"],
             "item_info": dict(item),
-            "next_step": "human_handoff",
+            "next_step": "clarify",
             "sources": [item_source(item)],
         }
     )
@@ -180,15 +209,15 @@ def handoff(
 
 
 def common_handoff(query: str, reason: str) -> dict[str, object]:
-    """Create a fixed buyer handoff when no concrete item is available."""
+    """Create a fixed buyer clarification when no concrete item is available."""
 
     response = non_rag_response(
         query,
         BUYER_HANDOFF_REPLY,
         can_answer=False,
         route="xianyu",
-        action="handoff",
+        action="clarify",
     )
     response["reason"] = reason
-    response["next_step"] = "human_handoff"
+    response["next_step"] = "clarify"
     return response

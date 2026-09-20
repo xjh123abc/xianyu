@@ -32,6 +32,26 @@ _PLAN_STATE_KEY = "_planner_state"
 _GREETING = re.compile(r"(?:你好|您好|哈喽|hello|hi)[！!。？? ]*", re.IGNORECASE)
 
 
+def _clauses(query: str) -> list[str]:
+    """Split explicit buyer questions without assigning domain meaning here."""
+
+    return [part.strip() for part in re.split(r"[。！？?!；;\r\n]+", query) if part.strip()] or [query]
+
+
+def _unique_tasks(expert_tasks: list[object], metadata: dict[str, object]) -> list[Task]:
+    """Keep first task type in buyer order; classification remains delegated."""
+
+    tasks: list[Task] = []
+    seen: set[str] = set()
+    for expert_task in expert_tasks:
+        task_type = expert_task.expert  # type: ignore[attr-defined]
+        if task_type in seen:
+            continue
+        seen.add(task_type)
+        tasks.append(Task(f"q{len(tasks) + 1}", task_type, expert_task.original_question, metadata))  # type: ignore[attr-defined]
+    return tasks
+
+
 @dataclass(frozen=True, slots=True)
 class PlannerState:
     """Internal transition data carried by every task until S4 owns execution."""
@@ -117,15 +137,29 @@ class Planner:
             return [Task("service-1", "service", query, metadata)]
 
         xianyu_context = context.platform_context.get("xianyu", {})
-        tasks = [
-            Task(expert_task.task_id, expert_task.expert, expert_task.original_question, metadata)
+        clauses = _clauses(query)
+        expert_tasks = [
+            expert_task
+            for clause in clauses
             for expert_task in build_expert_plan(
-                query,
+                clause,
                 intent_router=self._intent_router,
                 history=context.history,
                 xianyu_context=xianyu_context,
             )
         ]
+        tasks = _unique_tasks(expert_tasks, metadata)
+        # ``build_expert_plan`` intentionally leaves ordinary RAG as an empty
+        # plan; Planner's single-question contract represents that as service.
+        # Apply the same fallback per explicit clause before returning.
+        for clause in clauses:
+            if not build_expert_plan(
+                clause,
+                intent_router=self._intent_router,
+                history=context.history,
+                xianyu_context=xianyu_context,
+            ) and all(task.task_type != "service" for task in tasks):
+                tasks.append(Task(f"q{len(tasks) + 1}", "service", clause, metadata))
         # Ordinary RAG has no expert task today.  It remains one service task
         # so Planner has a total, Task[]-only contract before S4's executor.
         return tasks or [Task("service-1", "service", query, metadata)]

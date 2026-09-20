@@ -84,16 +84,16 @@ class XianyuStage3Worker:
             response = await self.chat_client.ask(chat_message)
             decision = map_chat_response(response)
         except (TimeoutError, ConnectionError, OSError):
-            return await self._handoff(message, sender, item_id, "客服服务暂时不可用")
+            return await self._auto_error(message, sender, claim, "客服服务暂时不可用")
         except Exception:
             # Do not surface stack traces, endpoint details, or model errors to a buyer.
-            return await self._handoff(message, sender, item_id, "chat_service_unexpected_error")
+            return await self._auto_error(message, sender, claim, "chat_service_unexpected_error")
 
         if decision.action == "ignore":
             self.store.mark_ignored(self.account_id, message.platform_message_id, decision.reason)
             return {"action": "ignored", "reason": decision.reason}
-        if decision.action == "human_handoff":
-            return await self._handoff(message, sender, item_id, decision.reason)
+        if decision.action == "error":
+            return await self._auto_error(message, sender, claim, decision.reason)
 
         prepared = self.store.prepare_candidate(
             self.account_id,
@@ -110,38 +110,30 @@ class XianyuStage3Worker:
             return {"action": "blocked", "reason": "account_paused_or_human_before_send"}
         return await self._send(message.platform_message_id, delivery, sender, decision.action)
 
-    async def _handoff(
-        self, message: InboundMessage, sender: TextSender, item_id: str | None, reason: str
+    async def _auto_error(
+        self,
+        message: InboundMessage,
+        sender: TextSender,
+        claim: Mapping[str, object],
+        reason: str,
     ) -> dict[str, Any]:
-        handoff = self.store.handoff(
+        """Send a fixed safe notice while preserving AUTO session ownership."""
+
+        prepared = self.store.prepare_candidate(
             self.account_id,
             message.platform_message_id,
-            reason=reason,
+            action="clarify",
             candidate_text=HANDOFF_NOTICE,
+            account_version=int(claim["account_version"]),
+            session_version=int(claim["session_version"]),
         )
-        if handoff is None:
-            return {"action": "superseded", "reason": "account_paused_or_human"}
-        try:
-            await self.notifier.notify_handoff(
-                chat_id=handoff["chat_id"], item_id=item_id, reason=reason, question=handoff["text"]
-            )
-        except Exception:
-            self.store.mark_notification(self.account_id, message.platform_message_id, "FAILED", "notification_failed")
-        else:
-            self.store.mark_notification(self.account_id, message.platform_message_id, "SENT")
-
-        # HUMAN was already committed.  The optional buyer notice is therefore
-        # a one-time controlled send, never another model-generated response.
-        delivery = self.store.claim_handoff_notice(self.account_id, message.platform_message_id)
+        if prepared is None:
+            return {"action": "superseded", "reason": "control_changed_during_generation"}
+        delivery = self.store.claim_ready_delivery(self.account_id, message.platform_message_id)
         if delivery is None:
-            return {"action": "human_handoff", "delivery": "not_sent"}
-        result = await self._send(
-            message.platform_message_id,
-            delivery,
-            sender,
-            "human_handoff",
-        )
-        result["action"] = "human_handoff"
+            return {"action": "blocked", "reason": "account_paused_or_human_before_send"}
+        result = await self._send(message.platform_message_id, delivery, sender, "error")
+        result["reason"] = reason
         return result
 
     async def _send(

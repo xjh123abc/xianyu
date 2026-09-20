@@ -24,6 +24,7 @@ from app.services.xianyu.responses import (
     join_answers,
     reply,
     requires_human_handoff,
+    unavailable,
     valid_knowledge_sources,
 )
 
@@ -125,19 +126,18 @@ class XianyuKnowledgeResponder:
         context = prepared.get("context")
         knowledge_sources = valid_knowledge_sources(prepared)
         if not isinstance(context, Mapping) or not knowledge_sources:
-            return handoff(
+            return self._knowledge_unavailable(
                 query,
-                join_answers(fact_answers + unresolved_answers),
+                join_answers(fact_answers),
                 item,
                 prepared,
             )
         context_text = str(context.get("context", "")).strip()
         if not context_text:
-            return handoff(
+            return self._knowledge_unavailable(
                 query,
                 join_answers(
-                    fact_answers + unresolved_answers,
-                    "knowledge_context_empty",
+                    fact_answers,
                 ),
                 item,
                 prepared,
@@ -479,3 +479,20 @@ class XianyuKnowledgeResponder:
     @staticmethod
     def _common_handoff(query: str, answer: str) -> dict[str, object]:
         return common_handoff(query, answer)
+
+    @staticmethod
+    def _knowledge_unavailable(
+        query: str,
+        reason: str,
+        item: Mapping[str, object],
+        prepared: Mapping[str, object],
+    ) -> dict[str, object]:
+        """Expose unavailable evidence as a safe clarification, never handoff."""
+
+        answer = join_answers(
+            [reason],
+            "暂无可确认的商品知识补充信息。",
+        )
+        response = unavailable(query, answer, item=item, prepared=prepared)
+        response["reason"] = "knowledge_evidence_unavailable"
+        return response

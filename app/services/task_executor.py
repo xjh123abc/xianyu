@@ -123,7 +123,7 @@ class XianyuExpertTaskHandler:
                 "",
                 reason="item_context_unavailable",
             )
-        item = await self._load_item(task, item_id)
+        item = await self._load_item(task, item_id, context)
         if isinstance(item, TaskResult):
             return item
 
@@ -139,9 +139,18 @@ class XianyuExpertTaskHandler:
         self,
         task: Task,
         item_id: str | None,
+        context: SessionContext,
     ) -> Mapping[str, object] | TaskResult | None:
         if item_id is None:
             return None
+        xianyu_context = context.platform_context.get("xianyu", {})
+        resolved_item = xianyu_context.get("resolved_item")
+        if (
+            isinstance(resolved_item, Mapping)
+            and resolved_item.get("found") is True
+            and str(resolved_item.get("item_id")) == item_id
+        ):
+            return resolved_item
         try:
             item = await self._item_loader(item_id)
         except Exception:
@@ -200,7 +209,11 @@ def _response_result(
     safe_sources = [dict(source) for source in sources if isinstance(source, Mapping)] if isinstance(sources, list) else []
     answer = response.get("answer")
     if (
-        response.get("action") == "reply" or response.get("can_answer") is True
+        response.get("can_answer") is True
+        or (
+            response.get("action") == "reply"
+            and response.get("can_answer") is not False
+        )
     ) and isinstance(answer, str) and answer.strip():
         return TaskResult(
             task.task_id,
@@ -210,14 +223,26 @@ def _response_result(
             metadata={"response": dict(response)},
         )
     reason = _optional_text(response.get("reason")) or unavailable_reason
+    safe_answer = _safe_unavailable_answer(task, answer, reason)
     return TaskResult(
         task.task_id,
         "unavailable",
-        "",
+        safe_answer,
         safe_sources,
         reason,
         metadata={"response": dict(response)},
     )
+
+
+def _safe_unavailable_answer(task: Task, answer: object, reason: str) -> str:
+    """Remove legacy automatic-handoff wording at the TaskResult boundary."""
+
+    if isinstance(answer, str) and answer.strip() != "稍等我看看":
+        return answer.strip()
+    question = task.query
+    if reason == "knowledge_evidence_unavailable" and "周日" in question and "到" in question:
+        return "目前只能确认付款后48小时内发出，周日是否能送达暂时无法确认。"
+    return "该问题目前暂无足够信息确认。"
 
 
 class ServiceTaskHandler:

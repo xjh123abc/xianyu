@@ -206,7 +206,6 @@ class ChatService:
         """Compatibility executor while specialist handlers are migrated."""
 
         resolved_chat_id = chat_id
-        history = context.history
         current_item_id = context.current_item_id
         state = planner_state(tasks)
         intent_match = state.intent_match
@@ -267,12 +266,38 @@ class ChatService:
                         "recent_price_topic": None,
                         "shipping_condition": None,
                     }
-                response = await self.expert_orchestrator.handle(
-                    query,
-                    item=item,
-                    history=history,
-                    session_state={"xianyu_context": expert_context},
+                execution_item_id = (
+                    str(item["item_id"])
+                    if item is not None
+                    else item_id or context.current_item_id
                 )
+                execution_context = SessionContext(
+                    history=context.history,
+                    current_item_id=execution_item_id,
+                    current_order_id=context.current_order_id,
+                    last_task_type=context.last_task_type,
+                    negotiation=context.negotiation,
+                    platform_context={
+                        **context.platform_context,
+                        "xianyu": {
+                            **expert_context,
+                            "original_query": query,
+                            "resolved_item": dict(item),
+                        }
+                        if item is not None
+                        else {**expert_context, "original_query": query},
+                    },
+                )
+                message = ChatMessage(
+                    "xianyu",
+                    "seller",
+                    chat_id,
+                    "buyer",
+                    execution_item_id,
+                    query,
+                )
+                results = await self.task_executor.execute(tasks, message, execution_context)
+                response = self.result_merger.merge(query, tasks, results)
                 if item is not None:
                     updates = xianyu_context_updates(query, expert_context)
                     if updates:
@@ -391,7 +416,7 @@ class ChatService:
     def _xianyu_greeting(query: str) -> dict[str, object]:
         return non_rag_response(
             query,
-            "你好，想了解商品的价格、成色、配件还是发货？",
+            "你好，想了解什么？",
             can_answer=True,
             route="xianyu",
             action="reply",

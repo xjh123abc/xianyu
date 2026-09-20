@@ -41,6 +41,18 @@ def test_planner_reuses_legacy_rules_to_create_one_task_per_buyer_need() -> None
     assert planner_state(tasks).needs_item is True
 
 
+def test_planner_classifies_each_delimited_clause_with_the_single_question_rules() -> None:
+    context = SessionContext(current_item_id="ITEM-001")
+
+    assert [task.task_type for task in _planner().plan("周日能到吗？", context)] == ["service"]
+    assert [task.task_type for task in _planner().plan(
+        "这个相机修过吗？最低多少？周日能到吗？", context
+    )] == ["product", "price", "service"]
+    assert [task.task_type for task in _planner().plan(
+        "这个修过吗？最低多少？多久发货？", context
+    )] == ["product", "price", "service"]
+
+
 def test_planner_keeps_the_existing_order_route_as_one_order_task() -> None:
     tasks = _planner().plan("TEST1001 \u5230\u54ea\u4e86\uff1f", SessionContext())
 
