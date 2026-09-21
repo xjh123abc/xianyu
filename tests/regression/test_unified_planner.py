@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import inspect
 
+import app.services.planner as planner_module
 from app.services.chat_contracts import SessionContext
 from app.services.chat_service import ChatService
 from app.services.intent_router import IntentRouter
 from app.services.planner import Planner, planner_state
+from app.services.task_executor import XianyuExpertTaskHandler
+from app.services.xianyu.item_context_resolver import ItemContextResolver
 
 
 def _planner() -> Planner:
@@ -41,6 +44,26 @@ def test_planner_reuses_legacy_rules_to_create_one_task_per_buyer_need() -> None
     assert planner_state(tasks).needs_item is True
 
 
+def test_planner_preserves_the_complete_expert_execution_contract() -> None:
+    tasks = _planner().plan(
+        "这个修过吗？最低多少？多久发货？",
+        SessionContext(current_item_id="ITEM-001"),
+    )
+
+    assert [task.query_target for task in tasks] == [
+        "history.repair_history",
+        "price.minimum",
+        "shipping.dispatch_time",
+    ]
+    assert all(task.execution_mode == "xianyu_expert" for task in tasks)
+    assert all(isinstance(task.depends_on_task_ids, tuple) for task in tasks)
+    assert all("normalized_question" in task.metadata for task in tasks)
+    assert all("knowledge_scope" in task.metadata for task in tasks)
+    assert all("query_target" not in task.metadata for task in tasks)
+    assert all("depends_on_task_ids" not in task.metadata for task in tasks)
+    assert all("execution_mode" not in task.metadata for task in tasks)
+
+
 def test_planner_classifies_each_delimited_clause_with_the_single_question_rules() -> None:
     context = SessionContext(current_item_id="ITEM-001")
 
@@ -61,6 +84,21 @@ def test_planner_keeps_the_existing_order_route_as_one_order_task() -> None:
     assert planner_state(tasks).order_id == "TEST1001"
 
 
+def test_planner_builds_each_clause_once_before_deduplicating_tasks(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def _empty_plan(query: str, **kwargs: object) -> list[object]:
+        del kwargs
+        calls.append(query)
+        return []
+
+    monkeypatch.setattr(planner_module, "build_expert_plan", _empty_plan)
+
+    _planner().plan("这个修过吗？最低多少？", SessionContext(current_item_id="ITEM-001"))
+
+    assert calls == ["这个修过吗", "最低多少"]
+
+
 def test_chat_service_uses_the_planner_boundary_instead_of_direct_router_calls() -> None:
     source = inspect.getsource(ChatService._chat_async_locked)
 
@@ -73,3 +111,30 @@ def test_chat_service_uses_the_planner_boundary_instead_of_direct_router_calls()
         "_should_use_xianyu_experts",
     ):
         assert legacy_entrypoint not in source
+
+
+def test_chat_service_does_not_keep_old_route_or_knowledge_execution_branches() -> None:
+    source = inspect.getsource(ChatService._execute_planned_turn)
+
+    for legacy_execution in (
+        "state.route",
+        "handle_common(",
+        "self.chat(",
+        "order_handler.order(",
+        "common_knowledge_query(",
+    ):
+        assert legacy_execution not in source
+
+
+def test_item_resolver_does_not_repeat_planner_order_routing() -> None:
+    source = inspect.getsource(ItemContextResolver.resolve)
+
+    assert "route_query(" not in source
+
+
+def test_main_expert_handler_executes_preplanned_tasks_without_replanning() -> None:
+    source = inspect.getsource(XianyuExpertTaskHandler.handle)
+
+    assert "execute_tasks(" in source
+    assert "expert_orchestrator.handle(" not in source
+    assert "build_expert_plan(" not in source

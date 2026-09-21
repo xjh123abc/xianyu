@@ -7,13 +7,63 @@ import asyncio
 from app.services.chat_contracts import ChatMessage, SessionContext, Task, TaskResult
 from app.services.task_executor import (
     OrderTaskHandler,
+    ServiceTaskHandler,
     TaskExecutor,
     XianyuExpertTaskHandler,
+    to_expert_task,
 )
+from app.services.xianyu.experts.contracts import ExpertResult
 
 
 def _message(*, item_id: str | None = None) -> ChatMessage:
     return ChatMessage("xianyu", "seller", "chat", "buyer", item_id, "测试问题")
+
+
+def _expert_task(
+    task_id: str,
+    task_type: str,
+    query: str,
+    *,
+    query_target: str,
+    knowledge_scope: str = "item_fact",
+) -> Task:
+    return Task(
+        task_id,
+        task_type,  # type: ignore[arg-type]
+        query,
+        {
+            "normalized_question": query,
+            "knowledge_scope": knowledge_scope,
+            "transaction_conditions": {},
+        },
+        query_target=query_target,
+        execution_mode="xianyu_expert",
+    )
+
+
+def test_to_expert_task_preserves_explicit_identity_target_and_dependencies() -> None:
+    task = Task(
+        "price-2",
+        "price",
+        "如果没修过，最低多少？",
+        {
+            "normalized_question": "最低价",
+            "knowledge_scope": "item_fact",
+            "transaction_conditions": {"request_kind": "minimum"},
+        },
+        query_target="price.minimum",
+        depends_on_task_ids=("product-1",),
+        execution_mode="xianyu_expert",
+    )
+
+    expert_task = to_expert_task(task)
+
+    assert expert_task.task_id == task.task_id
+    assert expert_task.expert == task.task_type
+    assert expert_task.original_question == task.query
+    assert expert_task.query_target == task.query_target
+    assert expert_task.depends_on_task_ids == task.depends_on_task_ids
+    assert expert_task.transaction_conditions == {"request_kind": "minimum"}
 
 
 class _RecordingHandler:
@@ -76,14 +126,17 @@ def test_task_executor_isolates_a_single_handler_failure() -> None:
 
 def test_xianyu_expert_handler_adapts_existing_expert_response_to_task_result() -> None:
     class _ExpertOrchestrator:
-        async def handle(self, query: str, **kwargs: object) -> dict[str, object]:
-            assert query == "这个修过吗？"
-            assert kwargs["item"] == {"found": True, "item_id": "ITEM-001"}
-            return {
-                "action": "reply",
-                "answer": "没有维修记录。",
-                "sources": [{"source": "mcp:get_item_info", "index": "ITEM-001"}],
-            }
+        async def execute_tasks(self, tasks, context):
+            assert context.query == "这个修过吗？"
+            assert context.item == {"found": True, "item_id": "ITEM-001"}
+            assert tasks[0].query_target == "history.repair_history"
+            return [
+                ExpertResult.answered(
+                    tasks[0],
+                    "没有维修记录。",
+                    sources=[{"source": "mcp:get_item_info", "index": "ITEM-001"}],
+                )
+            ]
 
     async def _load_item(item_id: str) -> dict[str, object]:
         assert item_id == "ITEM-001"
@@ -94,7 +147,12 @@ def test_xianyu_expert_handler_adapts_existing_expert_response_to_task_result() 
             expert_orchestrator=_ExpertOrchestrator(),  # type: ignore[arg-type]
             item_loader=_load_item,
         ).handle(
-            Task("product-1", "product", "这个修过吗？"),
+            _expert_task(
+                "product-1",
+                "product",
+                "这个修过吗？",
+                query_target="history.repair_history",
+            ),
             _message(item_id="ITEM-001"),
             SessionContext(),
         )
@@ -113,15 +171,16 @@ def test_xianyu_expert_handler_uses_each_task_query_without_reusing_combined_ans
         def __init__(self) -> None:
             self.queries: list[str] = []
 
-        async def handle(self, query: str, **kwargs: object) -> dict[str, object]:
-            del kwargs
+        async def execute_tasks(self, tasks, context):
+            query = context.query
             self.queries.append(query)
             answers = {
                 "这个相机修过吗？": "没有维修过。",
                 "最低多少？": "最低 ¥1490.00 可以拍。",
-                "周日能到吗？": "该问题目前暂无足够信息确认。",
             }
-            return {"action": "reply", "can_answer": query != "周日能到吗？", "answer": answers[query]}
+            if query == "周日能到吗？":
+                return [ExpertResult.handoff(tasks[0], "knowledge_evidence_unavailable")]
+            return [ExpertResult.answered(tasks[0], answers[query])]
 
     async def _load_item(item_id: str) -> dict[str, object]:
         return {"found": True, "item_id": item_id}
@@ -129,28 +188,34 @@ def test_xianyu_expert_handler_uses_each_task_query_without_reusing_combined_ans
     orchestrator = _ExpertOrchestrator()
     handler = XianyuExpertTaskHandler(expert_orchestrator=orchestrator, item_loader=_load_item)  # type: ignore[arg-type]
     tasks = [
-        Task("product-1", "product", "这个相机修过吗？"),
-        Task("price-1", "price", "最低多少？"),
-        Task("service-1", "service", "周日能到吗？"),
+        _expert_task("product-1", "product", "这个相机修过吗？", query_target="history.repair_history"),
+        _expert_task("price-1", "price", "最低多少？", query_target="price.minimum"),
+        _expert_task("service-1", "service", "周日能到吗？", query_target="shipping.dispatch_time"),
     ]
     results = asyncio.run(TaskExecutor({kind: handler for kind in ("product", "price", "service")}).execute(tasks, _message(item_id="ITEM-001"), SessionContext()))
 
     assert orchestrator.queries == [task.query for task in tasks]
-    assert [result.answer for result in results] == ["没有维修过。", "最低 ¥1490.00 可以拍。", "该问题目前暂无足够信息确认。"]
+    assert [result.answer for result in results] == [
+        "没有维修过。",
+        "最低 ¥1490.00 可以拍。",
+        "目前只能确认付款后48小时内发出，周日是否能送达暂时无法确认。",
+    ]
     assert results[-1].status == "unavailable"
 
 
 def test_unavailable_delivery_task_replaces_legacy_handoff_wording() -> None:
     class _ExpertOrchestrator:
-        async def handle(self, query: str, **kwargs: object) -> dict[str, object]:
-            del query, kwargs
-            return {"action": "clarify", "answer": "稍等我看看", "reason": "knowledge_evidence_unavailable"}
+        async def execute_tasks(self, tasks, context):
+            del context
+            return [ExpertResult.handoff(tasks[0], "knowledge_evidence_unavailable")]
 
     async def _load_item(item_id: str) -> dict[str, object]:
         return {"found": True, "item_id": item_id}
 
     result = asyncio.run(XianyuExpertTaskHandler(expert_orchestrator=_ExpertOrchestrator(), item_loader=_load_item).handle(  # type: ignore[arg-type]
-        Task("service-1", "service", "周日能到吗？"), _message(), SessionContext()
+        _expert_task("service-1", "service", "周日能到吗？", query_target="shipping.dispatch_time"),
+        _message(),
+        SessionContext(),
     ))
 
     assert result.status == "unavailable"
@@ -179,3 +244,36 @@ def test_order_handler_uses_the_standalone_order_route_for_combined_plan() -> No
 
     assert result == TaskResult("order-1", "answered", "订单正在运输中。")
     assert handler.order_calls == [(task.query, "TEST1001")]
+
+
+def test_service_handler_uses_planner_execution_mode_not_legacy_combined_route() -> None:
+    class _ExpertHandler:
+        async def handle(self, *args: object, **kwargs: object) -> TaskResult:
+            raise AssertionError("common knowledge must not re-enter the expert route")
+
+    class _KnowledgeResponder:
+        async def handle_common(self, query: str, **kwargs: object) -> dict[str, object]:
+            assert query == "一般多久发货？"
+            assert kwargs == {}
+            return {"action": "reply", "can_answer": True, "answer": "付款后 48 小时内发出。"}
+
+    handler = ServiceTaskHandler(
+        expert_handler=_ExpertHandler(),  # type: ignore[arg-type]
+        knowledge_responder=_KnowledgeResponder(),  # type: ignore[arg-type]
+        general_rag=lambda: object(),
+    )
+
+    result = asyncio.run(
+        handler.handle(
+            Task(
+                "service-1",
+                "service",
+                "一般多久发货？",
+                execution_mode="common_knowledge",
+            ),
+            _message(),
+            SessionContext(),
+        )
+    )
+
+    assert result == TaskResult("service-1", "answered", "付款后 48 小时内发出。")

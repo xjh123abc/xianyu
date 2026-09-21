@@ -6,6 +6,8 @@ import asyncio
 from copy import deepcopy
 from unittest.mock import AsyncMock, Mock
 
+import pytest
+
 from app.generation.xianyu_expert_prompt import (
     build_xianyu_expert_plan_messages,
     build_xianyu_product_expert_messages,
@@ -105,6 +107,42 @@ def _service(prepare_evidence: AsyncMock | object, generator: Mock) -> ServiceAg
         prepare_evidence=prepare_evidence,  # type: ignore[arg-type]
         generator=lambda: generator,  # type: ignore[arg-type]
     )
+
+
+def test_legacy_handle_item_is_a_thin_adapter_to_the_expert_chain() -> None:
+    calls: list[tuple[str, object, object]] = []
+
+    async def legacy_item_handler(query, item, history):
+        calls.append((query, item, history))
+        return {"action": "reply", "answer": "由专家链路回答"}
+
+    fact_responder = Mock()
+    route_intent = Mock()
+    responder = XianyuKnowledgeResponder(
+        knowledge_service=Mock(),
+        generator=lambda: Mock(),
+        fact_responder=fact_responder,
+        route_intent=route_intent,
+        legacy_item_handler=legacy_item_handler,
+    )
+    item = _item()
+    history = [{"role": "user", "content": "上一轮"}]
+
+    with pytest.warns(DeprecationWarning, match="handle_item"):
+        response = asyncio.run(
+            responder.handle_item(
+                "这个修过吗？",
+                item,
+                history=history,
+                force_full_item_answer=True,
+            )
+        )
+
+    assert response == {"action": "reply", "answer": "由专家链路回答"}
+    assert calls == [("这个修过吗？", item, history)]
+    fact_responder.answer_intent.assert_not_called()
+    fact_responder.answer_plan.assert_not_called()
+    route_intent.assert_not_called()
 
 
 def test_product_agent_returns_confirmed_item_fact_without_rag_or_model() -> None:
@@ -235,7 +273,7 @@ def test_service_agent_handoffs_when_common_rule_has_no_valid_evidence() -> None
     generator.generate_xianyu_expert.assert_not_called()
 
 
-def test_service_agent_can_preserve_grounded_answer_when_unified_guard_is_disabled() -> None:
+def test_service_agent_preserves_grounded_answer_without_a_legacy_text_guard() -> None:
     rag = EvidenceRag()
     generator = Mock()
     generator.generate_xianyu_expert.return_value = "请让卖家确认后再处理。"
@@ -252,7 +290,6 @@ def test_service_agent_can_preserve_grounded_answer_when_unified_guard_is_disabl
             ExpertContext(
                 query="售后怎么处理？",
                 item=None,
-                use_legacy_text_guard=False,
             ),
         )
     )[0]

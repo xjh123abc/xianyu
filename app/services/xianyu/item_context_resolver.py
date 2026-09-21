@@ -7,7 +7,6 @@ import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from app.services.item_service import ItemService
-from app.services.order_router import route_query
 from app.services.xianyu.responses import clarification, common_handoff, item_conflict
 
 
@@ -110,9 +109,6 @@ class ItemContextResolver:
             candidate_id = current_item_id
         if candidate_id is None:
             if defer_to_order_context:
-                return None, None
-            route, _ = route_query(query)
-            if route in {"order", "rag_mcp", "missing_order_id"}:
                 return None, None
             return None, clarification(query)
 

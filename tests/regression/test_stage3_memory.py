@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 
 from app.api import chat as chat_api
 from app.main import app
-from app.services.chat_service import ChatService, route_query
+from app.services.chat_service import ChatService
+from app.services.order_router import route_query
 from app.services.session_manager import SessionManager
 
 
@@ -206,7 +207,6 @@ def test_chat_service_preserves_order_context_across_three_turns() -> None:
     assert second["answer"] == "通常 24 小时内发货"
     assert third["answer"].startswith("TEST1001 当前待发货")
     assert mcp_service.get_order.await_count == 2
-    generator.generate_combined.assert_not_called()
     generator.generate_xianyu.assert_called_once()
 
 

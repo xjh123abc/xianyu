@@ -13,7 +13,25 @@ from typing import Literal
 
 
 TaskType = Literal["product", "price", "service", "order"]
+ExecutionMode = Literal[
+    "xianyu_expert",
+    "general_rag",
+    "order",
+    "missing_order_id",
+    "common_knowledge",
+    "unsupported_action",
+]
 TASK_TYPES = frozenset({"product", "price", "service", "order"})
+EXECUTION_MODES = frozenset(
+    {
+        "xianyu_expert",
+        "general_rag",
+        "order",
+        "missing_order_id",
+        "common_knowledge",
+        "unsupported_action",
+    }
+)
 
 
 def _required_text(value: object, field_name: str) -> str:
@@ -117,12 +135,19 @@ class SessionContext:
 
 @dataclass(frozen=True, slots=True)
 class Task:
-    """One planner-owned unit of work for a business handler."""
+    """One planner-owned unit of work for a business handler.
+
+    Routing and scheduling fields are explicit. ``metadata`` is reserved for
+    capability-specific parameters and temporary planner compatibility state.
+    """
 
     task_id: str
     task_type: TaskType
     query: str
     metadata: dict[str, object] = field(default_factory=dict)
+    query_target: str | None = None
+    depends_on_task_ids: tuple[str, ...] = ()
+    execution_mode: ExecutionMode | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "task_id", _required_text(self.task_id, "task_id"))
@@ -132,6 +157,25 @@ class Task:
         if not isinstance(self.metadata, Mapping):
             raise ValueError("metadata must be a mapping")
         object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(
+            self,
+            "query_target",
+            _optional_text(self.query_target, "query_target"),
+        )
+        dependencies = self.depends_on_task_ids
+        if not isinstance(dependencies, (list, tuple)) or any(
+            not isinstance(dependency, str) or not dependency.strip()
+            for dependency in dependencies
+        ):
+            raise ValueError("depends_on_task_ids must contain non-empty strings")
+        normalized_dependencies = tuple(dependency.strip() for dependency in dependencies)
+        if len(set(normalized_dependencies)) != len(normalized_dependencies):
+            raise ValueError("depends_on_task_ids must not contain duplicates")
+        if self.task_id in normalized_dependencies:
+            raise ValueError("task cannot depend on itself")
+        object.__setattr__(self, "depends_on_task_ids", normalized_dependencies)
+        if self.execution_mode is not None and self.execution_mode not in EXECUTION_MODES:
+            raise ValueError("execution_mode is invalid")
 
 
 @dataclass(frozen=True, slots=True)

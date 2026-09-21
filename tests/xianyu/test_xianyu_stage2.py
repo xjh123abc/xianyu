@@ -153,7 +153,7 @@ def test_combined_price_and_unsupported_detail_keeps_fact_and_handoffs() -> None
 
     assert result["action"] != "handoff"
     assert result["can_answer"] is False
-    assert "暂时无法确认" in result["answer"]
+    assert "该问题目前暂无足够信息确认" in result["answer"]
     assert rag.item_ids == []
 
 

@@ -81,7 +81,7 @@ def test_chat_service_uses_configured_retrieval_values(
         reranker=FakeReranker(),
         rag_pipeline=FakePipeline(),
     )
-    service.chat("query")
+    service.rag_service.chat("query")
 
     assert FakeHybridSearch.init_args[2] == 70
     assert FakeHybridSearch.search_args == ("query", 9, 8, 9)

@@ -151,7 +151,8 @@ def test_mcp_failure_keeps_independent_common_knowledge_answer() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert "该问题目前暂无足够信息确认。" in result["answer"]
+    assert "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。" in result["answer"]
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     item_lookup.assert_awaited_once_with("DEMO_ITEM_001")
     assert rag.item_ids == [None]
@@ -170,7 +171,8 @@ def test_missing_item_keeps_common_answer_and_asks_for_item() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert "请补充商品编号或具体商品信息。" in result["answer"]
+    assert "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。" in result["answer"]
     assert "DEMO_ITEM_001" not in str(result["answer"])
     service.mcp_service.get_item_info.assert_not_awaited()
     assert rag.item_ids == [None]

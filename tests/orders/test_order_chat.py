@@ -93,7 +93,7 @@ def test_order_branch_calls_mcp_and_deepseek(monkeypatch: pytest.MonkeyPatch) ->
     ]
 
 
-def test_rag_branch_keeps_existing_chat_path(
+def test_rag_task_keeps_existing_rag_service_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mcp_lookup = AsyncMock()
@@ -102,7 +102,7 @@ def test_rag_branch_keeps_existing_chat_path(
     existing_rag_chat = Mock(
         return_value={"query": "订单一般多久发货？", "results": []}
     )
-    monkeypatch.setattr(service, "chat", existing_rag_chat)
+    monkeypatch.setattr(service.rag_service, "chat", existing_rag_chat)
 
     result = asyncio.run(service.chat_async("订单一般多久发货？"))
 

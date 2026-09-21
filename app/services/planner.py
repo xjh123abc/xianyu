@@ -25,7 +25,9 @@ from app.services.query_planner import (
     build_expert_plan,
     build_question_plan,
     is_seller_scoped_query,
+    xianyu_context_updates,
 )
+from app.services.xianyu.experts.contracts import ExpertTask
 
 
 _PLAN_STATE_KEY = "_planner_state"
@@ -38,18 +40,55 @@ def _clauses(query: str) -> list[str]:
     return [part.strip() for part in re.split(r"[。！？?!；;\r\n]+", query) if part.strip()] or [query]
 
 
-def _unique_tasks(expert_tasks: list[object], metadata: dict[str, object]) -> list[Task]:
-    """Keep first task type in buyer order; classification remains delegated."""
+def _unique_tasks(
+    expert_tasks: list[ExpertTask],
+    metadata: dict[str, object],
+) -> list[Task]:
+    """Preserve every distinct planned need and remap its dependencies once."""
 
-    tasks: list[Task] = []
-    seen: set[tuple[str, str]] = set()
+    selected: list[tuple[str, ExpertTask]] = []
+    seen: set[tuple[str, str, str]] = set()
+    task_ids: dict[tuple[str, str], str] = {}
     for expert_task in expert_tasks:
-        task_type = expert_task.expert  # type: ignore[attr-defined]
-        identity = (task_type, expert_task.original_question)  # type: ignore[attr-defined]
+        identity = (
+            expert_task.expert,
+            expert_task.original_question,
+            expert_task.query_target,
+        )
         if identity in seen:
             continue
         seen.add(identity)
-        tasks.append(Task(f"q{len(tasks) + 1}", task_type, expert_task.original_question, metadata))  # type: ignore[attr-defined]
+        task_id = f"q{len(selected) + 1}"
+        selected.append((task_id, expert_task))
+        task_ids[(expert_task.original_question, expert_task.task_id)] = task_id
+
+    tasks: list[Task] = []
+    for task_id, expert_task in selected:
+        dependencies = [
+            task_ids.get(
+                (expert_task.original_question, dependency),
+                dependency,
+            )
+            for dependency in expert_task.depends_on_task_ids
+        ]
+        tasks.append(
+            Task(
+                task_id,
+                expert_task.expert,
+                expert_task.original_question,
+                {
+                    **metadata,
+                    "normalized_question": expert_task.normalized_question,
+                    "knowledge_scope": expert_task.knowledge_scope,
+                    "transaction_conditions": dict(
+                        expert_task.transaction_conditions
+                    ),
+                },
+                query_target=expert_task.query_target,
+                depends_on_task_ids=tuple(dependencies),
+                execution_mode="xianyu_expert",
+            )
+        )
     return tasks
 
 
@@ -62,6 +101,7 @@ class PlannerState:
     route: Route
     order_id: str | None
     needs_item: bool
+    requires_item_resolution: bool
     defer_to_order_context: bool
     is_rule_followup: bool
     use_xianyu_without_item: bool
@@ -114,6 +154,7 @@ class Planner:
             route=route,
             order_id=order_id,
             needs_item=needs_item,
+            requires_item_resolution=needs_item and route == "rag",
             defer_to_order_context=remembered_order_id is not None,
             is_rule_followup=is_rule_followup(query, remembered_order_id),
             use_xianyu_without_item=(
@@ -125,45 +166,121 @@ class Planner:
         metadata = {_PLAN_STATE_KEY: _state_metadata(state)}
 
         if route in {"order", "missing_order_id"}:
-            return [Task("order-1", "order", query, metadata)]
-        if route == "rag_mcp":
-            # S7 replaces the old combined route with independently executable
-            # order and service work.  The legacy route remains metadata only
-            # while callers finish migrating to TaskResult merging.
             return [
-                Task("order-1", "order", query, metadata),
-                Task("service-1", "service", query, metadata),
+                Task(
+                    "order-1",
+                    "order",
+                    query,
+                    metadata,
+                    execution_mode=(
+                        "missing_order_id" if route == "missing_order_id" else "order"
+                    ),
+                )
+            ]
+        if route == "rag_mcp":
+            # The old combined route is classified only here.  Its execution
+            # is two ordinary tasks, never OrderChatHandler.combined().
+            return [
+                Task("order-1", "order", query, metadata, execution_mode="order"),
+                Task(
+                    "service-1",
+                    "service",
+                    query,
+                    metadata,
+                    execution_mode="common_knowledge",
+                ),
             ]
         if route == "unsupported_action":
-            return [Task("service-1", "service", query, metadata)]
+            return [
+                Task(
+                    "service-1",
+                    "service",
+                    query,
+                    metadata,
+                    execution_mode="unsupported_action",
+                )
+            ]
 
-        xianyu_context = context.platform_context.get("xianyu", {})
-        clauses = _clauses(query)
-        expert_tasks = [
-            expert_task
-            for clause in clauses
-            for expert_task in build_expert_plan(
-                clause,
-                intent_router=self._intent_router,
-                history=context.history,
-                xianyu_context=xianyu_context,
+        execution_mode = (
+            "general_rag"
+            if state.is_rule_followup
+            else (
+                "xianyu_expert"
+                if state.needs_item or state.use_xianyu_without_item
+                else "general_rag"
             )
-        ]
-        tasks = _unique_tasks(expert_tasks, metadata)
-        # ``build_expert_plan`` intentionally leaves ordinary RAG as an empty
-        # plan; Planner's single-question contract represents that as service.
-        # Apply the same fallback per explicit clause before returning.
-        for clause in clauses:
-            if not build_expert_plan(
+        )
+        if execution_mode == "general_rag":
+            # Ordinary RAG receives the complete buyer message.  Clause
+            # splitting is only for the expert Task[] classification path.
+            return [
+                Task(
+                    "service-1",
+                    "service",
+                    query,
+                    metadata,
+                    execution_mode="general_rag",
+                )
+            ]
+
+        xianyu_context = dict(context.platform_context.get("xianyu", {}))
+        effective_item_id = item_id or context.current_item_id
+        if effective_item_id is not None and not xianyu_context.get("item_id"):
+            xianyu_context["item_id"] = effective_item_id
+        clauses = _clauses(query)
+        clause_plans = [
+            (
                 clause,
-                intent_router=self._intent_router,
-                history=context.history,
-                xianyu_context=xianyu_context,
-            ) and all(task.task_type != "service" for task in tasks):
-                tasks.append(Task(f"q{len(tasks) + 1}", "service", clause, metadata))
-        # Ordinary RAG has no expert task today.  It remains one service task
-        # so Planner has a total, Task[]-only contract before S4's executor.
-        return tasks or [Task("service-1", "service", query, metadata)]
+                build_expert_plan(
+                    clause,
+                    intent_router=self._intent_router,
+                    history=context.history,
+                    xianyu_context=xianyu_context,
+                ),
+            )
+            for clause in clauses
+        ]
+        planned_expert_tasks: list[ExpertTask] = []
+        for index, (clause, expert_tasks) in enumerate(clause_plans, start=1):
+            if expert_tasks:
+                planned_expert_tasks.extend(expert_tasks)
+                continue
+            # The former orchestrator fallback is now Planner-owned so the
+            # execution path never needs to classify this clause again.
+            clause_question_plan = build_question_plan(clause)
+            clause_needs_item = self._requires_item_context(clause) or any(
+                question["scope"] == "item"
+                for question in clause_question_plan["knowledge_questions"]
+            )
+            planned_expert_tasks.append(
+                ExpertTask(
+                    task_id=f"fallback-{index}",
+                    expert="product" if clause_needs_item else "service",
+                    question_fragment=clause,
+                    normalized_question=(
+                        "商品专项知识" if clause_needs_item else "卖家通用规则"
+                    ),
+                    knowledge_scope=(
+                        "model_knowledge" if clause_needs_item else "seller_rule"
+                    ),
+                    query_target=(
+                        "product.model_knowledge"
+                        if clause_needs_item
+                        else "seller_rule.general"
+                    ),
+                    original_question=clause,
+                )
+            )
+        return _unique_tasks(planned_expert_tasks, metadata)
+
+    @staticmethod
+    def xianyu_context_updates(
+        query: str,
+        context: Mapping[str, object] | None = None,
+    ) -> dict[str, str]:
+        """Expose planner-owned follow-up state extraction through one boundary."""
+
+        return xianyu_context_updates(query, context)
 
     def _needs_item(
         self,
@@ -221,6 +338,13 @@ def planner_state(tasks: list[Task]) -> PlannerState:
         and all(isinstance(question, Mapping) for question in knowledge_questions)
         and route in {"rag", "order", "rag_mcp", "missing_order_id", "unsupported_action"}
         and isinstance(raw_state.get("needs_item"), bool)
+        and isinstance(
+            raw_state.get(
+                "requires_item_resolution",
+                raw_state.get("needs_item") and route == "rag",
+            ),
+            bool,
+        )
         and isinstance(raw_state.get("defer_to_order_context"), bool)
         and isinstance(raw_state.get("is_rule_followup"), bool)
         and isinstance(raw_state.get("use_xianyu_without_item"), bool)
@@ -235,6 +359,10 @@ def planner_state(tasks: list[Task]) -> PlannerState:
         route=route,
         order_id=_optional_order_id(raw_state.get("order_id")),
         needs_item=raw_state["needs_item"],
+        requires_item_resolution=raw_state.get(
+            "requires_item_resolution",
+            raw_state["needs_item"] and route == "rag",
+        ),
         defer_to_order_context=raw_state["defer_to_order_context"],
         is_rule_followup=raw_state["is_rule_followup"],
         use_xianyu_without_item=raw_state["use_xianyu_without_item"],
@@ -259,6 +387,7 @@ def _state_metadata(state: PlannerState) -> dict[str, object]:
         "route": state.route,
         "order_id": state.order_id,
         "needs_item": state.needs_item,
+        "requires_item_resolution": state.requires_item_resolution,
         "defer_to_order_context": state.defer_to_order_context,
         "is_rule_followup": state.is_rule_followup,
         "use_xianyu_without_item": state.use_xianyu_without_item,

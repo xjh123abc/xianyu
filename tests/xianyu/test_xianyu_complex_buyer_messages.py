@@ -11,7 +11,7 @@ import pytest
 from app.generation.prompt import build_xianyu_messages
 from app.services.chat_service import ChatService
 from app.services.item_service import ItemService
-from app.services.xianyu.responses import requires_human_handoff
+import app.services.xianyu.responses as responses
 
 
 class NoRag:
@@ -246,8 +246,9 @@ def test_xianyu_prompt_exposes_all_confirmed_facts_without_conflicts() -> None:
         "无法确认",
     ],
 )
-def test_buyer_visible_human_review_language_is_rejected(text: str) -> None:
-    assert requires_human_handoff(text) is True
+def test_legacy_text_guard_is_removed_from_the_unified_path(text: str) -> None:
+    del text
+    assert not hasattr(responses, "requires_human_handoff")
 
 
 def test_unified_task_path_preserves_the_grounded_generated_reply() -> None:

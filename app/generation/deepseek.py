@@ -9,7 +9,6 @@ from typing import Any
 from openai import OpenAI
 
 from app.generation.prompt import (
-    build_combined_messages,
     build_messages,
     build_order_messages,
     build_xianyu_messages,
@@ -96,19 +95,6 @@ class DeepSeekGenerator:
         else:
             raise ValueError("expert must be 'product' or 'service'")
         return self._generate_messages(messages, timeout_seconds=timeout_seconds)
-
-    def generate_combined(
-        self,
-        query: str,
-        rag_result: Mapping[str, Any],
-        mcp_result: Mapping[str, Any],
-        *,
-        history: Sequence[Mapping[str, Any]] | None = None,
-    ) -> str:
-        """Generate the final answer from both independent service results."""
-        return self._generate_messages(
-            build_combined_messages(query, rag_result, mcp_result, history)
-        )
 
     def classify_intent(self, query: str) -> str | None:
         """Return one routing label from a deliberately decision-free prompt.

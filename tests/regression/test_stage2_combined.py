@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, Mock
 
-from app.services.chat_service import ChatService, route_query
+from app.generation.deepseek import DeepSeekGenerator
+from app.services.chat_service import ChatService
+from app.services.order_chat_handler import OrderChatHandler
+from app.services.order_router import route_query
 
 
 ORDER_RESULT = {
@@ -15,6 +18,11 @@ ORDER_RESULT = {
     "logistics_status": "运输中",
     "tracking_no": "MOCKEXP1001",
 }
+
+
+def test_legacy_combined_entrypoints_are_removed() -> None:
+    assert not hasattr(OrderChatHandler, "combined")
+    assert not hasattr(DeepSeekGenerator, "generate_combined")
 
 
 def test_v1_examples_select_rag_mcp_only_for_combined_question() -> None:
@@ -56,4 +64,3 @@ def test_combined_question_executes_order_and_service_tasks_without_rag_mcp() ->
     assert result["answer"] == "订单 TEST1001 当前已发货。\n平台规则为付款成功后 24 小时内发出。"
     xianyu_rag_service.prepare.assert_called_once()
     mcp_service.get_order.assert_awaited_once_with("TEST1001")
-    generator.generate_combined.assert_not_called()

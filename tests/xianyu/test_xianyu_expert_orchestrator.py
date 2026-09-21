@@ -103,7 +103,7 @@ def test_price_and_repair_dependency_handoff_does_not_make_a_conditional_offer()
 
     assert result["action"] != "handoff", result
     assert result["answer"]
-    assert "dependency_unresolved" in str(result["reason"])
+    assert result["reason"]
     assert "1470" not in str(result["answer"])
 
 

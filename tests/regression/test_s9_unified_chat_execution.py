@@ -53,6 +53,11 @@ class _Planner:
         del context
         return _TASKS
 
+    @staticmethod
+    def xianyu_context_updates(query: str, context: object) -> dict[str, str]:
+        del query, context
+        return {}
+
 
 class _Executor:
     def __init__(self) -> None:

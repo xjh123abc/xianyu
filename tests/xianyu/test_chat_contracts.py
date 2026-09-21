@@ -106,12 +106,49 @@ def test_task_and_response_contracts_preserve_partial_task_outcomes() -> None:
     assert product.metadata == {"target": "history"}
 
 
+def test_task_keeps_routing_and_dependency_contract_out_of_metadata() -> None:
+    task = Task(
+        "price-2",
+        "price",
+        "最低多少？",
+        {"transaction_conditions": {"shipping": "buyer_pays"}},
+        query_target="price.minimum",
+        depends_on_task_ids=["product-1"],  # type: ignore[arg-type]
+        execution_mode="xianyu_expert",
+    )
+
+    assert task.query_target == "price.minimum"
+    assert task.depends_on_task_ids == ("product-1",)
+    assert task.execution_mode == "xianyu_expert"
+    assert "query_target" not in task.metadata
+    assert "depends_on_task_ids" not in task.metadata
+    assert "execution_mode" not in task.metadata
+
+
 @pytest.mark.parametrize(
     ("factory", "message"),
     [
         (lambda: Task("", "product", "问题"), "task_id"),
         (lambda: Task("task", "invalid", "问题"), "task_type"),
         (lambda: Task("task", "product", "问题", []), "metadata"),
+        (
+            lambda: Task(
+                "task",
+                "product",
+                "问题",
+                depends_on_task_ids=("task",),
+            ),
+            "depend on itself",
+        ),
+        (
+            lambda: Task(
+                "task",
+                "product",
+                "问题",
+                execution_mode="invalid",  # type: ignore[arg-type]
+            ),
+            "execution_mode",
+        ),
         (lambda: SessionContext(last_task_type="invalid"), "last_task_type"),
         (lambda: SessionContext(negotiation={"round": -1}), "negotiation.round"),
     ],

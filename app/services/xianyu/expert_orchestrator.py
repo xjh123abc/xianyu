@@ -7,6 +7,7 @@ import inspect
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 from app.generation.deepseek import DeepSeekGenerator
@@ -23,7 +24,6 @@ from app.services.xianyu.responses import (
     common_handoff,
     handoff,
     item_source,
-    requires_human_handoff,
 )
 from config.settings import settings
 
@@ -93,7 +93,6 @@ class XianyuExpertOrchestrator:
         item: Mapping[str, object] | None,
         history: Sequence[Mapping[str, object]] | None = None,
         session_state: Mapping[str, object] | None = None,
-        use_legacy_text_guard: bool = True,
     ) -> dict[str, object]:
         """Return exactly one reply or one fixed human-handoff decision."""
 
@@ -114,12 +113,11 @@ class XianyuExpertOrchestrator:
             history=tuple(history or ()),
             xianyu_context=xianyu_context,
             deadline=deadline,
-            use_legacy_text_guard=use_legacy_text_guard,
         )
 
         try:
             tasks = await asyncio.wait_for(
-                asyncio.to_thread(self._build_plan, context),
+                asyncio.to_thread(self.build_plan, context),
                 timeout=self._remaining(deadline),
             )
         except asyncio.TimeoutError:
@@ -146,10 +144,12 @@ class XianyuExpertOrchestrator:
                 "expert_plan_empty",
             )
 
-        results = await self._execute(tasks, context, deadline)
+        results = await self.execute_tasks(tasks, context)
         return self._merge(normalized_query, item, tasks, results)
 
-    def _build_plan(self, context: ExpertContext) -> list[ExpertTask]:
+    def build_plan(self, context: ExpertContext) -> list[ExpertTask]:
+        """Compatibility planner used only by the legacy ``handle`` entrypoint."""
+
         planner = self._planner or self._model_planner(context.deadline)
         planning_context = dict(context.xianyu_context)
         if context.item is not None and not planning_context.get("item_id"):
@@ -177,6 +177,26 @@ class XianyuExpertOrchestrator:
                 )
             ]
         return tasks
+
+    def _build_plan(self, context: ExpertContext) -> list[ExpertTask]:
+        """Deprecated private alias retained for callers outside the main chain."""
+
+        return self.build_plan(context)
+
+    async def execute_tasks(
+        self,
+        tasks: Sequence[ExpertTask],
+        context: ExpertContext,
+    ) -> list[ExpertResult]:
+        """Execute already-planned expert tasks without planning them again."""
+
+        if not tasks:
+            return []
+        deadline = context.deadline or (time.monotonic() + self.budget_seconds)
+        execution_context = (
+            context if context.deadline is not None else replace(context, deadline=deadline)
+        )
+        return await self._execute(tasks, execution_context, deadline)
 
     def _model_planner(self, deadline: float | None) -> Callable[..., object] | None:
         generator = self._get_generator()
@@ -283,7 +303,6 @@ class XianyuExpertOrchestrator:
                     batch,
                     outcome,
                     completed,
-                    use_legacy_text_guard=context.use_legacy_text_guard,
                 )
 
         return [completed[task.task_id] for task in tasks]
@@ -305,8 +324,6 @@ class XianyuExpertOrchestrator:
         tasks: Sequence[ExpertTask],
         raw_results: object,
         completed: dict[str, ExpertResult],
-        *,
-        use_legacy_text_guard: bool,
     ) -> None:
         by_id: dict[str, ExpertResult] = {}
         if isinstance(raw_results, list):
@@ -326,12 +343,6 @@ class XianyuExpertOrchestrator:
                     completed[task.task_id] = ExpertResult.handoff(
                         task,
                         "expert_result_empty",
-                        sources=result.sources,
-                    )
-                elif use_legacy_text_guard and requires_human_handoff(result.answer):
-                    completed[task.task_id] = ExpertResult.handoff(
-                        task,
-                        "generated_reply_requires_human_review",
                         sources=result.sources,
                     )
                 else:
