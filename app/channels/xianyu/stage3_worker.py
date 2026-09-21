@@ -15,7 +15,7 @@ from app.channels.xianyu.store import ChannelStore
 from app.channels.xianyu.wecom import HandoffNotifier
 
 
-HANDOFF_NOTICE = "稍等我看看"
+HANDOFF_NOTICE = "客服服务暂时不可用，请稍后再试。"
 
 
 class XianyuStage3Worker:

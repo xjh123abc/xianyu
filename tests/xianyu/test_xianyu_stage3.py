@@ -277,7 +277,7 @@ def test_mismatched_mcp_item_is_rejected_and_not_saved() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert service.session_manager.get_current_item_id("stage3_mismatch") is None
 
 
@@ -301,7 +301,7 @@ def test_knowledge_without_a_valid_source_cannot_make_a_positive_promise() -> No
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
 
 
 def test_common_generation_failure_keeps_retrieved_evidence() -> None:
@@ -315,7 +315,7 @@ def test_common_generation_failure_keeps_retrieved_evidence() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     service.generator.generate_xianyu.assert_not_called()
 
@@ -388,5 +388,5 @@ def test_item_question_without_request_or_memory_item_handoffs() -> None:
 
         assert result["action"] != "handoff"
         assert result["next_step"] != "human_handoff"
-        assert result["answer"] == "稍等我看看"
+        assert result["answer"] == "请补充商品编号或具体商品信息。"
         service.mcp_service.get_item_info.assert_not_awaited()

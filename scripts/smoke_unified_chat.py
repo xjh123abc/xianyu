@@ -146,9 +146,9 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
                 (
                     _item_fact(a01[2], "sale_status") == "unknown"
                     and a01[2].get("can_answer") is False
-                    and a01[2].get("action") == "handoff"
+                    and a01[2].get("action") == "reply"
                     and a01[2].get("reason") == "sale_status_unavailable",
-                    "003 未知状态进入安全接管",
+                    "003 未知状态返回安全说明",
                 ),
                 (all(_has_source(item, "mcp:get_item_info") for item in a01), "三项均包含真实商品工具来源"),
             ],
@@ -215,7 +215,12 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
             "无商品上下文时询问具体商品，不随机选择。",
             a05,
             [
-                (a05[0].get("action") == "handoff" and a05[0].get("can_answer") is False, "返回安全接管"),
+                (
+                    a05[0].get("action") == "clarify"
+                    and a05[0].get("can_answer") is False
+                    and "稍等我看看" not in _answer(a05[0]),
+                    "请求买家补充商品信息",
+                ),
                 (a05[0].get("item_id") is None, "未随机绑定商品"),
                 (a05[0].get("reason") == "buyer_question_requires_clarification", "内部原因明确为需要商品上下文"),
             ],
@@ -234,7 +239,11 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
                 (a06[0].get("item_id") == "XXX999", "保留请求编号 XXX999"),
                 (a06[0].get("reason") == "item_context_conflict", "内部决策明确 XXX999 与可用商品上下文冲突"),
                 (a06[0].get("can_answer") is False, "未对不存在商品作肯定回答"),
-                (a06[0].get("action") == "handoff", "不存在商品进入安全接管"),
+                (
+                    a06[0].get("action") == "clarify"
+                    and "稍等我看看" not in _answer(a06[0]),
+                    "不存在商品请求买家确认商品信息",
+                ),
                 ("1280" not in _answer(a06[0]) and "560" not in _answer(a06[0]) and "980" not in _answer(a06[0]), "未使用其他商品价格"),
             ],
         )
@@ -281,10 +290,10 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
                 (_item_fact(a08[1], "sale_status") == "sold" and _item_fact(a08[2], "sale_status") == "sold", "002 当轮及后续结构化状态正确"),
                 (a08[1].get("can_answer") is True and a08[2].get("can_answer") is True, "002 两轮均由结构化事实直接回答"),
                 (
-                    a08[3].get("action") == "handoff"
+                    a08[3].get("action") == "clarify"
                     and a08[3].get("reason") == "buyer_question_requires_clarification"
                     and a08[3].get("item_id") is None,
-                    "新会话没有继承商品并安全接管",
+                    "新会话没有继承商品并请求补充商品信息",
                 ),
             ],
         )

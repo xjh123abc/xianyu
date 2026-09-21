@@ -200,7 +200,7 @@ def test_unknown_item_handoffs_and_items_do_not_cross_talk() -> None:
     service = _service(rag)
     missing = asyncio.run(service.chat_async("这个东西多少钱？"))
     assert missing["action"] != "handoff"
-    assert missing["answer"] == "稍等我看看"
+    assert missing["answer"] == "请补充商品编号或具体商品信息。"
 
     first = asyncio.run(
         service.chat_async("配件有哪些？", item_id="DEMO_ITEM_001")
@@ -315,7 +315,7 @@ def test_known_item_with_missing_fact_handoffs_without_internal_id() -> None:
     assert result["action"] != "handoff"
     assert result["item_id"] == "DEMO_ITEM_001"
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert "商品编号" not in str(result["answer"])
     assert "DEMO_ITEM_001" not in str(result["answer"])
 
@@ -331,7 +331,7 @@ def test_vague_question_about_known_item_handoffs() -> None:
 
     assert result["action"] != "handoff"
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
 
 
 def test_chat_api_restores_current_item_for_same_chat(monkeypatch) -> None:
@@ -436,7 +436,8 @@ def test_structured_and_text_item_conflict_handoffs() -> None:
 
     assert result["action"] != "handoff"
     assert result["can_answer"] is False
-    assert result["answer"] == "稍等我看看"
+    assert result["action"] == "clarify"
+    assert "稍等我看看" not in str(result["answer"])
     service.mcp_service.get_item_info.assert_not_awaited()
 
 
@@ -451,7 +452,8 @@ def test_multiple_text_items_handoff() -> None:
     )
 
     assert result["action"] != "handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["action"] == "clarify"
+    assert "稍等我看看" not in str(result["answer"])
     service.mcp_service.get_item_info.assert_not_awaited()
 
 
@@ -485,7 +487,8 @@ def test_unknown_explicit_item_does_not_fall_back_to_remembered_item() -> None:
 
     assert result["action"] != "handoff"
     assert result["item_id"] == "XXX999"
-    assert result["answer"] == "稍等我看看"
+    assert result["action"] == "clarify"
+    assert "稍等我看看" not in str(result["answer"])
     assert "XXX999" not in str(result["answer"])
 
 
@@ -504,5 +507,6 @@ def test_unknown_text_item_id_does_not_fall_back_to_remembered_item() -> None:
 
     assert result["action"] != "handoff"
     assert result["item_id"] == "XXX999"
-    assert result["answer"] == "稍等我看看"
+    assert result["action"] == "clarify"
+    assert "稍等我看看" not in str(result["answer"])
     assert "XXX999" not in str(result["answer"])

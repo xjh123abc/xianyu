@@ -123,7 +123,7 @@ def test_follow_up_price_context_is_persisted_and_used_by_main_chain() -> None:
     ] == "minimum"
 
 
-def test_unified_handoff_reason_survives_http_serialization(monkeypatch) -> None:
+def test_unified_unavailable_reason_survives_http_serialization(monkeypatch) -> None:
     from fastapi.testclient import TestClient
     from app.api import chat as chat_api
     from app.main import app
@@ -133,10 +133,10 @@ def test_unified_handoff_reason_survives_http_serialization(monkeypatch) -> None
         return_value={
             "query": "测光对比过吗？",
             "route": "xianyu",
-            "action": "handoff",
-            "answer": "稍等我看看",
+            "action": "reply",
+            "answer": "该问题目前暂无足够信息确认。",
             "can_answer": False,
-            "next_step": "human_handoff",
+            "next_step": None,
             "reason": "缺少测光对比记录",
         }
     )
@@ -186,7 +186,7 @@ def test_legacy_missing_action_becomes_auto_clarification() -> None:
         {"answer": "", "can_answer": False, "reason": "expert_result_empty"}
     )
 
-    assert mapped.action == "clarify"
+    assert mapped.action == "answer"
     assert mapped.reason == "expert_result_empty"
 
 
@@ -214,7 +214,7 @@ def test_expert_budget_discards_late_batch_result() -> None:
     )
 
     assert result["action"] != "handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert result["reason"] == "expert_processing_timeout"
 
 

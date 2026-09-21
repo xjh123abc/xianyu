@@ -12,18 +12,18 @@ def _fake_chat(payload: dict[str, str]) -> dict[str, object]:
 
     if chat_id == "qa_a05_missing_item" or chat_id == "qa_a08_fresh":
         return {
-            "action": "handoff",
-            "answer": "稍等我看看",
+            "action": "clarify",
+            "answer": "请补充商品编号或具体商品信息。",
             "item_id": None,
             "can_answer": False,
             "reason": "buyer_question_requires_clarification",
         }
     if item_id == "XXX999":
         return {
-            "action": "handoff",
+            "action": "clarify",
             "item_id": "XXX999",
             "item_info": {"found": False},
-            "answer": "稍等我看看",
+            "answer": "这件商品我暂时没查到，麻烦确认一下。",
             "can_answer": False,
             "reason": "item_context_conflict",
         }
@@ -43,8 +43,8 @@ def _fake_chat(payload: dict[str, str]) -> dict[str, object]:
             answer += "这件已经出掉了。"
         elif remembered == "DEMO_ITEM_003":
             return {
-                "action": "handoff",
-                "answer": "稍等我看看",
+                "action": "reply",
+                "answer": "该问题目前暂无足够信息确认。",
                 "item_id": remembered,
                 "item_info": {"found": True, "sale_status": "unknown"},
                 "can_answer": False,

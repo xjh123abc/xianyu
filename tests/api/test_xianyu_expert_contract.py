@@ -10,7 +10,7 @@ from app.api import chat as chat_api
 from app.main import app
 
 
-def test_handoff_reason_survives_full_http_serialization(monkeypatch) -> None:
+def test_unavailable_reason_survives_full_http_serialization(monkeypatch) -> None:
     service = Mock()
     service.chat_async = AsyncMock(
         return_value={
@@ -18,10 +18,10 @@ def test_handoff_reason_survives_full_http_serialization(monkeypatch) -> None:
             "chat_id": "s6_http_handoff",
             "item_id": "CANON_FTB_001",
             "route": "xianyu",
-            "action": "handoff",
-            "answer": "稍等我看看",
+            "action": "reply",
+            "answer": "该问题目前暂无足够信息确认。",
             "can_answer": False,
-            "next_step": "human_handoff",
+            "next_step": None,
             "reason": "缺少测光对比记录；已确认不包邮最低1470元",
         }
     )
@@ -37,7 +37,7 @@ def test_handoff_reason_survives_full_http_serialization(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["answer"] == "稍等我看看"
+    assert response.json()["answer"] == "该问题目前暂无足够信息确认。"
     assert response.json()["reason"] == "缺少测光对比记录；已确认不包邮最低1470元"
     service.chat_async.assert_awaited_once()
 

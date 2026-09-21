@@ -73,7 +73,7 @@ class ProductAgent:
             task.query_target,
         )
         sources = _sources(response)
-        if response.get("action") == "reply":
+        if response.get("action") == "reply" and response.get("can_answer") is True:
             answer = response.get("answer")
             if isinstance(answer, str) and answer.strip():
                 return ExpertResult.answered(task, answer.strip(), sources=sources)

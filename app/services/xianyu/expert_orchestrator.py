@@ -366,10 +366,15 @@ class XianyuExpertOrchestrator:
             if result.status != "answered"
         ]
         if not answers:
-            response = clarification(query, item_id=str(item["item_id"]) if item else None)
-            response["reason"] = self._handoff_reason(tasks, results)
-            response["sources"] = sources
-            return response
+            # A planner/expert failure is not something the buyer can resolve
+            # by repeating the question.  Preserve AUTO mode and return the
+            # standard unavailable result instead of an old clarification.
+            return self._handoff_response(
+                query,
+                item,
+                results,
+                self._handoff_reason(tasks, results),
+            )
         response: dict[str, object] = {
             "query": query,
             "route": "xianyu",

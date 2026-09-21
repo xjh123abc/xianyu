@@ -159,10 +159,10 @@ def test_unanswerable_question_keeps_auto_and_allows_future_ai(tmp_path: Path) -
     result = asyncio.run(instance.process(message("m3", text="能补偿多少？"), sender))
     later = asyncio.run(instance.process(message("m4", text="那什么时候发货？"), sender))
 
-    assert result["action"] == "clarify"
+    assert result["action"] == "answer"
     assert notifier.calls == []
     assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
-    assert later["action"] == "clarify"
+    assert later["action"] == "answer"
     assert len(sender.calls) == 2
 
 
@@ -236,7 +236,7 @@ def test_automatic_failure_modes_never_take_over_a_session(
 
     result = asyncio.run(instance.process(message(), FakeSender()))
 
-    assert result["action"] in {"clarify", "error"}
+    assert result["action"] in {"answer", "clarify", "error"}
     assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
 
 
@@ -307,7 +307,7 @@ def test_http_handoff_remains_auto_and_sends_one_safe_reply(
     first = asyncio.run(instance.process(inbound, sender))
     duplicate = asyncio.run(instance.process(inbound, sender))
 
-    assert first["action"] == "clarify"
+    assert first["action"] == "answer"
     assert duplicate == {"action": "duplicate", "message_id": "http-s3-handoff"}
     assert [call[2] for call in sender.calls] == [HANDOFF_NOTICE]
     assert notifier.calls == []

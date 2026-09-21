@@ -13,7 +13,8 @@ import re
 from app.services.chat_response import non_rag_response
 
 
-BUYER_HANDOFF_REPLY = "稍等我看看"
+AUTO_UNAVAILABLE_REPLY = "该问题目前暂无足够信息确认。"
+ITEM_CLARIFICATION_REPLY = "请补充商品编号或具体商品信息。"
 _HUMAN_REVIEW_LANGUAGE = re.compile(
     r"(?:需要|让|请|等|等待).{0,8}(?:卖家|人工).{0,8}(?:确认|处理)"
     r"|(?:我|帮你).{0,8}(?:问|联系).{0,8}卖家"
@@ -123,7 +124,19 @@ def reply(
 def clarification(query: str, item_id: str | None = None) -> dict[str, object]:
     """Ask only for buyer information that can make the next turn answerable."""
 
-    response = common_handoff(query, "buyer_question_requires_clarification")
+    response = non_rag_response(
+        query,
+        ITEM_CLARIFICATION_REPLY,
+        can_answer=False,
+        route="xianyu",
+        action="clarify",
+    )
+    response.update(
+        {
+            "reason": "buyer_question_requires_clarification",
+            "next_step": "clarify",
+        }
+    )
     if item_id is not None:
         response["item_id"] = item_id
     return response
@@ -164,10 +177,17 @@ def item_conflict(
     *,
     item_id: str | None = None,
 ) -> dict[str, object]:
-    """Escalate conflicting item identity without selecting one by guesswork."""
+    """Ask the buyer to resolve conflicting item identity without guessing."""
 
-    del answer  # Kept for compatibility with existing callers.
-    response = common_handoff(query, "item_context_conflict")
+    safe_answer = answer.strip() if isinstance(answer, str) else ""
+    response = non_rag_response(
+        query,
+        safe_answer or ITEM_CLARIFICATION_REPLY,
+        can_answer=False,
+        route="xianyu",
+        action="clarify",
+    )
+    response.update({"reason": "item_context_conflict", "next_step": "clarify"})
     if item_id is not None:
         response["item_id"] = item_id
     return response
@@ -179,21 +199,25 @@ def handoff(
     item: Mapping[str, object],
     prepared: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Return a safe item clarification without changing channel ownership."""
+    """Return an automatic unavailable reply without changing channel ownership.
+
+    The name remains for compatibility with the old expert callers.  It no
+    longer means an automatic human handoff.
+    """
 
     response = non_rag_response(
         query,
-        BUYER_HANDOFF_REPLY,
+        AUTO_UNAVAILABLE_REPLY,
         can_answer=False,
         route="xianyu",
-        action="clarify",
+        action="reply",
     )
     response.update(
         {
             "reason": answer,
             "item_id": item["item_id"],
             "item_info": dict(item),
-            "next_step": "clarify",
+            "next_step": None,
             "sources": [item_source(item)],
         }
     )
@@ -209,15 +233,19 @@ def handoff(
 
 
 def common_handoff(query: str, reason: str) -> dict[str, object]:
-    """Create a fixed buyer clarification when no concrete item is available."""
+    """Create a safe unavailable reply for an automatic common-knowledge gap.
+
+    Kept as a compatibility name for legacy callers; it never requests human
+    takeover and deliberately hides internal failure details from the buyer.
+    """
 
     response = non_rag_response(
         query,
-        BUYER_HANDOFF_REPLY,
+        AUTO_UNAVAILABLE_REPLY,
         can_answer=False,
         route="xianyu",
-        action="clarify",
+        action="reply",
     )
     response["reason"] = reason
-    response["next_step"] = "clarify"
+    response["next_step"] = None
     return response

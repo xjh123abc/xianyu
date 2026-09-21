@@ -13,7 +13,7 @@ from app.channels.xianyu.models import InboundMessage, SendReceipt
 from app.channels.xianyu.stage3_worker import XianyuStage3Worker
 from app.channels.xianyu.store import ChannelStore
 from app.rag.answerability import AnswerReliability
-from app.services.xianyu.responses import clarification, item_conflict, unavailable
+from app.services.xianyu.responses import clarification, common_handoff, handoff, item_conflict, unavailable
 
 
 class _Sender:
@@ -74,7 +74,7 @@ def test_automatic_failure_keeps_channel_session_auto(
 
     result = asyncio.run(worker.process(_message("m-" + str(type(payload).__name__)), _Sender()))
 
-    assert result["action"] in {"clarify", "error"}
+    assert result["action"] in {"answer", "clarify", "error"}
     assert store.session_state("seller", "chat-1", "buyer-1")["mode"] == "AUTO"
 
 
@@ -96,3 +96,15 @@ def test_knowledge_unavailable_is_a_safe_reply_not_a_clarification() -> None:
     assert response["action"] == "reply"
     assert response["can_answer"] is False
     assert "稍等我看看" not in response["answer"]
+
+
+def test_legacy_automatic_handoff_builders_do_not_return_handoff_wording() -> None:
+    item = {"item_id": "ITEM-1", "title": "相机"}
+
+    for response in (
+        common_handoff("售后怎么处理？", "common_knowledge_unavailable"),
+        handoff("这台摔过吗？", "drop_history_unavailable", item),
+    ):
+        assert response["action"] == "reply"
+        assert response["next_step"] is None
+        assert response["answer"] == "该问题目前暂无足够信息确认。"
