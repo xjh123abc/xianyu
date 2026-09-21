@@ -92,7 +92,7 @@ class TaskExecutor:
 
 
 class XianyuExpertTaskHandler:
-    """Adapt the existing Product/Price/Service expert path to TaskResult."""
+    """Legacy compatibility adapter around the old expert orchestrator."""
 
     _ITEM_TASK_TYPES = frozenset({"product", "price"})
     _EXPERT_TASK_TYPES = frozenset({"product", "price", "service"})
@@ -132,6 +132,7 @@ class XianyuExpertTaskHandler:
             item=item,
             history=context.history,
             session_state={"xianyu_context": context.platform_context.get("xianyu", {})},
+            use_legacy_text_guard=False,
         )
         return _response_result(task, response, unavailable_reason="expert_answer_unavailable")
 
@@ -265,5 +266,8 @@ class ServiceTaskHandler:
     ) -> TaskResult:
         if _planner_metadata(task).get("route") != "rag_mcp":
             return await self._expert_handler.handle(task, message, context)
-        response = await self._knowledge_responder.handle_common(task.query)
+        response = await self._knowledge_responder.handle_common(
+            task.query,
+            use_legacy_text_guard=False,
+        )
         return _response_result(task, response, unavailable_reason="service_answer_unavailable")

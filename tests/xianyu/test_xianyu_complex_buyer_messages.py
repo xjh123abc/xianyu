@@ -250,7 +250,7 @@ def test_buyer_visible_human_review_language_is_rejected(text: str) -> None:
     assert requires_human_handoff(text) is True
 
 
-def test_generated_human_review_language_becomes_the_fixed_handoff_reply() -> None:
+def test_unified_task_path_preserves_the_grounded_generated_reply() -> None:
     generator = Mock()
     generator.generate_xianyu_expert.return_value = "这个需要卖家确认。"
     service = _service(_canon_item(), ItemEvidenceRag(), generator)
@@ -264,7 +264,7 @@ def test_generated_human_review_language_becomes_the_fixed_handoff_reply() -> No
     )
 
     assert result["action"] != "handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
-    assert result["reason"] == "generated_reply_requires_human_review"
+    assert result["answer"] == "这个需要卖家确认。"
+    assert "reason" not in result
     generator.generate_xianyu_expert.assert_called_once()
     generator.generate_xianyu.assert_not_called()

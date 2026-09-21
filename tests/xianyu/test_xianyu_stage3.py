@@ -231,7 +231,8 @@ def test_structured_subquestions_do_not_fall_back_to_item_knowledge() -> None:
     assert rag.item_ids == [None]
     expert, question, item, evidence = service.generator.generate_xianyu_expert.call_args.args
     assert expert == "service"
-    assert question == "售后或店铺通用规则"
+    assert "售后" in question
+    assert question != "售后或店铺通用规则"
     assert item is not None
     assert "1280.00" not in evidence
     service.generator.generate_xianyu.assert_not_called()

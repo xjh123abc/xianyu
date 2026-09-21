@@ -239,7 +239,12 @@ class XianyuKnowledgeResponder:
                 item,
             )
 
-    async def handle_common(self, query: str) -> dict[str, object]:
+    async def handle_common(
+        self,
+        query: str,
+        *,
+        use_legacy_text_guard: bool = True,
+    ) -> dict[str, object]:
         """Answer an item-independent question from common seller rules only."""
 
         prepared: Mapping[str, object] | None = None
@@ -273,7 +278,7 @@ class XianyuKnowledgeResponder:
             )
             if not isinstance(answer, str) or not answer.strip():
                 raise RuntimeError("empty common Xianyu answer")
-            if requires_human_handoff(answer):
+            if use_legacy_text_guard and requires_human_handoff(answer):
                 return self._common_handoff(query, "generated_reply_requires_human_review")
             return {
                 "query": query,

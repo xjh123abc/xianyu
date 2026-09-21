@@ -93,6 +93,7 @@ class XianyuExpertOrchestrator:
         item: Mapping[str, object] | None,
         history: Sequence[Mapping[str, object]] | None = None,
         session_state: Mapping[str, object] | None = None,
+        use_legacy_text_guard: bool = True,
     ) -> dict[str, object]:
         """Return exactly one reply or one fixed human-handoff decision."""
 
@@ -113,6 +114,7 @@ class XianyuExpertOrchestrator:
             history=tuple(history or ()),
             xianyu_context=xianyu_context,
             deadline=deadline,
+            use_legacy_text_guard=use_legacy_text_guard,
         )
 
         try:
@@ -277,7 +279,12 @@ class XianyuExpertOrchestrator:
                             "expert_execution_failed",
                         )
                     continue
-                self._record_batch_results(batch, outcome, completed)
+                self._record_batch_results(
+                    batch,
+                    outcome,
+                    completed,
+                    use_legacy_text_guard=context.use_legacy_text_guard,
+                )
 
         return [completed[task.task_id] for task in tasks]
 
@@ -298,6 +305,8 @@ class XianyuExpertOrchestrator:
         tasks: Sequence[ExpertTask],
         raw_results: object,
         completed: dict[str, ExpertResult],
+        *,
+        use_legacy_text_guard: bool,
     ) -> None:
         by_id: dict[str, ExpertResult] = {}
         if isinstance(raw_results, list):
@@ -319,7 +328,7 @@ class XianyuExpertOrchestrator:
                         "expert_result_empty",
                         sources=result.sources,
                     )
-                elif requires_human_handoff(result.answer):
+                elif use_legacy_text_guard and requires_human_handoff(result.answer):
                     completed[task.task_id] = ExpertResult.handoff(
                         task,
                         "generated_reply_requires_human_review",

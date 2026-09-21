@@ -96,6 +96,9 @@ class ExpertContext:
     xianyu_context: Mapping[str, object] = field(default_factory=dict)
     # Owned by the orchestrator and never persisted as buyer/session state.
     deadline: float | None = None
+    # Legacy direct callers retain their historical wording veto.  The unified
+    # TaskExecutor path keeps evidence checks but does not apply that veto.
+    use_legacy_text_guard: bool = True
 
 
 @dataclass(frozen=True, slots=True)

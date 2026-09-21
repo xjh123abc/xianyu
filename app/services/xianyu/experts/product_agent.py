@@ -127,7 +127,7 @@ class ProductAgent:
             return ExpertResult.handoff(task, "product_generation_failed", sources=sources)
         if not isinstance(answer, str) or not answer.strip():
             return ExpertResult.handoff(task, "product_generation_empty", sources=sources)
-        if requires_human_handoff(answer):
+        if context.use_legacy_text_guard and requires_human_handoff(answer):
             return ExpertResult.handoff(task, "generated_reply_requires_human_review", sources=sources)
         return ExpertResult.answered(task, answer.strip(), sources=sources)
 

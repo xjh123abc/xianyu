@@ -232,7 +232,8 @@ class ChatService:
                 for question in plan["knowledge_questions"]
             ):
                 common_response = await self.xianyu_knowledge_responder.handle_common(
-                    common_knowledge_query(plan, query)
+                    common_knowledge_query(plan, query),
+                    use_legacy_text_guard=False,
                 )
                 common_response["query"] = query
                 resolution_response = merge_partial_response(
@@ -314,7 +315,8 @@ class ChatService:
                     for question in plan["knowledge_questions"]
                 ):
                     common_response = await self.xianyu_knowledge_responder.handle_common(
-                        common_knowledge_query(plan, query)
+                        common_knowledge_query(plan, query),
+                        use_legacy_text_guard=False,
                     )
                     common_response["query"] = query
                     response = merge_partial_response(response, common_response)
@@ -324,7 +326,8 @@ class ChatService:
                 or state.use_xianyu_without_item
             ):
                 response = await self.xianyu_knowledge_responder.handle_common(
-                    common_knowledge_query(plan, query)
+                    common_knowledge_query(plan, query),
+                    use_legacy_text_guard=False,
                 )
                 response["query"] = query
                 if plan["item_fields"]:
