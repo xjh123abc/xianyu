@@ -18,6 +18,18 @@ from app.channels.xianyu.stage3_worker import HANDOFF_NOTICE, XianyuStage3Worker
 from app.channels.xianyu.store import ChannelStore
 from app.channels.xianyu.wecom import WeComWebhookNotifier
 from app.main import app
+from app.services.chat_contracts import ChatMessage
+
+
+def _message_payload(message: ChatMessage) -> dict[str, str | None]:
+    return {
+        "platform": message.platform,
+        "account_id": message.account_id,
+        "buyer_id": message.buyer_id,
+        "query": message.text,
+        "chat_id": message.chat_id,
+        "item_id": message.item_id,
+    }
 
 
 class FakeSender:
@@ -34,8 +46,8 @@ class FakeChat:
         self.response = response
         self.calls: list[dict[str, Any]] = []
 
-    async def ask(self, *, query: str, chat_id: str, item_id: str | None) -> Mapping[str, Any]:
-        self.calls.append({"query": query, "chat_id": chat_id, "item_id": item_id})
+    async def ask(self, message: ChatMessage) -> Mapping[str, Any]:
+        self.calls.append(_message_payload(message))
         if isinstance(self.response, BaseException):
             raise self.response
         return self.response
@@ -47,8 +59,8 @@ class BlockingChat(FakeChat):
         self.started = asyncio.Event()
         self.release = asyncio.Event()
 
-    async def ask(self, *, query: str, chat_id: str, item_id: str | None) -> Mapping[str, Any]:
-        self.calls.append({"query": query, "chat_id": chat_id, "item_id": item_id})
+    async def ask(self, message: ChatMessage) -> Mapping[str, Any]:
+        self.calls.append(_message_payload(message))
         self.started.set()
         await self.release.wait()
         return self.response
@@ -57,16 +69,14 @@ class BlockingChat(FakeChat):
 class InProcessHttpChat:
     """Exercise the real FastAPI serializer before returning to the S3 worker."""
 
-    async def ask(
-        self,
-        *,
-        query: str,
-        chat_id: str,
-        item_id: str | None,
-    ) -> Mapping[str, Any]:
+    async def ask(self, message: ChatMessage) -> Mapping[str, Any]:
         response = TestClient(app).post(
             "/chat",
-            json={"query": query, "chat_id": chat_id, "item_id": item_id},
+            json={
+                "query": message.text,
+                "chat_id": message.chat_id,
+                "item_id": message.item_id,
+            },
         )
         response.raise_for_status()
         return response.json()
@@ -115,12 +125,19 @@ def test_answer_is_mapped_sent_and_recorded_with_trusted_item(tmp_path: Path) ->
 
     assert result["action"] == "answer"
     assert sender.calls[0][:3] == ("xianyu:seller:chat-1", "buyer-1", "商品 A 标价 99 元。")
-    assert chat.calls[0]["item_id"] == "ITEM_A"
+    assert chat.calls[0] == {
+        "platform": "xianyu",
+        "account_id": "seller",
+        "buyer_id": "buyer-1",
+        "query": "这件商品多少钱？",
+        "chat_id": "xianyu:seller:chat-1",
+        "item_id": "ITEM_A",
+    }
     row = store.message("seller", "m1")
     assert row and row["action"] == "answer" and row["delivery_state"] == "CONFIRMED"
 
 
-def test_unresolved_clarification_handoffs_with_the_fixed_buyer_reply(tmp_path: Path) -> None:
+def test_unresolved_clarification_keeps_the_session_in_auto(tmp_path: Path) -> None:
     notifier = FakeNotifier()
     chat = FakeChat({"can_answer": False, "next_step": "clarify", "answer": "请问您说的是哪一件商品？"})
     instance, store = worker(tmp_path, chat, notifier)
@@ -128,13 +145,13 @@ def test_unresolved_clarification_handoffs_with_the_fixed_buyer_reply(tmp_path: 
 
     result = asyncio.run(instance.process(message("m2"), sender))
 
-    assert result["action"] == "human_handoff"
-    assert sender.calls[0][2] == HANDOFF_NOTICE
-    assert notifier.calls[0]["reason"] == "buyer_question_requires_clarification"
-    assert store.message("seller", "m2")["action"] == "human_handoff"
+    assert result["action"] == "clarify"
+    assert sender.calls[0][2] == "请问您说的是哪一件商品？"
+    assert notifier.calls == []
+    assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
 
 
-def test_unanswerable_question_handoffs_notifies_and_blocks_future_ai(tmp_path: Path) -> None:
+def test_unanswerable_question_keeps_auto_and_allows_future_ai(tmp_path: Path) -> None:
     notifier = FakeNotifier()
     instance, store = worker(tmp_path, FakeChat({"action": "handoff", "reason": "refund_amount_unknown"}), notifier)
     sender = FakeSender()
@@ -142,33 +159,35 @@ def test_unanswerable_question_handoffs_notifies_and_blocks_future_ai(tmp_path: 
     result = asyncio.run(instance.process(message("m3", text="能补偿多少？"), sender))
     later = asyncio.run(instance.process(message("m4", text="那什么时候发货？"), sender))
 
-    assert result["action"] == "human_handoff"
-    assert sender.calls[0][2] == HANDOFF_NOTICE
-    assert notifier.calls[0]["reason"] == "refund_amount_unknown"
-    assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "HUMAN"
-    assert later == {"action": "ignored", "reason": "human_takeover"}
-    assert len(sender.calls) == 1
+    assert result["action"] == "answer"
+    assert notifier.calls == []
+    assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
+    assert later["action"] == "answer"
+    assert len(sender.calls) == 2
 
 
 def test_resume_auto_endpoint_restores_one_human_conversation_to_buyer_processing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    chat = FakeChat({"action": "handoff", "reason": "seller confirmation required"})
+    chat = FakeChat({"action": "reply", "answer": "稍后回复。"})
     instance, store = worker(tmp_path, chat)
     sender = FakeSender()
     other_chat_id = "xianyu:seller:other-chat"
 
-    first = asyncio.run(instance.process(message("resume-handoff"), sender))
+    instance.takeover("xianyu:seller:chat-1", "buyer-1")
     store.set_session_mode("seller", other_chat_id, "other-buyer", "HUMAN", "other reason")
-    monkeypatch.setattr(conversations_api, "channel_store", store)
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        conversations_api.get_channel_store,
+        lambda: store,
+    )
 
     response = TestClient(app).post(
         "/conversations/xianyu:seller:chat-1/resume-auto",
         json={"account_id": "seller"},
     )
 
-    assert first["action"] == "human_handoff"
     assert response.status_code == 200
     assert response.json()["mode"] == "AUTO"
     assert response.json()["human_takeover"] is False
@@ -191,10 +210,34 @@ def test_api_error_handoffs_without_exposing_internal_error(tmp_path: Path) -> N
 
     result = asyncio.run(instance.process(message("m5"), sender))
 
-    assert result["action"] == "human_handoff"
+    assert result["action"] == "error"
     row = store.message("seller", "m5")
-    assert row and row["notification_state"] == "FAILED"
+    assert row and row["notification_state"] == "NONE"
     assert "secret" not in sender.calls[0][2]
+    assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
+
+
+@pytest.mark.parametrize(
+    "chat_response",
+    [
+        {"action": "handoff", "reason": "rag_evidence_unavailable"},
+        {"action": "clarify", "reason": "item_context_unavailable"},
+        {"action": "handoff", "reason": "agent_execution_failed"},
+        TimeoutError("model timeout"),
+        RuntimeError("chat endpoint failed"),
+    ],
+    ids=["rag_empty", "missing_item", "agent_failure", "model_timeout", "chat_error"],
+)
+def test_automatic_failure_modes_never_take_over_a_session(
+    tmp_path: Path,
+    chat_response: Mapping[str, Any] | BaseException,
+) -> None:
+    instance, store = worker(tmp_path, FakeChat(chat_response))
+
+    result = asyncio.run(instance.process(message(), FakeSender()))
+
+    assert result["action"] in {"answer", "clarify", "error"}
+    assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
 
 
 def test_pause_during_generation_supersedes_old_answer(tmp_path: Path) -> None:
@@ -235,7 +278,7 @@ def test_seller_takeover_during_generation_supersedes_old_answer(tmp_path: Path)
     assert store.message("seller", "seller-takeover")["status"] == "SUPERSEDED"
 
 
-def test_http_handoff_reaches_s3_once_with_reason_and_human_state(
+def test_http_handoff_remains_auto_and_sends_one_safe_reply(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -264,14 +307,13 @@ def test_http_handoff_reaches_s3_once_with_reason_and_human_state(
     first = asyncio.run(instance.process(inbound, sender))
     duplicate = asyncio.run(instance.process(inbound, sender))
 
-    assert first["action"] == "human_handoff"
+    assert first["action"] == "answer"
     assert duplicate == {"action": "duplicate", "message_id": "http-s3-handoff"}
     assert [call[2] for call in sender.calls] == [HANDOFF_NOTICE]
-    assert len(notifier.calls) == 1
-    assert notifier.calls[0]["reason"] == reason
+    assert notifier.calls == []
     state = store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")
-    assert state["mode"] == "HUMAN"
-    assert state["takeover_reason"] == reason
+    assert state["mode"] == "AUTO"
+    assert state["takeover_reason"] is None
 
 
 def test_unbound_listing_is_ignored_without_calling_chat(tmp_path: Path) -> None:
@@ -283,7 +325,16 @@ def test_unbound_listing_is_ignored_without_calling_chat(tmp_path: Path) -> None
     asyncio.run(instance.process(message("m7", platform_item_id="listing-b"), sender))
     asyncio.run(instance.process(message("m8", platform_item_id="unbound"), sender))
 
-    assert chat.calls == [{"query": "这件商品多少钱？", "chat_id": "xianyu:seller:chat-1", "item_id": "ITEM_B"}]
+    assert chat.calls == [
+        {
+            "platform": "xianyu",
+            "account_id": "seller",
+            "buyer_id": "buyer-1",
+            "query": "这件商品多少钱？",
+            "chat_id": "xianyu:seller:chat-1",
+            "item_id": "ITEM_B",
+        }
+    ]
     assert store.message("seller", "m8")["status"] == "IGNORED"
     assert store.message("seller", "m8")["error"] == "item_not_bound_to_seller"
 
@@ -406,9 +457,9 @@ def test_conversation_guard_diagnostic_is_hashed_and_explains_allow(tmp_path: Pa
     ("payload", "expected"),
     [
         ({"action": "reply", "answer": "ok"}, "answer"),
-        ({"action": "clarify", "answer": "which?"}, "human_handoff"),
-        ({"action": "reply", "answer": ""}, "human_handoff"),
-        ({"action": "unknown", "answer": "unsafe"}, "human_handoff"),
+        ({"action": "clarify", "answer": "which?"}, "clarify"),
+        ({"action": "reply", "answer": ""}, "error"),
+        ({"action": "unknown", "answer": "unsafe"}, "error"),
     ],
 )
 def test_action_mapper_is_fail_closed(payload: Mapping[str, Any], expected: str) -> None:

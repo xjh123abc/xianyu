@@ -9,14 +9,13 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 
 from app.generation.deepseek import DeepSeekGenerator
-from app.services.intent_router import IntentMatch
 from app.services.xianyu.experts.contracts import (
     ExpertContext,
     ExpertResult,
     ExpertTask,
 )
 from app.services.xianyu.item_fact_responder import ItemFactResponder
-from app.services.xianyu.responses import requires_human_handoff, valid_knowledge_sources
+from app.services.xianyu.responses import valid_knowledge_sources
 
 
 EvidencePreparer = Callable[..., Awaitable[Mapping[str, object]]]
@@ -30,12 +29,10 @@ class ProductAgent:
         self,
         *,
         fact_responder: ItemFactResponder,
-        route_intent: Callable[[str], IntentMatch],
         prepare_evidence: EvidencePreparer,
         generator: Callable[[], DeepSeekGenerator],
     ) -> None:
         self._fact_responder = fact_responder
-        self._route_intent = route_intent
         self._prepare_evidence = prepare_evidence
         self._generator = generator
 
@@ -70,24 +67,26 @@ class ProductAgent:
         task: ExpertTask,
         item: Mapping[str, object],
     ) -> ExpertResult:
-        response = self._fact_responder.answer_intent(
-            task.question_fragment,
+        response = self._fact_responder.answer_target(
+            task.original_question,
             item,
-            self._route_intent(task.question_fragment),
+            task.query_target,
         )
         sources = _sources(response)
-        if response.get("action") == "reply":
+        if response.get("action") == "reply" and response.get("can_answer") is True:
             answer = response.get("answer")
             if isinstance(answer, str) and answer.strip():
                 return ExpertResult.answered(task, answer.strip(), sources=sources)
 
-        listing_answer = self._listing_description_answer(task.question_fragment, item)
+        listing_answer = self._listing_description_answer(task.original_question, item)
         if listing_answer is not None:
             return ExpertResult.answered(task, listing_answer, sources=sources)
         return ExpertResult.handoff(
             task,
             str(response.get("reason") or "item_fact_unavailable"),
-            missing_fields=tuple(self._route_intent(task.question_fragment).required_fields),
+            missing_fields=self._fact_responder.required_fields_for_target(
+                task.query_target
+            ),
             sources=sources,
         )
 
@@ -128,8 +127,6 @@ class ProductAgent:
             return ExpertResult.handoff(task, "product_generation_failed", sources=sources)
         if not isinstance(answer, str) or not answer.strip():
             return ExpertResult.handoff(task, "product_generation_empty", sources=sources)
-        if requires_human_handoff(answer):
-            return ExpertResult.handoff(task, "generated_reply_requires_human_review", sources=sources)
         return ExpertResult.answered(task, answer.strip(), sources=sources)
 
     @staticmethod

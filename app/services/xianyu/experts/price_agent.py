@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
@@ -29,9 +29,6 @@ class _PricePolicy:
 class PriceAgent:
     """Compute authorised prices from one item's validated seller facts only."""
 
-    def __init__(self, route_intent: Callable[[str], IntentMatch] | None = None) -> None:
-        self._route_intent = route_intent
-
     async def run(
         self,
         tasks: list[ExpertTask],
@@ -54,30 +51,16 @@ class PriceAgent:
                 )
                 continue
 
-            request_kind = str(
-                task.transaction_conditions.get("request_kind", "listed_price")
+            request_kind = {
+                "price.listed_price": "listed_price",
+                "price.minimum": "minimum",
+                "price.offer": "offer",
+                "price.additional_discount": "additional_discount",
+            }.get(
+                task.query_target,
+                str(task.transaction_conditions.get("request_kind", "listed_price")),
             )
-            is_bargain = request_kind != "listed_price" or any(
-                term in context.query.casefold()
-                for term in (
-                    "最低",
-                    "便宜",
-                    "优惠",
-                    "小刀",
-                    "还价",
-                    "报价",
-                    "出价",
-                    "不包邮",
-                    "不用包邮",
-                    "出邮费",
-                    "出运费",
-                    "可以吗",
-                    "行吗",
-                    "我就买",
-                )
-            )
-            intent_query = "最低价" if is_bargain else "商品标价"
-            match = self._route_intent(intent_query) if self._route_intent else IntentMatch(
+            match = IntentMatch(
                 "PRICE" if request_kind == "listed_price" else "BARGAIN",
                 ("listed_price_cents",)
                 if request_kind == "listed_price"

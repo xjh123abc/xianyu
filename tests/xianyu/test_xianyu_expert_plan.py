@@ -84,6 +84,69 @@ def test_complex_no_punctuation_keeps_all_rule_tasks_when_model_plan_is_empty() 
     }
 
 
+@pytest.mark.parametrize(
+    ("query", "expected_conditions"),
+    [
+        ("能便宜点吗？", {"request_kind": "minimum"}),
+        (
+            "不用包邮，能便宜吗？",
+            {"shipping": "buyer_pays", "request_kind": "minimum"},
+        ),
+    ],
+)
+def test_generic_bargain_is_planned_as_a_minimum_price_request(
+    query: str,
+    expected_conditions: dict[str, object],
+) -> None:
+    tasks = build_expert_plan(query, xianyu_context={"item_id": "CANON_FTB_001"})
+
+    price_task = next(task for task in tasks if task.expert == "price")
+
+    assert price_task.query_target == "price.minimum"
+    assert price_task.transaction_conditions == expected_conditions
+
+
+def test_compact_multi_question_keeps_shipping_answer_in_buyer_order() -> None:
+    tasks = build_expert_plan(
+        "还在吗有没有维修过包邮吗",
+        xianyu_context={"item_id": "CANON_FTB_001"},
+    )
+
+    assert [task.query_target for task in tasks] == [
+        "availability.sale_status",
+        "history.repair_history",
+        "shipping.fee",
+    ]
+
+
+def test_model_knowledge_task_without_target_uses_its_only_valid_target() -> None:
+    planner = PlannerSpy(
+        {
+            "tasks": [
+                {
+                    "task_id": "measure",
+                    "expert": "product",
+                    "question_fragment": "测光对比过吗？",
+                    "normalized_question": "测光对比记录",
+                    "knowledge_scope": "model_knowledge",
+                    "transaction_conditions": {},
+                    "depends_on_task_ids": [],
+                }
+            ]
+        }
+    )
+
+    tasks = build_expert_plan(
+        "测光对比过吗？顺便还在吗？",
+        planner=planner,
+        xianyu_context={"item_id": "CANON_FTB_001"},
+    )
+
+    assert ("product", "model_knowledge", "product.model_knowledge") in [
+        (task.expert, task.knowledge_scope, task.query_target) for task in tasks
+    ]
+
+
 def test_planner_failure_keeps_the_deterministic_task_baseline() -> None:
     def unavailable_planner(query: str, *, history: object = None) -> Mapping[str, object]:
         raise RuntimeError("planner unavailable")

@@ -16,8 +16,9 @@ _PRODUCT_SYSTEM_PROMPT = """你是闲鱼商品专家，只处理当前这一项�
 资料不足时只输出“缺少依据”，不要猜测、承诺或提及卖家/人工确认。"""
 
 _SERVICE_SYSTEM_PROMPT = """你是闲鱼服务专家，只处理当前这一项发货、快递、售后或店铺规则问题。
-只能依据输入的当前商品服务事实或店铺证据；不能承诺今天发货、指定快递、改价或售后结果。
-资料不足时只输出“缺少依据”，不要猜测、承诺或提及卖家/人工确认。"""
+只能依据输入的当前商品服务事实或店铺证据；不能承诺今天发货、指定快递、改价或未被证据支持的售后结果。
+当证据已经覆盖买家问题时，必须用自然、简短的话总结和解释已有规则，不要因为规则存在适用条件就只输出“缺少依据”。可以说明规则的适用边界，但不得添加证据之外的商品事实、退款承诺、赔偿承诺或卖家动作。
+只有当前证据完全没有回答所需内容时，才只输出“缺少依据”；不要猜测，也不要提及卖家/人工确认。"""
 
 
 def build_xianyu_expert_plan_messages(
@@ -38,14 +39,15 @@ def build_xianyu_expert_plan_messages(
             + query.strip()
             + "\n\n只输出 JSON，格式为：\n"
             + '{"tasks":[{"task_id":"q1","expert":"product|price|service",'
-            + '"question_fragment":"买家原文中的连续片段",'
+            + '"original_question":"买家原文中的完整子问题",'
             + '"normalized_question":"规范化问题",'
+            + '"query_target":"例如 shipping.carrier",'
             + '"knowledge_scope":"item_fact|model_knowledge|seller_rule|greeting",'
             + '"transaction_conditions":{},"depends_on_task_ids":[]}]}。\n'
             + "expert 只能是 product、price、service。price 只能使用 item_fact；"
             + "product 只能使用 item_fact 或 model_knowledge；service 只能使用 "
             + "item_fact、seller_rule 或 greeting。\n"
-            + "question_fragment 必须逐字来自当前买家消息；不得虚构金额、运费方案、"
+            + "original_question 必须逐字来自当前买家消息，且必须是完整子问题；不得虚构金额、运费方案、"
             + "卖家承诺或历史事实。买家给出报价时，offer_cents 用整数分且必须等于原文金额；"
             + "不包邮写 shipping=buyer_pays，包邮写 shipping=seller_pays；"
             + "同时比较包邮与不包邮时只写 shipping_comparison=true，不能当成买家已选择。\n"

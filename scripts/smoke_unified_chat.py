@@ -37,6 +37,28 @@ def _answer(response: Mapping[str, Any]) -> str:
     return str(response.get("answer") or "")
 
 
+def _decision_text(response: Mapping[str, Any]) -> str:
+    """Return buyer text plus the internal reason used for safe handoffs."""
+
+    return "\n".join(
+        text
+        for text in (
+            _answer(response).strip(),
+            str(response.get("reason") or "").strip(),
+        )
+        if text
+    )
+
+
+def _item_fact(response: Mapping[str, Any], *path: str) -> Any:
+    value: Any = response.get("item_info")
+    for key in path:
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(key)
+    return value
+
+
 def _record(
     case_id: str,
     inputs: Sequence[Mapping[str, str]],
@@ -120,8 +142,14 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
             a01,
             [
                 ("1280.00" in _answer(a01[0]), "001 返回 1280.00 元"),
-                ("已售出" in _answer(a01[1]), "002 返回已售出"),
-                ("未知" in _answer(a01[2]) and a01[2].get("can_answer") is False, "003 明确状态未知且不作肯定承诺"),
+                (_item_fact(a01[1], "sale_status") == "sold" and a01[1].get("can_answer") is True, "002 结构化状态为已售出"),
+                (
+                    _item_fact(a01[2], "sale_status") == "unknown"
+                    and a01[2].get("can_answer") is False
+                    and a01[2].get("action") == "reply"
+                    and a01[2].get("reason") == "sale_status_unavailable",
+                    "003 未知状态返回安全说明",
+                ),
                 (all(_has_source(item, "mcp:get_item_info") for item in a01), "三项均包含真实商品工具来源"),
             ],
         )
@@ -152,7 +180,7 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
             "同次请求保留 1280 元商品事实和真实通用规则证据。",
             a03,
             [
-                ("1280.00" in _answer(a03[0]), "保留 1280.00 元"),
+                ("1280.00" in _decision_text(a03[0]), "回复或接管原因保留 1280.00 元"),
                 (_has_source(a03[0], "mcp:get_item_info"), "包含 MCP 商品来源"),
                 (_has_source(a03[0], "seller_rules.md"), "包含 seller_rules.md"),
             ],
@@ -169,9 +197,9 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
             "未知事实不得编造，且组合问题仍保留 1280 元。",
             a04,
             [
-                ("1280.00" in _answer(a04[0]), "保留 1280.00 元"),
+                ("1280.00" in _decision_text(a04[0]), "回复或接管原因保留 1280.00 元"),
                 (_has_source(a04[0], "mcp:get_item_info"), "包含 MCP 商品来源"),
-                (_has_source(a04[0], "items/DEMO_ITEM_001.md"), "未知事实只检索 001 商品资料"),
+                (_item_fact(a04[0], "facts", "history", "drop_history") == "unknown", "MCP 明确记录摔落历史未知"),
                 (not _has_source(a04[0], "items/DEMO_ITEM_002.md"), "未引入 002 商品资料"),
             ],
             manual_review="没有声称相机从未摔过，并明确资料未记录",
@@ -187,9 +215,14 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
             "无商品上下文时询问具体商品，不随机选择。",
             a05,
             [
-                (a05[0].get("action") == "clarify", "返回 clarify"),
+                (
+                    a05[0].get("action") == "clarify"
+                    and a05[0].get("can_answer") is False
+                    and "稍等我看看" not in _answer(a05[0]),
+                    "请求买家补充商品信息",
+                ),
                 (a05[0].get("item_id") is None, "未随机绑定商品"),
-                ("商品编号" in _answer(a05[0]), "要求提供商品编号"),
+                (a05[0].get("reason") == "buyer_question_requires_clarification", "内部原因明确为需要商品上下文"),
             ],
         )
     )
@@ -204,8 +237,13 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
             a06,
             [
                 (a06[0].get("item_id") == "XXX999", "保留请求编号 XXX999"),
-                ("未找到商品 XXX999" in _answer(a06[0]), "明确告知 XXX999 未找到"),
+                (a06[0].get("reason") == "item_context_conflict", "内部决策明确 XXX999 与可用商品上下文冲突"),
                 (a06[0].get("can_answer") is False, "未对不存在商品作肯定回答"),
+                (
+                    a06[0].get("action") == "clarify"
+                    and "稍等我看看" not in _answer(a06[0]),
+                    "不存在商品请求买家确认商品信息",
+                ),
                 ("1280" not in _answer(a06[0]) and "560" not in _answer(a06[0]) and "980" not in _answer(a06[0]), "未使用其他商品价格"),
             ],
         )
@@ -227,7 +265,7 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
                 (a07[0].get("item_id") == "DEMO_ITEM_001" and a07[2].get("item_id") == "DEMO_ITEM_001", "第一、三轮均关联 001"),
                 (a07[1].get("action") != "clarify", "第二轮没有要求重新选择商品或模式"),
                 (_has_source(a07[1], "seller_rules.md"), "第二轮包含通用规则来源"),
-                (_has_source(a07[2], "items/DEMO_ITEM_001.md"), "第三轮包含 001 商品资料"),
+                (_has_source(a07[2], "mcp:get_item_info"), "第三轮配件来自 001 结构化商品资料"),
                 (not _has_source(a07[2], "items/DEMO_ITEM_002.md"), "第三轮未混入 002"),
             ],
             manual_review="第三轮配件与 001 商品资料一致，第二轮规则无额外承诺",
@@ -249,9 +287,14 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
             a08,
             [
                 (a08[1].get("item_id") == "DEMO_ITEM_002" and a08[2].get("item_id") == "DEMO_ITEM_002", "切换后及后续轮次均为 002"),
-                ("已售出" in _answer(a08[1]) and "已售出" in _answer(a08[2]), "002 当轮及后续状态正确"),
+                (_item_fact(a08[1], "sale_status") == "sold" and _item_fact(a08[2], "sale_status") == "sold", "002 当轮及后续结构化状态正确"),
                 (a08[1].get("can_answer") is True and a08[2].get("can_answer") is True, "002 两轮均由结构化事实直接回答"),
-                (a08[3].get("action") == "clarify" and a08[3].get("item_id") is None, "新会话没有继承商品"),
+                (
+                    a08[3].get("action") == "clarify"
+                    and a08[3].get("reason") == "buyer_question_requires_clarification"
+                    and a08[3].get("item_id") is None,
+                    "新会话没有继承商品并请求补充商品信息",
+                ),
             ],
         )
     )
@@ -322,7 +365,7 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
             a13,
             [
                 (set(a13_inputs[0]) == {"query", "chat_id", "item_id"}, "请求没有 scene/scenario"),
-                ("1280.00" in _answer(a13[0]), "商品价格生效"),
+                ("1280.00" in _decision_text(a13[0]), "回复或接管原因保留商品价格"),
                 (_has_source(a13[0], "mcp:get_item_info") and _has_source(a13[0], "seller_rules.md"), "MCP 与规则来源同时存在"),
             ],
             manual_review="售后内容与 seller_rules.md 一致",

@@ -7,10 +7,11 @@ import inspect
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 from app.generation.deepseek import DeepSeekGenerator
-from app.services.intent_router import IntentMatch, IntentRouter
+from app.services.intent_router import IntentRouter
 from app.services.query_planner import build_expert_plan
 from app.services.xianyu.experts.contracts import ExpertContext, ExpertResult, ExpertTask
 from app.services.xianyu.experts.price_agent import PriceAgent
@@ -18,7 +19,12 @@ from app.services.xianyu.experts.product_agent import ProductAgent
 from app.services.xianyu.experts.service_agent import ServiceAgent
 from app.services.xianyu.item_fact_responder import ItemFactResponder
 from app.services.xianyu.knowledge_responder import XianyuKnowledgeResponder
-from app.services.xianyu.responses import common_handoff, handoff, item_source, requires_human_handoff
+from app.services.xianyu.responses import (
+    clarification,
+    common_handoff,
+    handoff,
+    item_source,
+)
 from config.settings import settings
 
 
@@ -70,16 +76,12 @@ class XianyuExpertOrchestrator:
 
         self._agents["product"] = product_agent or ProductAgent(
             fact_responder=fact_responder,
-            route_intent=self._rule_route,
             prepare_evidence=knowledge_responder.prepare_evidence,
             generator=self._get_generator,
         )
-        self._agents["price"] = price_agent or PriceAgent(
-            route_intent=self._rule_route,
-        )
+        self._agents["price"] = price_agent or PriceAgent()
         self._agents["service"] = service_agent or ServiceAgent(
             fact_responder=fact_responder,
-            route_intent=self._rule_route,
             prepare_evidence=knowledge_responder.prepare_evidence,
             generator=self._get_generator,
         )
@@ -115,7 +117,7 @@ class XianyuExpertOrchestrator:
 
         try:
             tasks = await asyncio.wait_for(
-                asyncio.to_thread(self._build_plan, context),
+                asyncio.to_thread(self.build_plan, context),
                 timeout=self._remaining(deadline),
             )
         except asyncio.TimeoutError:
@@ -142,10 +144,12 @@ class XianyuExpertOrchestrator:
                 "expert_plan_empty",
             )
 
-        results = await self._execute(tasks, context, deadline)
+        results = await self.execute_tasks(tasks, context)
         return self._merge(normalized_query, item, tasks, results)
 
-    def _build_plan(self, context: ExpertContext) -> list[ExpertTask]:
+    def build_plan(self, context: ExpertContext) -> list[ExpertTask]:
+        """Compatibility planner used only by the legacy ``handle`` entrypoint."""
+
         planner = self._planner or self._model_planner(context.deadline)
         planning_context = dict(context.xianyu_context)
         if context.item is not None and not planning_context.get("item_id"):
@@ -169,9 +173,30 @@ class XianyuExpertOrchestrator:
                     context.query,
                     "商品专项知识",
                     "model_knowledge",
+                    query_target="product.model_knowledge",
                 )
             ]
         return tasks
+
+    def _build_plan(self, context: ExpertContext) -> list[ExpertTask]:
+        """Deprecated private alias retained for callers outside the main chain."""
+
+        return self.build_plan(context)
+
+    async def execute_tasks(
+        self,
+        tasks: Sequence[ExpertTask],
+        context: ExpertContext,
+    ) -> list[ExpertResult]:
+        """Execute already-planned expert tasks without planning them again."""
+
+        if not tasks:
+            return []
+        deadline = context.deadline or (time.monotonic() + self.budget_seconds)
+        execution_context = (
+            context if context.deadline is not None else replace(context, deadline=deadline)
+        )
+        return await self._execute(tasks, execution_context, deadline)
 
     def _model_planner(self, deadline: float | None) -> Callable[..., object] | None:
         generator = self._get_generator()
@@ -274,7 +299,11 @@ class XianyuExpertOrchestrator:
                             "expert_execution_failed",
                         )
                     continue
-                self._record_batch_results(batch, outcome, completed)
+                self._record_batch_results(
+                    batch,
+                    outcome,
+                    completed,
+                )
 
         return [completed[task.task_id] for task in tasks]
 
@@ -316,12 +345,6 @@ class XianyuExpertOrchestrator:
                         "expert_result_empty",
                         sources=result.sources,
                     )
-                elif requires_human_handoff(result.answer):
-                    completed[task.task_id] = ExpertResult.handoff(
-                        task,
-                        "generated_reply_requires_human_review",
-                        sources=result.sources,
-                    )
                 else:
                     completed[task.task_id] = result
             elif result.status == "handoff":
@@ -339,15 +362,6 @@ class XianyuExpertOrchestrator:
         tasks: Sequence[ExpertTask],
         results: Sequence[ExpertResult],
     ) -> dict[str, object]:
-        failures = [result for result in results if result.status != "answered"]
-        if failures:
-            return self._handoff_response(
-                query,
-                item,
-                results,
-                self._handoff_reason(tasks, results),
-            )
-
         answers: list[str] = []
         sources: list[Mapping[str, object]] = []
         seen_answers: set[str] = set()
@@ -365,18 +379,32 @@ class XianyuExpertOrchestrator:
             item_evidence = item_source(item)
             if item_evidence not in sources:
                 sources.insert(0, item_evidence)
+        failures = [result for result in results if result.status != "answered"]
+        unavailable = [
+            f"{task.question_fragment}暂时无法确认。"
+            for task, result in zip(tasks, results)
+            if result.status != "answered"
+        ]
         if not answers:
-            return self._handoff_response(query, item, results, "expert_answer_empty")
+            # A planner/expert failure is not something the buyer can resolve
+            # by repeating the question.  Preserve AUTO mode and return the
+            # standard unavailable result instead of an old clarification.
+            return self._handoff_response(
+                query,
+                item,
+                results,
+                self._handoff_reason(tasks, results),
+            )
         response: dict[str, object] = {
             "query": query,
             "route": "xianyu",
             "action": "reply",
-            "answer": "\n".join(answers),
+            "answer": "\n".join([*answers, *unavailable]),
             "sources": sources,
             "results": [],
             "reliability": None,
             "next_step": None,
-            "can_answer": True,
+            "can_answer": not failures,
         }
         if item is not None:
             response.update({"item_id": item["item_id"], "item_info": dict(item)})
@@ -434,11 +462,6 @@ class XianyuExpertOrchestrator:
         if hasattr(provider, "generate_xianyu_expert"):
             return provider  # type: ignore[return-value]
         return provider()  # type: ignore[operator]
-
-    def _rule_route(self, query: str) -> IntentMatch:
-        """Classify an expert fragment without opening another model call."""
-
-        return self._intent_router.route(query, allow_ai=False)
 
     @staticmethod
     def _xianyu_context(session_state: Mapping[str, object] | None) -> Mapping[str, object]:

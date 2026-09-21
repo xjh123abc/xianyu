@@ -50,7 +50,7 @@ def test_pipeline_does_not_call_generator_when_reliability_fails() -> None:
     )
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
+    assert result["next_step"] == "clarify"
     assert result["answer"] is None
     assert result["sources"] == []
     assert generator.calls == []

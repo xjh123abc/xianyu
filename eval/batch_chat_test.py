@@ -121,19 +121,19 @@ def _validate_response(response: dict[str, Any]) -> None:
     action = response.get("action")
     answer = response.get("answer")
     can_answer = response.get("can_answer")
-    if response.get("route") != "xianyu":
+    if response.get("route") not in {"xianyu", "unified"}:
         raise RuntimeError("响应没有进入 xianyu 专家链路")
-    if action not in {"reply", "handoff"}:
+    if action not in {"reply", "clarify"}:
         raise RuntimeError(f"响应 action 无效: {action!r}")
     if not isinstance(answer, str) or not answer.strip():
         raise RuntimeError("响应 answer 为空")
     if action == "reply" and can_answer is not True:
         raise RuntimeError("reply 与 can_answer 状态矛盾")
-    if action == "handoff":
-        if answer != "稍等我看看" or can_answer is not False:
-            raise RuntimeError("handoff 未使用固定等待话术或状态矛盾")
+    if action == "clarify":
+        if can_answer is not False:
+            raise RuntimeError("clarify 与 can_answer 状态矛盾")
         if not isinstance(response.get("reason"), str) or not response["reason"].strip():
-            raise RuntimeError("handoff 缺少内部原因")
+            raise RuntimeError("clarify 缺少内部原因")
 
 
 def _result_record(
@@ -191,6 +191,9 @@ def _task_records(question: str, item_id: str) -> list[dict[str, Any]]:
             "task_id": task.task_id,
             "expert": task.expert,
             "question_fragment": task.question_fragment,
+            "original_question": task.original_question,
+            "normalized_question": task.normalized_question,
+            "query_target": task.query_target,
             "knowledge_scope": task.knowledge_scope,
             "transaction_conditions": dict(task.transaction_conditions),
             "depends_on_task_ids": list(task.depends_on_task_ids),
@@ -207,10 +210,16 @@ def run_batch(
     base_url: str = DEFAULT_BASE_URL,
     item_id: str = DEFAULT_ITEM_ID,
     timeout: float = 120.0,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    """按顺序测试全部问题；每题使用独立 chat_id，避免跨题共享会话。"""
+    """按顺序测试全部或前 ``limit`` 条问题，且每题使用独立会话。"""
+
+    if limit is not None and not 1 <= limit <= len(QUESTIONS):
+        raise ValueError(f"limit must be between 1 and {len(QUESTIONS)}")
+
+    selected_questions = QUESTIONS if limit is None else QUESTIONS[:limit]
     results: list[dict[str, Any]] = []
-    for question_id, category, question in QUESTIONS:
+    for question_id, category, question in selected_questions:
         chat_id = f"qa_batch_chat_{question_id.lower()}"
         payload = {
             "query": question,
@@ -255,6 +264,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="FastAPI 服务地址")
     parser.add_argument("--item-id", default=DEFAULT_ITEM_ID, help="测试时绑定的商品编号")
     parser.add_argument("--timeout", type=float, default=120.0, help="单题请求超时时间（秒）")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="只运行前 N 条固定用例；抽样结果不能作为 S6 的 60 条全量验收",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="JSON 结果文件路径")
     return parser.parse_args()
 
@@ -265,18 +279,21 @@ def main() -> None:
         base_url=args.base_url,
         item_id=args.item_id,
         timeout=args.timeout,
+        limit=args.limit,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     failed = sum(result["action"] == "error" for result in results)
     report = {
         "schema_version": 1,
-        "kind": "xianyu_expert_fixed_batch",
+        "kind": "xianyu_expert_fixed_batch" if args.limit is None else "xianyu_expert_sample_batch",
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
         "base_url": args.base_url,
         "item_id": args.item_id,
         "summary": {
             "status": "completed" if failed == 0 else "failed",
             "total": len(results),
+            "catalog_total": len(QUESTIONS),
+            "scope": "full" if args.limit is None else "sample",
             "failed": failed,
             "requires_manual_review": True,
         },

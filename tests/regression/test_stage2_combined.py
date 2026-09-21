@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, Mock
 
-from app.services.chat_service import ChatService, route_query
+from app.generation.deepseek import DeepSeekGenerator
+from app.services.chat_service import ChatService
+from app.services.order_chat_handler import OrderChatHandler
+from app.services.order_router import route_query
 
 
 ORDER_RESULT = {
@@ -17,6 +20,11 @@ ORDER_RESULT = {
 }
 
 
+def test_legacy_combined_entrypoints_are_removed() -> None:
+    assert not hasattr(OrderChatHandler, "combined")
+    assert not hasattr(DeepSeekGenerator, "generate_combined")
+
+
 def test_v1_examples_select_rag_mcp_only_for_combined_question() -> None:
     assert route_query("TEST1001 现在是什么状态？一般多久发货？") == (
         "rag_mcp",
@@ -26,7 +34,7 @@ def test_v1_examples_select_rag_mcp_only_for_combined_question() -> None:
     assert route_query("TEST1001 现在是什么状态？") == ("order", "TEST1001")
 
 
-def test_rag_mcp_executes_both_services_before_final_generation() -> None:
+def test_combined_question_executes_order_and_service_tasks_without_rag_mcp() -> None:
     query = "TEST1001 现在是什么状态？一般多久发货？"
     rag_result = {
         "query": query,
@@ -35,29 +43,24 @@ def test_rag_mcp_executes_both_services_before_final_generation() -> None:
         "sources": [{"source": "shipping.md", "index": 0}],
         "reliability": {"can_answer": True},
     }
-    rag_service = Mock()
-    rag_service.prepare.return_value = rag_result
+    xianyu_rag_service = Mock()
+    xianyu_rag_service.prepare.return_value = {"can_answer": True, **rag_result}
     mcp_service = Mock()
     mcp_service.get_order = AsyncMock(return_value=ORDER_RESULT)
     generator = Mock()
-    generator.generate_combined.return_value = (
-        "订单 TEST1001 当前已发货，平台规则为付款成功后 24 小时内发出。"
-    )
+    generator.generate_order.return_value = "订单 TEST1001 当前已发货。"
+    generator.generate_xianyu.return_value = "平台规则为付款成功后 24 小时内发出。"
 
     result = asyncio.run(
         ChatService(
-            rag_service=rag_service,
+            xianyu_rag_service=xianyu_rag_service,
             mcp_service=mcp_service,
             generator=generator,
         ).chat_async(query)
     )
 
-    assert result["route"] == "rag_mcp"
-    assert result["answer"].startswith("订单 TEST1001")
-    rag_service.prepare.assert_called_once_with(query)
+    assert result["route"] == "unified"
+    assert result["task_types"] == ["order", "service"]
+    assert result["answer"] == "订单 TEST1001 当前已发货。\n平台规则为付款成功后 24 小时内发出。"
+    xianyu_rag_service.prepare.assert_called_once()
     mcp_service.get_order.assert_awaited_once_with("TEST1001")
-    generator.generate_combined.assert_called_once_with(
-        query,
-        rag_result,
-        ORDER_RESULT,
-    )

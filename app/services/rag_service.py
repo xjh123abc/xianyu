@@ -127,7 +127,7 @@ class RAGService:
                 return {
                     **prepared,
                     "can_answer": False,
-                    "next_step": "human_handoff",
+                    "next_step": "clarify",
                     "answer": None,
                     "sources": [],
                 }
@@ -145,7 +145,7 @@ class RAGService:
                 "query": query,
                 "results": [],
                 "can_answer": False,
-                "next_step": "human_handoff",
+                "next_step": "clarify",
                 "reliability": None,
                 "context": None,
                 "answer": "知识库服务暂时不可用，请稍后重试或转人工客服。",

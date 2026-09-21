@@ -4,7 +4,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from app.infrastructure.model_runtime import configure_huggingface_loading
+from app.infrastructure.model_runtime import (
+    configure_huggingface_loading,
+    load_with_device_fallback,
+)
 
 configure_huggingface_loading()
 
@@ -86,4 +89,11 @@ class Reranker:
         if not model_path.is_dir():
             raise FileNotFoundError(f"Reranker model path not found: {model_path}")
 
-        return CrossEncoder(str(model_path), local_files_only=True)
+        return load_with_device_fallback(
+            lambda device: CrossEncoder(
+                str(model_path),
+                device=device,
+                local_files_only=True,
+            ),
+            settings.model_device,
+        )

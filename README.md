@@ -2,11 +2,25 @@
 
 基于 RAG 的电商智能客服项目骨架。
 
+## 主要入口
+
+| 目的 | 入口 |
+| --- | --- |
+| 启动 HTTP 服务 | `python -m uvicorn app.main:app --host 127.0.0.1 --port 8000` |
+| 摄取普通电商知识 | `python -m app.ingestion.pipeline` |
+| 摄取闲鱼知识域 | `python -m app.ingestion.pipeline --scenario xianyu` |
+| 运行闲鱼监听器 | `python scripts/run_xianyu_stage3.py --reference-root .runtime/xianyu-template ...` |
+| 暂停、恢复或接管会话 | `python scripts/xianyu_stage3_control.py --account SELLER ...` |
+| 验证与排查 | `python -m pytest -q`、`python -m scripts.smoke_order_mcp`、`python -m scripts.smoke_unified_chat` |
+| 查看代码与资料路径 | [项目索引（临时）](文档/当前/项目索引.md)；该索引不包含 `文档/` 与 `review/` 的内容 |
+
+`/health` 仅表示 HTTP 进程存活；`/ready` 才会加载普通 RAG 的本地模型并检查 Qdrant collection。普通电商资料与闲鱼资料必须分别摄取，不能混用。
+
 ## 目录
 
 - `app/`：应用 API、数据摄取、检索、RAG 和生成逻辑
 - `config/`：配置
-- `data/raw/`：原始业务文档
+- `tests/fixtures/`：入库与检索测试样例
 - `eval/`：评测数据与评测脚本
 - `mcp_servers/`：独立 MCP Server 入口与模拟订单工具
 - `scripts/`：MCP 与统一 `/chat` 端到端验收脚本
@@ -77,6 +91,12 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
 
 ## 专家 Agent S6 验收与启用
 
+### 闲鱼渠道数据库
+
+`XIANYU_CHANNEL_DATABASE_PATH` 是闲鱼 AUTO/HUMAN 状态、商品绑定、消息去重和发送记录使用的渠道库；它与 `SESSION_DATABASE_PATH` 的对话记忆库用途不同，不能合并或互相替换。API、监听运行器和控制 CLI 未传 `--db` 时都读取前者，并将相对路径从项目根目录解析为绝对路径。
+
+监听运行器和控制 CLI 仍支持显式 `--db`，它只覆盖该次命令，不会让 API 自动切换数据库。两个入口启动时会输出最终数据库绝对路径；若需共同控制同一会话，三个入口必须显示为同一实际路径。正常从项目根目录运行；监听器的 `--project-root` 应指向本项目根目录，以便读取同一份 `.env`。
+
 真实自动发送默认保持暂停。先运行代码测试和 60 条真实 `/chat` 批测；批测结果包含每题的独立 `chat_id`、确定性任务规划、答案、动作、来源、内部接管原因和耗时：
 
 ```powershell
@@ -85,7 +105,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
 & "D:\conda_envs\rag-customer-service\python.exe" -m eval.batch_chat_test `
   --base-url http://127.0.0.1:8000 `
   --item-id CANON_FTB_001 `
-  --output eval/results/expert_agent_s6_batch.json
+  --output eval/results/local/expert_agent_s6_batch.json
 ```
 
 真实渠道验收只能在明确的测试会话中临时开启。必须同时指定账号、唯一会话、允许的买家原文和处理条数；其他会话及其他文本均被忽略，进程退出时账号自动暂停：

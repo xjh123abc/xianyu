@@ -68,6 +68,9 @@ def test_fixed_batch_records_tasks_reason_sources_and_elapsed_time() -> None:
         "product",
         "price",
     ]
+    assert all(task["original_question"] for task in record["tasks"])
+    assert all(task["normalized_question"] for task in record["tasks"])
+    assert all(task["query_target"] for task in record["tasks"])
     assert record["reason"] is None
     assert record["sources"]
     assert record["elapsed_ms"] == 12.5

@@ -61,14 +61,14 @@ def test_reliability_uses_first_valid_rerank_result_without_sorting() -> None:
         ([{"content": "evidence", "rerank_score": "not-a-score"}], "missing_rerank_score"),
     ],
 )
-def test_reliability_treats_invalid_evidence_as_handoff(
+def test_reliability_treats_invalid_evidence_as_clarification(
     rerank_results,
     reason,
 ) -> None:
     result = AnswerReliability(threshold=0.5).evaluate(rerank_results)
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
+    assert result["next_step"] == "clarify"
     assert result["reason"] == reason
     assert result["top_rerank_score"] is None
 
@@ -97,7 +97,7 @@ def test_pipeline_builds_context_only_after_reliability_passes() -> None:
     )
 
     assert blocked["can_answer"] is False
-    assert blocked["next_step"] == "human_handoff"
+    assert blocked["next_step"] == "clarify"
     assert blocked["context"] is None
     context_builder.build.assert_called_once()
 
@@ -119,7 +119,7 @@ def test_pipeline_does_not_build_context_for_empty_results() -> None:
     result = pipeline.run_after_rerank([])
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
+    assert result["next_step"] == "clarify"
     assert result["context"] is None
     context_builder.build.assert_not_called()
 

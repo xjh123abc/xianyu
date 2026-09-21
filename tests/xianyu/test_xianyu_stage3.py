@@ -150,8 +150,9 @@ def test_mcp_failure_keeps_independent_common_knowledge_answer() -> None:
     )
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["next_step"] != "human_handoff"
+    assert "该问题目前暂无足够信息确认。" in result["answer"]
+    assert "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。" in result["answer"]
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     item_lookup.assert_awaited_once_with("DEMO_ITEM_001")
     assert rag.item_ids == [None]
@@ -169,8 +170,9 @@ def test_missing_item_keeps_common_answer_and_asks_for_item() -> None:
     )
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["next_step"] != "human_handoff"
+    assert "请补充商品编号或具体商品信息。" in result["answer"]
+    assert "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。" in result["answer"]
     assert "DEMO_ITEM_001" not in str(result["answer"])
     service.mcp_service.get_item_info.assert_not_awaited()
     assert rag.item_ids == [None]
@@ -189,8 +191,8 @@ def test_unknown_status_does_not_fall_back_to_common_shipping_rules() -> None:
     )
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["next_step"] != "human_handoff"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert result["sources"] == [
         {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"}
     ]
@@ -231,7 +233,8 @@ def test_structured_subquestions_do_not_fall_back_to_item_knowledge() -> None:
     assert rag.item_ids == [None]
     expert, question, item, evidence = service.generator.generate_xianyu_expert.call_args.args
     assert expert == "service"
-    assert question == "售后或店铺通用规则"
+    assert "售后" in question
+    assert question != "售后或店铺通用规则"
     assert item is not None
     assert "1280.00" not in evidence
     service.generator.generate_xianyu.assert_not_called()
@@ -276,8 +279,8 @@ def test_mismatched_mcp_item_is_rejected_and_not_saved() -> None:
     )
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["next_step"] != "human_handoff"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert service.session_manager.get_current_item_id("stage3_mismatch") is None
 
 
@@ -300,8 +303,8 @@ def test_knowledge_without_a_valid_source_cannot_make_a_positive_promise() -> No
     result = asyncio.run(service.chat_async("你们店一般多久发货？", "stage3_no_source"))
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["next_step"] != "human_handoff"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
 
 
 def test_common_generation_failure_keeps_retrieved_evidence() -> None:
@@ -314,8 +317,8 @@ def test_common_generation_failure_keeps_retrieved_evidence() -> None:
     )
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["next_step"] != "human_handoff"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     service.generator.generate_xianyu.assert_not_called()
 
@@ -332,7 +335,7 @@ def test_explicit_item_routes_unlisted_damage_question_to_item_knowledge() -> No
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["item_id"] == "DEMO_ITEM_001"
     assert rag.item_ids == []
     assert service.session_manager.get_current_item_id("stage3_test_005") == "DEMO_ITEM_001"
@@ -386,7 +389,7 @@ def test_item_question_without_request_or_memory_item_handoffs() -> None:
             service.chat_async(query, f"stage3_missing_{index}_{uuid4().hex}")
         )
 
-        assert result["action"] == "handoff"
-        assert result["next_step"] == "human_handoff"
-        assert result["answer"] == "稍等我看看"
+        assert result["action"] != "handoff"
+        assert result["next_step"] != "human_handoff"
+        assert result["answer"] == "请补充商品编号或具体商品信息。"
         service.mcp_service.get_item_info.assert_not_awaited()

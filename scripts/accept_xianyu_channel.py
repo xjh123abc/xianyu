@@ -25,7 +25,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from probe_xianyu_channel import (
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.channels.xianyu.reference_runtime import (
     DEFAULT_REFERENCE_COMMIT,
     DEFAULT_WS_URL,
     _decode_payload,

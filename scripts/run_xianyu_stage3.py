@@ -34,7 +34,9 @@ from app.channels.xianyu.client import WebSocketTextSender
 from app.channels.xianyu.stage3_worker import XianyuStage3Worker
 from app.channels.xianyu.store import ChannelStore
 from app.channels.xianyu.wecom import WeComWebhookNotifier
-from scripts.probe_xianyu_channel import (
+from config.paths import resolve_project_path
+from config.settings import settings
+from app.channels.xianyu.reference_runtime import (
     DEFAULT_REFERENCE_COMMIT,
     DEFAULT_WS_URL,
     _install_reference_imports,
@@ -47,6 +49,21 @@ from scripts.probe_xianyu_channel import (
 def _digest(value: object) -> str | None:
     text = str(value or "").strip()
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12] if text else None
+
+
+def resolve_channel_database_path(
+    database_path: Path | None,
+    *,
+    project_root: Path,
+) -> Path:
+    """Resolve an explicit override or the shared channel-database setting."""
+
+    configured_path = (
+        database_path
+        if database_path is not None
+        else settings.xianyu_channel_database_path
+    )
+    return resolve_project_path(configured_path, project_root=project_root)
 
 
 def _log(path: Path, stage: str, result: str, **details: object) -> None:
@@ -270,9 +287,13 @@ def _counts_acceptance_delivery(result: Mapping[str, object]) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project-root", type=Path, default=Path.cwd())
+    parser.add_argument("--project-root", type=Path, default=PROJECT_ROOT)
     parser.add_argument("--reference-root", type=Path, required=True)
-    parser.add_argument("--db", type=Path, default=Path("logs/xianyu_stage3.sqlite3"))
+    parser.add_argument(
+        "--db",
+        type=Path,
+        help="explicit channel SQLite path; overrides XIANYU_CHANNEL_DATABASE_PATH",
+    )
     parser.add_argument("--log-file", type=Path, default=Path("logs/xianyu_stage3.log"))
     parser.add_argument("--account", default="")
     parser.add_argument("--chat-api", default="http://127.0.0.1:8000")
@@ -299,10 +320,23 @@ def main() -> int:
     args = parser.parse_args()
     args.project_root = args.project_root.resolve()
     args.reference_root = args.reference_root.resolve()
-    args.db = args.db.resolve()
+    args.db_source = "--db" if args.db is not None else "XIANYU_CHANNEL_DATABASE_PATH"
+    args.db = resolve_channel_database_path(args.db, project_root=args.project_root)
     args.log_file = args.log_file.resolve()
     args.db.parent.mkdir(parents=True, exist_ok=True)
     args.log_file.parent.mkdir(parents=True, exist_ok=True)
+    print(
+        json.dumps(
+            {
+                "database_path": str(args.db),
+                "database_source": args.db_source,
+                "stage": "database",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        flush=True,
+    )
     original_cwd = Path.cwd()
     try:
         # The reference client refreshes cookies relative to its working

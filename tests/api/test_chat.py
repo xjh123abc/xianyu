@@ -1,4 +1,4 @@
-from unittest.mock import Mock
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -10,8 +10,14 @@ client = TestClient(app)
 
 
 def test_chat_post_returns_retrieval_response(monkeypatch) -> None:
-    service_chat = Mock(return_value={"query": "订单一般多久发货？", "results": []})
-    monkeypatch.setattr(chat_api.chat_service, "chat", service_chat)
+    service_chat = AsyncMock(
+        return_value={
+            "query": "订单一般多久发货？",
+            "chat_id": "chat_general_001",
+            "results": [],
+        }
+    )
+    monkeypatch.setattr(chat_api.chat_service, "chat_async", service_chat)
 
     response = client.post(
         "/chat",
@@ -27,8 +33,14 @@ def test_chat_post_returns_retrieval_response(monkeypatch) -> None:
 
 
 def test_chat_calls_chat_service(monkeypatch) -> None:
-    service_chat = Mock(return_value={"query": "订单状态是什么？", "results": []})
-    monkeypatch.setattr(chat_api.chat_service, "chat", service_chat)
+    service_chat = AsyncMock(
+        return_value={
+            "query": "订单状态是什么？",
+            "chat_id": "chat_general_002",
+            "results": [],
+        }
+    )
+    monkeypatch.setattr(chat_api.chat_service, "chat_async", service_chat)
 
     response = client.post(
         "/chat",
@@ -41,7 +53,11 @@ def test_chat_calls_chat_service(monkeypatch) -> None:
         "chat_id": "chat_general_002",
         "results": [],
     }
-    service_chat.assert_called_once_with("订单状态是什么？")
+    service_chat.assert_awaited_once_with(
+        "订单状态是什么？",
+        "chat_general_002",
+        item_id=None,
+    )
 
 
 def test_chat_requires_query() -> None:
@@ -60,8 +76,8 @@ def test_chat_rejects_blank_query() -> None:
 
 
 def test_chat_strips_query_before_dispatch(monkeypatch) -> None:
-    service_chat = Mock(return_value={"query": "shipping", "results": []})
-    monkeypatch.setattr(chat_api.chat_service, "chat", service_chat)
+    service_chat = AsyncMock(return_value={"query": "shipping", "results": []})
+    monkeypatch.setattr(chat_api.chat_service, "chat_async", service_chat)
 
     response = client.post(
         "/chat",
@@ -69,7 +85,7 @@ def test_chat_strips_query_before_dispatch(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    service_chat.assert_called_once_with("shipping")
+    service_chat.assert_awaited_once_with("shipping", "chat_trim_query", item_id=None)
 
 
 def test_chat_requires_chat_id() -> None:

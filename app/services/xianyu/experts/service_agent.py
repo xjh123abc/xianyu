@@ -8,10 +8,9 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 
 from app.generation.deepseek import DeepSeekGenerator
-from app.services.intent_router import IntentMatch
 from app.services.xianyu.experts.contracts import ExpertContext, ExpertResult, ExpertTask
 from app.services.xianyu.item_fact_responder import ItemFactResponder
-from app.services.xianyu.responses import requires_human_handoff, valid_knowledge_sources
+from app.services.xianyu.responses import valid_knowledge_sources
 
 
 EvidencePreparer = Callable[..., Awaitable[Mapping[str, object]]]
@@ -27,12 +26,10 @@ class ServiceAgent:
         self,
         *,
         fact_responder: ItemFactResponder,
-        route_intent: Callable[[str], IntentMatch],
         prepare_evidence: EvidencePreparer,
         generator: Callable[[], DeepSeekGenerator],
     ) -> None:
         self._fact_responder = fact_responder
-        self._route_intent = route_intent
         self._prepare_evidence = prepare_evidence
         self._generator = generator
 
@@ -61,10 +58,10 @@ class ServiceAgent:
     def _answer_item_fact(self, task: ExpertTask, context: ExpertContext) -> ExpertResult:
         if context.item is None:
             return ExpertResult.handoff(task, "item_context_unavailable", missing_fields=("item",))
-        response = self._fact_responder.answer_intent(
-            task.question_fragment,
+        response = self._fact_responder.answer_target(
+            task.original_question,
             context.item,
-            self._route_intent(task.question_fragment),
+            task.query_target,
         )
         sources = _sources(response)
         answer = response.get("answer")
@@ -73,7 +70,9 @@ class ServiceAgent:
         return ExpertResult.handoff(
             task,
             str(response.get("reason") or "seller_service_fact_unavailable"),
-            missing_fields=tuple(self._route_intent(task.question_fragment).required_fields),
+            missing_fields=self._fact_responder.required_fields_for_target(
+                task.query_target
+            ),
             sources=sources,
         )
 
@@ -101,7 +100,7 @@ class ServiceAgent:
             answer = await asyncio.to_thread(
                 generator.generate_xianyu_expert,
                 "service",
-                task.normalized_question,
+                task.original_question,
                 context.item,
                 evidence,
                 **kwargs,
@@ -111,8 +110,6 @@ class ServiceAgent:
             return ExpertResult.handoff(task, "service_generation_failed", sources=sources)
         if not isinstance(answer, str) or not answer.strip():
             return ExpertResult.handoff(task, "service_generation_empty", sources=sources)
-        if requires_human_handoff(answer):
-            return ExpertResult.handoff(task, "generated_reply_requires_human_review", sources=sources)
         return ExpertResult.answered(task, answer.strip(), sources=sources)
 
 

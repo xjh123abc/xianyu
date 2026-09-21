@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Callable, Mapping, Sequence
+import warnings
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 from app.generation.deepseek import DeepSeekGenerator
@@ -13,34 +14,18 @@ from app.services.intent_router import IntentMatch
 from app.services.query_planner import (
     COMMON_KNOWLEDGE_RETRIEVAL_HINT,
     QuestionPlan,
-    build_question_plan,
 )
-from app.services.rag_service import RAGService
+from app.services.knowledge_service import KnowledgeService
 from app.services.xianyu.item_fact_responder import ItemFactResponder
-from app.services.xianyu.responses import (
-    clarification,
-    common_handoff,
-    handoff,
-    join_answers,
-    reply,
-    requires_human_handoff,
-    valid_knowledge_sources,
-)
+from app.services.xianyu.responses import common_handoff, valid_knowledge_sources
 
 
 logger = logging.getLogger(__name__)
 
-
-_FACT_QUERY_PATTERNS = (
-    re.compile(r"价格(?:是|为)?多少(?:元)?", re.IGNORECASE),
-    re.compile(r"(?:多少钱|标价|售价|多少元|price|cost)", re.IGNORECASE),
-    re.compile(
-        r"(?:这个商品|商品)?(?:现在|当前)?(?:还)?(?:在吗|有吗|有货吗|在售吗|还有吗)",
-        re.IGNORECASE,
-    ),
-    re.compile(r"(?:售卖)?状态(?:如何|怎么样|是什么)?", re.IGNORECASE),
-    re.compile(r"(?:卖出|售出|已售|available|sold)", re.IGNORECASE),
-)
+LegacyItemHandler = Callable[
+    [str, Mapping[str, object], Sequence[Mapping[str, Any]] | None],
+    Awaitable[dict[str, object]],
+]
 
 
 class XianyuKnowledgeResponder:
@@ -49,15 +34,18 @@ class XianyuKnowledgeResponder:
     def __init__(
         self,
         *,
-        rag_service: Callable[[], RAGService],
+        knowledge_service: KnowledgeService,
         generator: Callable[[], DeepSeekGenerator],
         fact_responder: ItemFactResponder,
         route_intent: Callable[[str], IntentMatch],
+        legacy_item_handler: LegacyItemHandler | None = None,
     ) -> None:
-        self._rag_service = rag_service
+        # Keep these arguments in the constructor while external compatibility
+        # callers migrate; item fact decisions now belong to expert agents.
+        del fact_responder, route_intent
+        self._knowledge_service = knowledge_service
         self._generator = generator
-        self._fact_responder = fact_responder
-        self._route_intent = route_intent
+        self._legacy_item_handler = legacy_item_handler
 
     async def handle_item(
         self,
@@ -69,187 +57,35 @@ class XianyuKnowledgeResponder:
         intent_match: IntentMatch | None = None,
         force_full_item_answer: bool = False,
     ) -> dict[str, object]:
-        """Answer item facts first, then use only scoped RAG for the remainder."""
+        """Deprecated adapter to the expert chain; do not use in new code."""
 
-        plan = plan or build_question_plan(query)
-        if intent_match is not None and intent_match.intent == "BARGAIN":
-            bargain_response = self._fact_responder.answer_intent(
-                query,
-                item,
-                intent_match,
-            )
-            return bargain_response
-
-        planned_facts = self._fact_responder.answer_plan(query, item, plan)
-        if planned_facts.has_conflict:
-            return handoff(
-                query,
-                "item_fact_conflict",
-                item,
-            )
-
-        fact_answers = planned_facts.answers
-        unresolved_answers = planned_facts.unresolved
-        asks_knowledge = bool(plan["knowledge_questions"])
-        if not asks_knowledge:
-            if unresolved_answers:
-                return handoff(query, join_answers(fact_answers + unresolved_answers), item)
-            if force_full_item_answer:
-                return self._generate_from_item_facts(
-                    query,
-                    item,
-                    history=history,
-                    fact_answers=fact_answers,
-                )
-            if fact_answers:
-                return reply(query, join_answers(fact_answers), item)
-            return clarification(query, item_id=str(item["item_id"]))
-
-        if (
-            not unresolved_answers
-            and self._knowledge_questions_have_confirmed_facts(plan, item)
-        ):
-            return self._generate_from_item_facts(
-                query,
-                item,
-                history=history,
-                fact_answers=fact_answers,
-            )
-
-        prepared, knowledge_issues = await self._collect_knowledge(
-            plan,
-            item,
-            remove_facts=bool(fact_answers),
+        warnings.warn(
+            "XianyuKnowledgeResponder.handle_item() is deprecated; "
+            "plan and execute Task values through XianyuExpertOrchestrator instead",
+            DeprecationWarning,
+            stacklevel=2,
         )
-        unresolved_answers.extend(knowledge_issues)
-        context = prepared.get("context")
-        knowledge_sources = valid_knowledge_sources(prepared)
-        if not isinstance(context, Mapping) or not knowledge_sources:
-            return handoff(
-                query,
-                join_answers(fact_answers + unresolved_answers),
-                item,
-                prepared,
-            )
-        context_text = str(context.get("context", "")).strip()
-        if not context_text:
-            return handoff(
-                query,
-                join_answers(
-                    fact_answers + unresolved_answers,
-                    "knowledge_context_empty",
-                ),
-                item,
-                prepared,
-            )
-        try:
-            item_reference = ""
-            if any(need["scope"] == "item" for need in plan["knowledge_questions"]):
-                item_reference = (
-                    f"当前商品：{item['title']}\n"
-                    "未记录的信息不得推断为不存在。\n\n"
-                )
-            answer = self._generator().generate_xianyu(
-                query,
-                item,
-                item_reference + "卖家规则与商品说明：\n" + context_text,
-                history=history,
-            )
-            if not isinstance(answer, str) or not answer.strip():
-                raise RuntimeError("empty Xianyu answer")
-            answer = answer.strip()
-            if unresolved_answers:
-                answer = join_answers(fact_answers, answer)
-            answer = join_answers([answer] + unresolved_answers)
-        except Exception:
-            logger.exception("Xianyu answer generation failed for item_id=%s", item["item_id"])
-            return handoff(
-                query,
-                join_answers(
-                    fact_answers + unresolved_answers,
-                    "xianyu_generation_failed",
-                ),
-                item,
-                prepared,
-            )
-        if unresolved_answers:
-            return handoff(query, answer, item, prepared)
-        return {
-            "query": query,
-            "route": "xianyu",
-            "action": "reply",
-            "answer": answer,
-            "sources": [
-                {"source": "mcp:get_item_info", "index": item["item_id"]},
-                *knowledge_sources,
-            ],
-            "results": prepared.get("results", []),
-            "reliability": prepared.get("reliability"),
-            "next_step": None,
-            "can_answer": True,
-            "item_id": item["item_id"],
-            "item_info": item,
-        }
+        del plan, intent_match, force_full_item_answer
+        if self._legacy_item_handler is None:
+            raise RuntimeError("legacy item compatibility handler is not configured")
+        return await self._legacy_item_handler(query, item, history)
 
-    def _knowledge_questions_have_confirmed_facts(
-        self,
-        plan: QuestionPlan,
-        item: Mapping[str, object],
-    ) -> bool:
-        """Allow fact-only LLM composition when every remaining need is known."""
-
-        return bool(plan["knowledge_questions"]) and all(
-            self._fact_responder.answer_intent(
-                need["question"],
-                item,
-                self._route_intent(need["question"]),
-            ).get("action") == "reply"
-            for need in plan["knowledge_questions"]
-        )
-
-    def _generate_from_item_facts(
+    async def handle_common(
         self,
         query: str,
-        item: Mapping[str, object],
-        *,
-        history: Sequence[Mapping[str, Any]] | None,
-        fact_answers: Sequence[str],
     ) -> dict[str, object]:
-        """Use the full buyer message when confirmed facts need composing."""
-
-        try:
-            answer = self._generator().generate_xianyu(
-                query,
-                item,
-                "当前商品的已确认事实已提供；没有额外卖家规则。"
-                "请只依据这些事实回答完整买家问题。",
-                history=history,
-            )
-            if not isinstance(answer, str) or not answer.strip():
-                raise RuntimeError("empty fact-only Xianyu answer")
-            return reply(query, answer.strip(), item)
-        except Exception:
-            logger.exception("Fact-only Xianyu answer generation failed for item_id=%s", item["item_id"])
-            return handoff(
-                query,
-                join_answers(
-                    fact_answers,
-                    "fact_only_generation_failed",
-                ),
-                item,
-            )
-
-    async def handle_common(self, query: str) -> dict[str, object]:
         """Answer an item-independent question from common seller rules only."""
 
         prepared: Mapping[str, object] | None = None
         try:
-            rag_service = self._rag_service()
-            warm_up = getattr(rag_service, "warm_up", None)
-            if callable(warm_up):
-                warm_up()
             retrieval_query = f"{query} {COMMON_KNOWLEDGE_RETRIEVAL_HINT}".strip()
-            prepared = await asyncio.to_thread(rag_service.prepare, retrieval_query)
+            self._knowledge_service.warm_up()
+            prepared = await asyncio.to_thread(
+                self._knowledge_service.search,
+                retrieval_query,
+                "merchant",
+                platform="xianyu",
+            )
             context = prepared.get("context")
             knowledge_sources = valid_knowledge_sources(prepared)
             if (
@@ -271,8 +107,6 @@ class XianyuKnowledgeResponder:
             )
             if not isinstance(answer, str) or not answer.strip():
                 raise RuntimeError("empty common Xianyu answer")
-            if requires_human_handoff(answer):
-                return self._common_handoff(query, "generated_reply_requires_human_review")
             return {
                 "query": query,
                 "route": "xianyu",
@@ -331,51 +165,23 @@ class XianyuKnowledgeResponder:
         prepared = await self._prepare_evidence_needs(
             ({"question": question, "scope": scope},),
             collector_item,
-            remove_facts=False,
         )
         return prepared
-
-    async def _collect_knowledge(
-        self,
-        plan: QuestionPlan,
-        item: Mapping[str, object],
-        *,
-        remove_facts: bool,
-    ) -> tuple[dict[str, object], list[str]]:
-        """Compatibility wrapper for the legacy whole-message responder."""
-
-        prepared = await self._prepare_evidence_needs(
-            plan["knowledge_questions"],
-            item,
-            remove_facts=remove_facts,
-        )
-        issues = prepared.get("issues")
-        return (
-            prepared,
-            [issue for issue in issues if isinstance(issue, str)]
-            if isinstance(issues, list)
-            else [],
-        )
 
     async def _prepare_evidence_needs(
         self,
         needs: Sequence[Mapping[str, str]],
         item: Mapping[str, object],
-        *,
-        remove_facts: bool,
     ) -> dict[str, object]:
-        """Shared retrieval implementation for legacy and expert callers."""
+        """Collect scoped evidence for expert tasks."""
 
-        rag_service = self._rag_service()
         contexts: list[str] = []
         sources: list[Mapping[str, object]] = []
         results: list[object] = []
         issues: list[str] = []
         reliability: object = None
         try:
-            warm_up = getattr(rag_service, "warm_up", None)
-            if callable(warm_up):
-                warm_up()
+            self._knowledge_service.warm_up()
         except Exception:
             logger.exception("Xianyu RAG warm-up failed for item_id=%s", item["item_id"])
             issues.append("knowledge_warmup_failed")
@@ -386,7 +192,6 @@ class XianyuKnowledgeResponder:
         for need in needs:
             retrieval_query = self.retrieval_query(
                 need["question"],
-                remove_facts=remove_facts,
                 item_title=str(item["title"]) if need["scope"] == "item" else "",
             )
             if need["scope"] == "common":
@@ -395,8 +200,10 @@ class XianyuKnowledgeResponder:
                 ).strip()
             try:
                 prepared = await asyncio.to_thread(
-                    rag_service.prepare,
+                    self._knowledge_service.search,
                     retrieval_query,
+                    "item" if need["scope"] == "item" else "merchant",
+                    platform="xianyu",
                     item_id=str(item["item_id"])
                     if need["scope"] == "item"
                     else None,
@@ -458,16 +265,11 @@ class XianyuKnowledgeResponder:
     def retrieval_query(
         query: str,
         *,
-        remove_facts: bool,
         item_title: str,
     ) -> str:
         """Keep structured fact wording from weakening knowledge retrieval."""
 
-        cleaned = query
-        if remove_facts:
-            for pattern in _FACT_QUERY_PATTERNS:
-                cleaned = pattern.sub(" ", cleaned)
-        cleaned = re.sub(r"(?:这个|这件)?商品", " ", cleaned)
+        cleaned = re.sub(r"(?:这个|这件)?商品", " ", query)
         cleaned = re.sub(r"[\s，,。.!！?？、；;：:]+", " ", cleaned).strip()
         cleaned = re.sub(r"^(?:和|及|与)\s*", "", cleaned).strip()
         normalized_title = item_title.strip()

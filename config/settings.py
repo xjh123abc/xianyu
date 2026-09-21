@@ -1,11 +1,13 @@
 """Project settings loaded from environment variables."""
 
+from config.paths import PROJECT_ROOT
+
 try:
     from pydantic_settings import BaseSettings, SettingsConfigDict
 
     class Settings(BaseSettings):
         model_config = SettingsConfigDict(
-            env_file=".env",
+            env_file=PROJECT_ROOT / ".env",
             env_file_encoding="utf-8",
             extra="ignore",
         )
@@ -18,12 +20,11 @@ try:
         deepseek_max_tokens: int = 512
         qdrant_url: str = "http://localhost:6333"
         qdrant_collection: str = "ecommerce_documents"
-        knowledge_base_path: str = (
-            "data/ecommerce_rag_test_data/ecommerce_rag_test_data/knowledge_base"
-        )
+        knowledge_base_path: str = "data/ecommerce/knowledge"
         knowledge_base_chunk_size: int = 500
         embedding_model_path: str = ""
         reranker_model_path: str = ""
+        model_device: str = "auto"
         dense_top_k: int = 5
         bm25_top_k: int = 5
         rrf_k: int = 60
@@ -34,6 +35,7 @@ try:
         answer_reliability_threshold: float = 5.3
         answer_reliability_model_id: str = "Qwen3-Reranker-0.6B"
         session_database_path: str = "chat_sessions.sqlite3"
+        xianyu_channel_database_path: str = "logs/xianyu_stage3.sqlite3"
         session_ttl_seconds: int = 3600
         session_max_count: int = 10000
         session_lock_timeout_seconds: float = 60.0

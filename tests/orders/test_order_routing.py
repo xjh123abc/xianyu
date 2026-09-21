@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.chat_service import route_query
+from app.services.order_router import route_query
 
 
 @pytest.mark.parametrize(

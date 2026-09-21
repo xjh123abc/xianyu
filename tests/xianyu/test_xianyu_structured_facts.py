@@ -11,7 +11,7 @@ import pytest
 from app.services.chat_service import ChatService
 from app.generation.prompt import build_xianyu_messages
 from app.services.item_service import ItemService
-from app.services.xianyu.responses import BUYER_HANDOFF_REPLY
+from app.services.xianyu.responses import AUTO_UNAVAILABLE_REPLY
 
 
 class NoRag:
@@ -190,9 +190,9 @@ def test_explicitly_unknown_structured_fact_handoffs_without_guessing() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["can_answer"] is False
-    assert result["answer"] == BUYER_HANDOFF_REPLY
+    assert result["answer"] == AUTO_UNAVAILABLE_REPLY
     assert "50mm" not in str(result["answer"])
     assert rag.item_ids == []
 
@@ -208,9 +208,9 @@ def test_explicit_fact_conflict_handoffs_without_selecting_a_value() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["can_answer"] is False
-    assert result["answer"] == BUYER_HANDOFF_REPLY
+    assert result["answer"] == AUTO_UNAVAILABLE_REPLY
     assert "50mm" not in str(result["answer"])
     assert rag.item_ids == []
 
@@ -249,9 +249,9 @@ def test_bargain_below_automatic_limit_handoffs_with_fixed_buyer_reply() -> None
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["can_answer"] is False
-    assert result["answer"] == BUYER_HANDOFF_REPLY
+    assert result["answer"] == AUTO_UNAVAILABLE_REPLY
     assert "minimum=¥1490.00" in str(result["reason"])
 
 
@@ -266,7 +266,7 @@ def test_no_shipping_policy_applies_before_the_minor_bargain_discount() -> None:
 
     assert result["action"] == "reply"
     assert result["can_answer"] is True
-    assert result["answer"] == "包邮最低 ¥1490.00；不包邮的话最低 ¥1470.00。"
+    assert result["answer"] == "最低 ¥1490.00 可以拍。\n不包邮的话最低 ¥1470.00 可以拍。"
 
 
 def test_offer_below_known_no_shipping_minimum_handoffs() -> None:
@@ -278,8 +278,8 @@ def test_offer_below_known_no_shipping_minimum_handoffs() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
-    assert result["answer"] == BUYER_HANDOFF_REPLY
+    assert result["action"] != "handoff"
+    assert result["answer"] == AUTO_UNAVAILABLE_REPLY
     assert "minimum=¥1470.00" in str(result["reason"])
 
 
@@ -292,8 +292,8 @@ def test_shipping_included_offer_below_shipping_included_minimum_handoffs() -> N
         )
     )
 
-    assert result["action"] == "handoff"
-    assert result["answer"] == BUYER_HANDOFF_REPLY
+    assert result["action"] != "handoff"
+    assert result["answer"] == AUTO_UNAVAILABLE_REPLY
     assert "minimum=¥1490.00" in str(result["reason"])
 
 
@@ -309,8 +309,8 @@ def test_bargain_discount_is_not_accumulated_across_conversation_turns() -> None
     )
 
     assert first["answer"] == "不包邮的话最低 ¥1470.00 可以拍。"
-    assert second["action"] == "handoff"
-    assert second["answer"] == BUYER_HANDOFF_REPLY
+    assert second["action"] != "handoff"
+    assert second["answer"] == AUTO_UNAVAILABLE_REPLY
     assert "1460" not in str(second["answer"])
     assert second["reason"] == "additional_discount_not_authorised"
     assert rag.item_ids == []

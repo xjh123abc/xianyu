@@ -16,11 +16,6 @@ ORDER_SYSTEM_PROMPT = """你是订单查询助手。下面的数据来自本地�
 运单号为空时说明暂无运单号，不输出字面量 null。
 回答中明确标识“本地模拟订单数据”。"""
 
-COMBINED_SYSTEM_PROMPT = """你是电商平台客服助手。
-只能依据下面的订单数据和知识库资料回答用户问题，不得编造订单状态或平台规则。
-MCP 数据是订单事实，RAG 资料是平台规则；请把两者组织成一个简洁、直接的回答。
-如果资料不足以确定答案，应明确说明无法确认并建议转人工客服。"""
-
 XIANYU_SYSTEM_PROMPT = """你是卖家侧的闲鱼客服。
 只能依据提供的当前商品事实、最近对话和知识资料回答，不能猜测库存、配件、成色、发货或卖家动作。
 先识别买家当前这一整句话中的所有问题、条件和否定关系，并逐项依据商品事实或卖家规则回答；不要只回答其中一个问题。
@@ -131,42 +126,5 @@ def build_xianyu_messages(
 {context.strip()}"""
     return [
         {"role": "system", "content": XIANYU_SYSTEM_PROMPT},
-        {"role": "user", "content": user_prompt},
-    ]
-
-
-def build_combined_messages(
-    query: str,
-    rag_result: Mapping[str, Any],
-    mcp_result: Mapping[str, Any],
-    history: Sequence[Mapping[str, Any]] | None = None,
-) -> list[dict[str, str]]:
-    """Build one prompt from MCP order facts and RAG rule evidence."""
-    if not isinstance(query, str) or not query.strip():
-        raise ValueError("query must not be empty")
-    if not isinstance(rag_result, Mapping):
-        raise ValueError("rag_result must be a mapping")
-    if not isinstance(mcp_result, Mapping):
-        raise ValueError("mcp_result must be a mapping")
-
-    history_text = ""
-    if history:
-        history_lines = [
-            f"{item.get('role', 'unknown')}: {item.get('content', '')}"
-            for item in history
-            if isinstance(item, Mapping) and str(item.get("content", "")).strip()
-        ]
-        if history_lines:
-            history_text = "\n历史对话：\n" + "\n".join(history_lines) + "\n"
-
-    user_prompt = f"""用户问题：
-{query.strip()}{history_text}
-MCP 订单事实：
-{json.dumps(dict(mcp_result), ensure_ascii=False)}
-
-RAG 知识库资料：
-{json.dumps(dict(rag_result), ensure_ascii=False, default=str)}"""
-    return [
-        {"role": "system", "content": COMBINED_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ]

@@ -8,20 +8,12 @@ public ``/chat`` contract.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-import re
 
 from app.services.chat_response import non_rag_response
 
 
-BUYER_HANDOFF_REPLY = "稍等我看看"
-_HUMAN_REVIEW_LANGUAGE = re.compile(
-    r"(?:需要|让|请|等|等待).{0,8}(?:卖家|人工).{0,8}(?:确认|处理)"
-    r"|(?:我|帮你).{0,8}(?:问|联系).{0,8}卖家"
-    r"|(?:转|交给).{0,8}(?:卖家|人工).{0,8}(?:处理|确认)",
-    re.IGNORECASE,
-)
-
-
+AUTO_UNAVAILABLE_REPLY = "该问题目前暂无足够信息确认。"
+ITEM_CLARIFICATION_REPLY = "请补充商品编号或具体商品信息。"
 def item_source(item: Mapping[str, object]) -> dict[str, object]:
     """Represent MCP evidence without pretending it is a document chunk."""
 
@@ -55,47 +47,6 @@ def join_answers(parts: Sequence[str], tail: str | None = None) -> str:
     return "\n".join(answer_parts)
 
 
-def requires_human_handoff(text: str) -> bool:
-    """Reject buyer-facing model text that asks them to wait for seller review."""
-
-    normalized = str(text or "").strip().rstrip("。！？!?").strip()
-    if normalized.startswith(("缺少依据", "资料不足", "无法确认")):
-        return True
-    return bool(_HUMAN_REVIEW_LANGUAGE.search(normalized))
-
-
-def merge_partial_response(
-    partial: Mapping[str, object],
-    knowledge: Mapping[str, object],
-) -> dict[str, object]:
-    """Escalate an unresolved combined turn without leaking a partial buyer reply."""
-
-    merged = dict(partial)
-    if partial.get("can_answer") is False or knowledge.get("can_answer") is False:
-        merged["answer"] = BUYER_HANDOFF_REPLY
-        merged["action"] = "handoff"
-        merged["next_step"] = "human_handoff"
-        merged["can_answer"] = False
-        merged["reason"] = str(
-            partial.get("reason") or knowledge.get("reason") or "combined_answer_unavailable"
-        )
-        merged["sources"] = knowledge.get("sources", partial.get("sources", []))
-        merged["results"] = knowledge.get("results", partial.get("results", []))
-        merged["reliability"] = knowledge.get("reliability", partial.get("reliability"))
-        return merged
-    merged["answer"] = join_answers(
-        [
-            str(knowledge.get("answer") or ""),
-            str(partial.get("answer") or ""),
-        ]
-    )
-    merged["sources"] = knowledge.get("sources", [])
-    merged["results"] = knowledge.get("results", [])
-    merged["reliability"] = knowledge.get("reliability")
-    merged["can_answer"] = False
-    return merged
-
-
 def reply(
     query: str,
     answer: str,
@@ -103,8 +54,6 @@ def reply(
 ) -> dict[str, object]:
     """Build a deterministic reply based solely on confirmed item facts."""
 
-    if requires_human_handoff(answer):
-        return handoff(query, "generated_reply_requires_human_review", item)
     return {
         "query": query,
         "route": "xianyu",
@@ -121,11 +70,52 @@ def reply(
 
 
 def clarification(query: str, item_id: str | None = None) -> dict[str, object]:
-    """Escalate a missing item/question context instead of guessing."""
+    """Ask only for buyer information that can make the next turn answerable."""
 
-    response = common_handoff(query, "buyer_question_requires_clarification")
+    response = non_rag_response(
+        query,
+        ITEM_CLARIFICATION_REPLY,
+        can_answer=False,
+        route="xianyu",
+        action="clarify",
+    )
+    response.update(
+        {
+            "reason": "buyer_question_requires_clarification",
+            "next_step": "clarify",
+        }
+    )
     if item_id is not None:
         response["item_id"] = item_id
+    return response
+
+
+def unavailable(
+    query: str,
+    answer: str,
+    *,
+    item: Mapping[str, object] | None = None,
+    prepared: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return safe unavailable evidence without requesting human takeover."""
+
+    response = non_rag_response(
+        query,
+        answer.strip() or "暂无可确认的信息。",
+        can_answer=False,
+        route="xianyu",
+        action="reply",
+    )
+    if item is not None:
+        response.update({"item_id": item["item_id"], "item_info": dict(item)})
+    if prepared is not None:
+        response.update(
+            {
+                "sources": valid_knowledge_sources(prepared),
+                "results": prepared.get("results", []),
+                "reliability": prepared.get("reliability"),
+            }
+        )
     return response
 
 
@@ -135,10 +125,17 @@ def item_conflict(
     *,
     item_id: str | None = None,
 ) -> dict[str, object]:
-    """Escalate conflicting item identity without selecting one by guesswork."""
+    """Ask the buyer to resolve conflicting item identity without guessing."""
 
-    del answer  # Kept for compatibility with existing callers.
-    response = common_handoff(query, "item_context_conflict")
+    safe_answer = answer.strip() if isinstance(answer, str) else ""
+    response = non_rag_response(
+        query,
+        safe_answer or ITEM_CLARIFICATION_REPLY,
+        can_answer=False,
+        route="xianyu",
+        action="clarify",
+    )
+    response.update({"reason": "item_context_conflict", "next_step": "clarify"})
     if item_id is not None:
         response["item_id"] = item_id
     return response
@@ -150,21 +147,25 @@ def handoff(
     item: Mapping[str, object],
     prepared: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Return the fixed buyer handoff while retaining an internal reason."""
+    """Return an automatic unavailable reply without changing channel ownership.
+
+    The name remains for compatibility with the old expert callers.  It no
+    longer means an automatic human handoff.
+    """
 
     response = non_rag_response(
         query,
-        BUYER_HANDOFF_REPLY,
+        AUTO_UNAVAILABLE_REPLY,
         can_answer=False,
         route="xianyu",
-        action="handoff",
+        action="reply",
     )
     response.update(
         {
             "reason": answer,
             "item_id": item["item_id"],
             "item_info": dict(item),
-            "next_step": "human_handoff",
+            "next_step": None,
             "sources": [item_source(item)],
         }
     )
@@ -180,15 +181,19 @@ def handoff(
 
 
 def common_handoff(query: str, reason: str) -> dict[str, object]:
-    """Create a fixed buyer handoff when no concrete item is available."""
+    """Create a safe unavailable reply for an automatic common-knowledge gap.
+
+    Kept as a compatibility name for legacy callers; it never requests human
+    takeover and deliberately hides internal failure details from the buyer.
+    """
 
     response = non_rag_response(
         query,
-        BUYER_HANDOFF_REPLY,
+        AUTO_UNAVAILABLE_REPLY,
         can_answer=False,
         route="xianyu",
-        action="handoff",
+        action="reply",
     )
     response["reason"] = reason
-    response["next_step"] = "human_handoff"
+    response["next_step"] = None
     return response

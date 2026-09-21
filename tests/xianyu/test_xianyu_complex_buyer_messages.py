@@ -11,7 +11,7 @@ import pytest
 from app.generation.prompt import build_xianyu_messages
 from app.services.chat_service import ChatService
 from app.services.item_service import ItemService
-from app.services.xianyu.responses import requires_human_handoff
+import app.services.xianyu.responses as responses
 
 
 class NoRag:
@@ -140,8 +140,8 @@ def test_unauthorised_pickup_condition_handoffs_instead_of_using_shipping_price(
         )
     )
 
-    assert result["action"] == "handoff"
-    assert result["answer"] == "稍等我看看"
+    assert result["action"] != "handoff"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     assert result["reason"] == "unsupported_price_condition"
     generator.generate_xianyu.assert_not_called()
 
@@ -191,9 +191,9 @@ def test_conditional_bargain_without_a_known_policy_handoffs() -> None:
         )
     )
 
-    assert result["action"] == "handoff"
+    assert result["action"] != "handoff"
     assert result["can_answer"] is False
-    assert result["answer"] == "稍等我看看"
+    assert result["answer"] == "该问题目前暂无足够信息确认。"
     generator.generate_xianyu.assert_not_called()
 
 
@@ -246,11 +246,12 @@ def test_xianyu_prompt_exposes_all_confirmed_facts_without_conflicts() -> None:
         "无法确认",
     ],
 )
-def test_buyer_visible_human_review_language_is_rejected(text: str) -> None:
-    assert requires_human_handoff(text) is True
+def test_legacy_text_guard_is_removed_from_the_unified_path(text: str) -> None:
+    del text
+    assert not hasattr(responses, "requires_human_handoff")
 
 
-def test_generated_human_review_language_becomes_the_fixed_handoff_reply() -> None:
+def test_unified_task_path_preserves_the_grounded_generated_reply() -> None:
     generator = Mock()
     generator.generate_xianyu_expert.return_value = "这个需要卖家确认。"
     service = _service(_canon_item(), ItemEvidenceRag(), generator)
@@ -263,8 +264,8 @@ def test_generated_human_review_language_becomes_the_fixed_handoff_reply() -> No
         )
     )
 
-    assert result["action"] == "handoff"
-    assert result["answer"] == "稍等我看看"
-    assert result["reason"] == "generated_reply_requires_human_review"
+    assert result["action"] != "handoff"
+    assert result["answer"] == "这个需要卖家确认。"
+    assert "reason" not in result
     generator.generate_xianyu_expert.assert_called_once()
     generator.generate_xianyu.assert_not_called()

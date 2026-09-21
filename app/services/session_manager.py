@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.services.chat_contracts import (
+    TASK_TYPES,
+    SessionContext,
+    TaskType,
+    default_negotiation_state,
+)
+
 
 _EMPTY_STATE = {
     "order_id": None,
@@ -23,9 +30,12 @@ _EMPTY_STATE = {
         "recent_price_topic": None,
         "shipping_condition": None,
     },
+    "last_task_type": None,
+    "negotiation": default_negotiation_state(),
 }
 _UNSET = object()
 _SHIPPING_CONDITIONS = {"seller_pays", "buyer_pays"}
+_NEGOTIATION_KEYS = frozenset({"item_id", "round", "last_ai_offer", "last_buyer_offer"})
 
 
 class SessionManager:
@@ -85,6 +95,25 @@ class SessionManager:
             self._evict_memory_over_capacity(exclude=normalized_id)
             return normalized_id, self._copy_session(session)
 
+    def load(self, chat_id: str) -> SessionContext:
+        """Read one existing session through the unified S2 contract.
+
+        SQLite, TTL, capacity pruning, and the existing state schema continue
+        to be owned by this manager. Callers receive only the fields required
+        to plan the next turn.
+        """
+
+        _, session = self.get_or_create(chat_id)
+        history, state = self.read_context(session)
+        return SessionContext(
+            history=history,
+            current_item_id=state.get("current_item_id"),
+            current_order_id=state.get("order_id"),
+            last_task_type=state.get("last_task_type"),
+            negotiation=self._negotiation_from_state(state),
+            platform_context={"xianyu": self._xianyu_context_from_state(state)},
+        )
+
     def set_current_item_id(self, chat_id: str, item_id: str) -> None:
         """Set the confirmed current item for exactly one chat session."""
         normalized_item_id = item_id.strip().upper()
@@ -98,6 +127,10 @@ class SessionManager:
         if previous_item_id != normalized_item_id or xianyu_context["item_id"] != normalized_item_id:
             xianyu_context = self._empty_xianyu_context(normalized_item_id)
         state["xianyu_context"] = xianyu_context
+        negotiation = self._negotiation_from_state(state)
+        if previous_item_id != normalized_item_id or negotiation["item_id"] != normalized_item_id:
+            negotiation = self._empty_negotiation_state(normalized_item_id)
+        state["negotiation"] = negotiation
         self._save(chat_id, session)
 
     def get_current_item_id(self, chat_id: str) -> str | None:
@@ -177,6 +210,66 @@ class SessionManager:
             state["last_intent"] = last_intent
         self._save(chat_id, session)
 
+    def save_turn(
+        self,
+        chat_id: str,
+        user_message: str,
+        assistant_message: str,
+        *,
+        current_item_id: str | None | object = _UNSET,
+        current_order_id: str | None = None,
+        last_task_type: TaskType | None = None,
+        legacy_intent: str | None = None,
+        xianyu_context_updates: Mapping[str, object] | None = None,
+        negotiation: Mapping[str, object] | None = None,
+    ) -> None:
+        """Persist a completed turn through one caller-facing session entrypoint.
+
+        The pre-S2 methods remain the implementation and compatibility layer.
+        ``legacy_intent`` preserves current router behaviour until S3 replaces
+        it with planner task types.
+        """
+
+        if last_task_type is not None and last_task_type not in TASK_TYPES:
+            raise ValueError("last_task_type must be product, price, service, or order")
+        if xianyu_context_updates is not None and not isinstance(
+            xianyu_context_updates, Mapping
+        ):
+            raise ValueError("xianyu_context_updates must be a mapping")
+        if negotiation is not None and not isinstance(negotiation, Mapping):
+            raise ValueError("negotiation must be a mapping")
+        normalized_item_id = _UNSET
+        if current_item_id is not _UNSET:
+            if current_item_id is None:
+                raise ValueError("current_item_id cannot be cleared through save_turn")
+            normalized_item_id = self._normalise_item_id(current_item_id)
+        updates = self._validated_xianyu_context_updates(xianyu_context_updates)
+        if negotiation is not None:
+            self._updated_negotiation_state({}, negotiation)
+
+        self.append_turn(
+            chat_id,
+            user_message,
+            assistant_message,
+            order_id=current_order_id,
+            last_intent=legacy_intent,
+        )
+        if normalized_item_id is not _UNSET:
+            assert isinstance(normalized_item_id, str)
+            self.set_current_item_id(chat_id, normalized_item_id)
+        if updates:
+            if normalized_item_id is not _UNSET:
+                updates.setdefault("item_id", normalized_item_id)
+            self.update_xianyu_context(chat_id, **updates)
+        if last_task_type is not None or negotiation is not None:
+            _, session = self.get_or_create(chat_id)
+            state = session["state"]
+            if last_task_type is not None:
+                state["last_task_type"] = last_task_type
+            if negotiation is not None:
+                state["negotiation"] = self._updated_negotiation_state(state, negotiation)
+            self._save(chat_id, session)
+
     @asynccontextmanager
     async def session_lock(self, chat_id: str) -> AsyncIterator[None]:
         """Serialize a full request for one chat, including across SQLite workers."""
@@ -235,6 +328,12 @@ class SessionManager:
             "shipping_condition": None,
         }
 
+    @staticmethod
+    def _empty_negotiation_state(item_id: str | None = None) -> dict[str, object]:
+        state = default_negotiation_state()
+        state["item_id"] = item_id
+        return state
+
     @classmethod
     def _xianyu_context_from_state(cls, state: Mapping[str, Any]) -> dict[str, Any]:
         raw_context = state.get("xianyu_context")
@@ -252,13 +351,88 @@ class SessionManager:
         return context
 
     @classmethod
+    def _negotiation_from_state(cls, state: Mapping[str, Any]) -> dict[str, object]:
+        raw_negotiation = state.get("negotiation")
+        negotiation = cls._empty_negotiation_state()
+        if not isinstance(raw_negotiation, Mapping):
+            return negotiation
+        raw_item_id = raw_negotiation.get("item_id")
+        if isinstance(raw_item_id, str) and raw_item_id.strip():
+            negotiation["item_id"] = raw_item_id.strip().upper()
+        raw_round = raw_negotiation.get("round")
+        if isinstance(raw_round, int) and not isinstance(raw_round, bool) and raw_round >= 0:
+            negotiation["round"] = raw_round
+        for key in ("last_ai_offer", "last_buyer_offer"):
+            negotiation[key] = raw_negotiation.get(key)
+        return negotiation
+
+    @classmethod
+    def _updated_negotiation_state(
+        cls,
+        state: Mapping[str, Any],
+        updates: Mapping[str, object],
+    ) -> dict[str, object]:
+        unexpected = set(updates).difference(_NEGOTIATION_KEYS)
+        if unexpected:
+            raise ValueError("Unsupported negotiation keys: " + ", ".join(sorted(unexpected)))
+        negotiation = cls._negotiation_from_state(state)
+        if "item_id" in updates:
+            negotiation["item_id"] = cls._normalise_item_id(updates["item_id"])
+        if "round" in updates:
+            round_number = updates["round"]
+            if (
+                not isinstance(round_number, int)
+                or isinstance(round_number, bool)
+                or round_number < 0
+            ):
+                raise ValueError("negotiation.round must be a non-negative integer")
+            negotiation["round"] = round_number
+        for key in ("last_ai_offer", "last_buyer_offer"):
+            if key in updates:
+                negotiation[key] = updates[key]
+        return negotiation
+
+    @classmethod
+    def _validated_xianyu_context_updates(
+        cls,
+        updates: Mapping[str, object] | None,
+    ) -> dict[str, object]:
+        if updates is None:
+            return {}
+        validated = dict(updates)
+        unexpected = set(validated).difference(
+            {"item_id", "recent_price_topic", "shipping_condition"}
+        )
+        if unexpected:
+            raise ValueError("Unsupported Xianyu context keys: " + ", ".join(sorted(unexpected)))
+        if "item_id" in validated:
+            cls._normalise_item_id(validated["item_id"])
+        recent_price_topic = validated.get("recent_price_topic", _UNSET)
+        if recent_price_topic is not _UNSET and recent_price_topic is not None and (
+            not isinstance(recent_price_topic, str) or not recent_price_topic.strip()
+        ):
+            raise ValueError("recent_price_topic must be a non-empty string or None")
+        shipping_condition = validated.get("shipping_condition", _UNSET)
+        if shipping_condition is not _UNSET and shipping_condition is not None and (
+            shipping_condition not in _SHIPPING_CONDITIONS
+        ):
+            raise ValueError("shipping_condition must be seller_pays, buyer_pays, or None")
+        return validated
+
+    @classmethod
     def _normalise_state(cls, state: object) -> dict[str, Any]:
         raw_state = state if isinstance(state, Mapping) else {}
         normalized = {
             "order_id": raw_state.get("order_id"),
             "current_item_id": raw_state.get("current_item_id"),
             "last_intent": raw_state.get("last_intent"),
+            "last_task_type": (
+                raw_state.get("last_task_type")
+                if raw_state.get("last_task_type") in TASK_TYPES
+                else None
+            ),
             "xianyu_context": cls._xianyu_context_from_state(raw_state),
+            "negotiation": cls._negotiation_from_state(raw_state),
         }
         for key, value in raw_state.items():
             normalized.setdefault(key, value)

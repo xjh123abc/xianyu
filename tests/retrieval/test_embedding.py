@@ -17,7 +17,7 @@ class FakeEncoded(list):
 
 
 def test_chunks_generate_matching_local_embeddings(monkeypatch) -> None:
-    document = load_txt("data/raw/ingestion_test.txt")
+    document = load_txt("tests/fixtures/ingestion_test.txt")
     chunks = chunk_document(document, chunk_size=100)
     model_path = embedding_module.Path(__file__).parent
     monkeypatch.setattr(embedding_module.settings, "embedding_model_path", str(model_path))

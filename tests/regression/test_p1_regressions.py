@@ -54,7 +54,7 @@ def test_rag_service_degrades_retrieval_failure_to_handoff() -> None:
 
     assert result["query"] == "shipping policy"
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
+    assert result["next_step"] == "clarify"
     assert result["context"] is None
     assert result["sources"] == []
     assert result["results"] == []
@@ -83,7 +83,7 @@ def test_rag_service_degrades_generation_failure_to_handoff() -> None:
     result = service.chat("shipping policy")
 
     assert result["can_answer"] is False
-    assert result["next_step"] == "human_handoff"
+    assert result["next_step"] == "clarify"
     assert result["sources"] == []
     assert result["answer"]
 
@@ -106,5 +106,5 @@ def test_chat_api_returns_structured_handoff_when_rag_dependency_fails(
 
     assert response.status_code == 200
     assert response.json()["can_answer"] is False
-    assert response.json()["next_step"] == "human_handoff"
+    assert response.json()["next_step"] == "clarify"
     assert response.json()["sources"] == []

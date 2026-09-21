@@ -4,7 +4,7 @@ from app.ingestion.chunker import chunk_document
 from app.ingestion.loader import load_txt
 
 
-TEST_FILE = Path(__file__).parents[2] / "data" / "raw" / "ingestion_test.txt"
+TEST_FILE = Path(__file__).parents[1] / "fixtures" / "ingestion_test.txt"
 
 
 def test_load_txt_returns_complete_content_and_source() -> None:
