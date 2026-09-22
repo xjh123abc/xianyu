@@ -17,7 +17,7 @@ from app.services.query_planner import (
 )
 from app.services.knowledge_service import KnowledgeService
 from app.services.xianyu.item_fact_responder import ItemFactResponder
-from app.services.xianyu.responses import common_handoff, valid_knowledge_sources
+from app.services.xianyu.responses import valid_knowledge_sources
 
 
 logger = logging.getLogger(__name__)
@@ -88,15 +88,8 @@ class XianyuKnowledgeResponder:
             )
             context = prepared.get("context")
             knowledge_sources = valid_knowledge_sources(prepared)
-            if (
-                not prepared.get("can_answer")
-                or not isinstance(context, Mapping)
-                or not knowledge_sources
-            ):
-                return self._common_handoff(
-                    query,
-                    "common_knowledge_unavailable",
-                )
+            if not isinstance(context, Mapping):
+                raise RuntimeError("missing common Xianyu context")
             context_text = str(context.get("context", "")).strip()
             if not context_text:
                 raise RuntimeError("empty common Xianyu context")
@@ -111,7 +104,9 @@ class XianyuKnowledgeResponder:
                 "query": query,
                 "route": "xianyu",
                 "action": "reply",
-                "answer": answer.strip(),
+                "answer": answer,
+                "raw_answer": answer,
+                "evidence": context_text,
                 "sources": knowledge_sources,
                 "results": prepared.get("results", []),
                 "reliability": prepared.get("reliability"),
@@ -120,24 +115,18 @@ class XianyuKnowledgeResponder:
             }
         except Exception:
             logger.exception("Common Xianyu RAG failed")
-            has_prepared_evidence = prepared is not None and bool(
-                valid_knowledge_sources(prepared)
-            )
-            response = self._common_handoff(
-                query,
-                "common_knowledge_generation_failed"
-                if has_prepared_evidence
-                else "common_knowledge_unavailable",
-            )
-            if has_prepared_evidence and prepared is not None:
-                response.update(
-                    {
-                        "sources": valid_knowledge_sources(prepared),
-                        "results": prepared.get("results", []),
-                        "reliability": prepared.get("reliability"),
-                    }
-                )
-            return response
+            return {
+                "query": query,
+                "route": "xianyu",
+                "action": "reply",
+                "answer": "",
+                "sources": valid_knowledge_sources(prepared or {}),
+                "results": (prepared or {}).get("results", []),
+                "reliability": (prepared or {}).get("reliability"),
+                "next_step": None,
+                "can_answer": False,
+                "reason": "common_knowledge_generation_failed",
+            }
 
     async def prepare_evidence(
         self,
@@ -221,7 +210,7 @@ class XianyuKnowledgeResponder:
             if isinstance(prepared_results, list):
                 results.extend(prepared_results)
             current_reliability = prepared.get("reliability")
-            if reliability is None or not prepared.get("can_answer"):
+            if reliability is None:
                 reliability = current_reliability
             context = prepared.get("context")
             current_sources = valid_knowledge_sources(prepared)
@@ -230,7 +219,10 @@ class XianyuKnowledgeResponder:
                 if isinstance(context, Mapping)
                 else ""
             )
-            if not prepared.get("can_answer") or not context_text or not current_sources:
+            # ``can_answer`` is a reliability/debug signal from the old RAG
+            # guard, not permission to discard retrieved evidence.  A context
+            # can be useful even when it has no source metadata yet.
+            if not context_text:
                 issues.append("knowledge_evidence_unavailable")
                 continue
 
@@ -276,7 +268,3 @@ class XianyuKnowledgeResponder:
         if normalized_title and normalized_title.casefold() not in cleaned.casefold():
             cleaned = f"{normalized_title} {cleaned}".strip()
         return cleaned or query
-
-    @staticmethod
-    def _common_handoff(query: str, answer: str) -> dict[str, object]:
-        return common_handoff(query, answer)

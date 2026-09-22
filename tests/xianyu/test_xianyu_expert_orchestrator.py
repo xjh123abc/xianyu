@@ -50,6 +50,22 @@ class EvidenceRag:
         }
 
 
+class LowReliabilityEvidenceRag:
+    """Retrieved text must reach the expert even when the old guard rejects it."""
+
+    def warm_up(self) -> None:
+        return None
+
+    def prepare(self, *args: object, **kwargs: object) -> dict[str, object]:
+        return {
+            "can_answer": False,
+            "context": {"context": "低分 rerank 仍检索到的售后规则", "sources": []},
+            "sources": [],
+            "results": [{"content": "低分 rerank 仍检索到的售后规则"}],
+            "reliability": {"can_answer": False, "reason": "below_threshold"},
+        }
+
+
 def _service(
     item: dict[str, object],
     generator: Mock | None = None,
@@ -102,7 +118,7 @@ def test_price_and_repair_dependency_handoff_does_not_make_a_conditional_offer()
     )
 
     assert result["action"] != "handoff", result
-    assert result["answer"]
+    assert result["answer"] == ""
     assert result["reason"]
     assert "1470" not in str(result["answer"])
 
@@ -177,7 +193,7 @@ def test_missing_model_result_is_fail_closed() -> None:
     )
 
     assert result["action"] != "handoff"
-    assert "暂无足够信息确认" in result["answer"]
+    assert "暂无足够信息确认" not in result["answer"]
     assert result["can_answer"] is False
 
 
@@ -186,7 +202,7 @@ def test_legacy_missing_action_becomes_auto_clarification() -> None:
         {"answer": "", "can_answer": False, "reason": "expert_result_empty"}
     )
 
-    assert mapped.action == "answer"
+    assert mapped.action == "error"
     assert mapped.reason == "expert_result_empty"
 
 
@@ -214,7 +230,7 @@ def test_expert_budget_discards_late_batch_result() -> None:
     )
 
     assert result["action"] != "handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["answer"] == ""
     assert result["reason"] == "expert_processing_timeout"
 
 
@@ -265,3 +281,21 @@ def test_common_seller_rule_also_uses_the_unified_orchestrator() -> None:
     assert result["answer"] == "按已确认的本店规则处理。"
     generator.generate_xianyu.assert_not_called()
     generator.generate_xianyu_expert.assert_called_once()
+
+
+def test_low_reliability_evidence_reaches_model_and_is_not_rewritten() -> None:
+    generator = Mock()
+    model_text = "模型原始回答：按低分检索到的规则处理。"
+    generator.generate_xianyu_expert.return_value = model_text
+    service = _service(_canon_item(), generator, LowReliabilityEvidenceRag())
+
+    result = asyncio.run(
+        service.chat_async("你们店售后怎么处理？", "safety_chain_removed")
+    )
+
+    evidence = generator.generate_xianyu_expert.call_args.args[3]
+    assert "低分 rerank 仍检索到的售后规则" in evidence
+    assert result["evidence"] == evidence
+    assert result["raw_answer"] == model_text
+    assert result["answer"] == model_text
+    assert result["can_answer"] is True

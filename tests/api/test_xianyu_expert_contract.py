@@ -47,3 +47,28 @@ def test_http_schema_exposes_reason_without_exposing_internal_tasks() -> None:
 
     assert "reason" in schema
     assert "tasks" not in schema
+
+
+def test_http_schema_exposes_expert_debug_trace(monkeypatch) -> None:
+    service = Mock()
+    service.chat_async = AsyncMock(
+        return_value={
+            "query": "售后怎么处理？",
+            "chat_id": "safety_trace",
+            "route": "xianyu",
+            "action": "reply",
+            "answer": "模型原始回答",
+            "raw_answer": "模型原始回答",
+            "evidence": "实际 rerank 证据",
+            "can_answer": True,
+        }
+    )
+    monkeypatch.setattr(chat_api, "chat_service", service)
+
+    response = TestClient(app).post(
+        "/chat", json={"query": "售后怎么处理？", "chat_id": "safety_trace"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["evidence"] == "实际 rerank 证据"
+    assert response.json()["raw_answer"] == response.json()["answer"] == "模型原始回答"

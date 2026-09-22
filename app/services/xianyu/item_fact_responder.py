@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from app.services.intent_router import IntentMatch
 from app.services.query_planner import QuestionPlan
 from app.services.xianyu.experts.price_agent import PriceAgent
-from app.services.xianyu.responses import clarification, handoff, reply
+from app.services.xianyu.responses import clarification, reply, unavailable
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ class ItemFactResponder:
 
         match = self._TARGET_MATCHES.get(query_target)
         if match is None:
-            return handoff(question, "unsupported_query_target", item)
+            return unavailable(question, "", item=item, reason="unsupported_query_target")
         return self.answer_intent(
             question,
             item,
@@ -96,15 +96,16 @@ class ItemFactResponder:
             if decision.status == "answered":
                 assert decision.answer is not None
                 return reply(query, decision.answer, item)
-            return handoff(query, decision.reason or "price_decision_unavailable", item)
+            return unavailable(
+                query,
+                "",
+                item=item,
+                reason=decision.reason or "price_decision_unavailable",
+            )
 
         facts = self.structured_facts(item)
         if set(match.required_fields) & self.fact_conflicts(facts):
-            return handoff(
-                query,
-                "item_fact_conflict",
-                item,
-            )
+            return unavailable(query, "", item=item, reason="item_fact_conflict")
 
         def known(value: object) -> str | None:
             return (
@@ -121,7 +122,7 @@ class ItemFactResponder:
             return reply(query, text, item)
 
         def needs_human(message: str) -> dict[str, object]:
-            return handoff(query, message, item)
+            return unavailable(query, "", item=item, reason=message)
 
         intent = match.intent
         lowered = query.casefold()

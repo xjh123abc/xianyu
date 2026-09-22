@@ -7,7 +7,7 @@ import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from app.services.item_service import ItemService
-from app.services.xianyu.responses import clarification, common_handoff, item_conflict
+from app.services.xianyu.responses import clarification, item_conflict, unavailable
 
 
 logger = logging.getLogger(__name__)
@@ -116,7 +116,8 @@ class ItemContextResolver:
             item = await self._get_item_info(candidate_id)
         except Exception:
             logger.exception("Item MCP lookup failed for item_id=%s", candidate_id)
-            response = common_handoff(query, "商品 MCP 查询失败。")
+            response = unavailable(query, "商品信息暂时无法读取。")
+            response["reason"] = "item_lookup_failed"
             response["item_id"] = candidate_id
             return None, response
         if not item.get("found"):
@@ -127,7 +128,8 @@ class ItemContextResolver:
             )
             return None, item_conflict(query, message, item_id=candidate_id)
         if not self.valid_item_evidence(item, candidate_id):
-            response = common_handoff(query, "商品证据校验失败。")
+            response = unavailable(query, "商品信息暂时无法确认。")
+            response["reason"] = "item_evidence_invalid"
             response["item_id"] = candidate_id
             return None, response
         return item, None

@@ -99,6 +99,8 @@ class Response(BaseModel):
     intent: str | None = None
     required_fields: list[str] = Field(default_factory=list)
     facts: dict[str, Any] = Field(default_factory=dict)
+    evidence: str | list[str] | None = None
+    raw_answer: str | list[str] | None = None
 
 
 @router.post(

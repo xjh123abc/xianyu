@@ -73,7 +73,7 @@ class ProductAgent:
             task.query_target,
         )
         sources = _sources(response)
-        if response.get("action") == "reply" and response.get("can_answer") is True:
+        if response.get("action") == "reply" and not response.get("reason"):
             answer = response.get("answer")
             if isinstance(answer, str) and answer.strip():
                 return ExpertResult.answered(task, answer.strip(), sources=sources)
@@ -99,7 +99,9 @@ class ProductAgent:
         sources = valid_knowledge_sources(prepared)
         evidence = _context_text(prepared)
         issues = _issues(prepared)
-        if not prepared.get("can_answer") or not evidence or not sources:
+        # Retrieval reliability and source metadata remain observable, but
+        # neither is a generation permission gate.
+        if not evidence:
             return ExpertResult.handoff(
                 task,
                 issues[0] if issues else "model_knowledge_unavailable",
@@ -127,7 +129,13 @@ class ProductAgent:
             return ExpertResult.handoff(task, "product_generation_failed", sources=sources)
         if not isinstance(answer, str) or not answer.strip():
             return ExpertResult.handoff(task, "product_generation_empty", sources=sources)
-        return ExpertResult.answered(task, answer.strip(), sources=sources)
+        return ExpertResult.answered(
+            task,
+            answer,
+            sources=sources,
+            evidence=evidence,
+            raw_answer=answer,
+        )
 
     @staticmethod
     def _listing_description_answer(
