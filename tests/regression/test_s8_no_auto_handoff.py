@@ -13,7 +13,7 @@ from app.channels.xianyu.models import InboundMessage, SendReceipt
 from app.channels.xianyu.stage3_worker import XianyuStage3Worker
 from app.channels.xianyu.store import ChannelStore
 from app.rag.answerability import AnswerReliability
-from app.services.xianyu.responses import clarification, common_handoff, handoff, item_conflict, unavailable
+from app.services.xianyu.responses import clarification, item_conflict, unavailable
 
 
 class _Sender:
@@ -98,13 +98,8 @@ def test_knowledge_unavailable_is_a_safe_reply_not_a_clarification() -> None:
     assert "稍等我看看" not in response["answer"]
 
 
-def test_legacy_automatic_handoff_builders_do_not_return_handoff_wording() -> None:
-    item = {"item_id": "ITEM-1", "title": "相机"}
+def test_unavailable_response_keeps_the_supplied_text() -> None:
+    response = unavailable("售后怎么处理？", "模型原始回答")
 
-    for response in (
-        common_handoff("售后怎么处理？", "common_knowledge_unavailable"),
-        handoff("这台摔过吗？", "drop_history_unavailable", item),
-    ):
-        assert response["action"] == "reply"
-        assert response["next_step"] is None
-        assert response["answer"] == "该问题目前暂无足够信息确认。"
+    assert response["action"] == "reply"
+    assert response["answer"] == "模型原始回答"

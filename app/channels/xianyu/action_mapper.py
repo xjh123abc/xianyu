@@ -39,11 +39,7 @@ def map_chat_response(payload: Mapping[str, Any]) -> MappedAction:
         # Old API payloads may still use handoff.  Treat them as an
         # unavailable automatic answer; only an explicit seller takeover may
         # move the channel session to HUMAN.
-        return MappedAction(
-            "answer",
-            text=answer or "该问题目前暂无足够信息确认。",
-            reason=reason,
-        )
+        return MappedAction("answer", text=answer, reason=reason) if answer else MappedAction("error", reason=reason)
     if action in {"clarify", "clarification"} or next_step in {"clarify", "clarification"}:
         return MappedAction(
             "clarify",
@@ -55,12 +51,8 @@ def map_chat_response(payload: Mapping[str, Any]) -> MappedAction:
             return MappedAction("answer", text=answer)
         return MappedAction("error", reason="empty_answer")
 
-    # A legacy response may omit action but still state it cannot answer.  Do
-    # not let a generic error/empty answer reach the buyer.
+    # A legacy response may omit action but still carry a model answer.  Never
+    # substitute a fixed unavailable reply for that text.
     if payload.get("can_answer") is False:
-        return MappedAction(
-            "answer",
-            text=answer or "该问题目前暂无足够信息确认。",
-            reason=reason,
-        )
+        return MappedAction("answer", text=answer, reason=reason) if answer else MappedAction("error", reason=reason)
     return MappedAction("error", reason="unknown_chat_action")

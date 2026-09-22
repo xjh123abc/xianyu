@@ -109,6 +109,10 @@ class ExpertResult:
     sources: tuple[Mapping[str, object], ...] = ()
     missing_fields: tuple[str, ...] = ()
     reason: str | None = None
+    # Debug fields are carried to /chat so a test can compare the exact model
+    # output with the evidence supplied to it and the final answer.
+    evidence: str | None = None
+    raw_answer: str | None = None
 
     @classmethod
     def answered(
@@ -117,6 +121,8 @@ class ExpertResult:
         answer: str,
         *,
         sources: Sequence[Mapping[str, object]] = (),
+        evidence: str | None = None,
+        raw_answer: str | None = None,
     ) -> "ExpertResult":
         return cls(
             task_id=task.task_id,
@@ -124,6 +130,8 @@ class ExpertResult:
             status="answered",
             answer=answer,
             sources=tuple(sources),
+            evidence=evidence,
+            raw_answer=raw_answer,
         )
 
     @classmethod

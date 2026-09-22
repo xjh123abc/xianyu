@@ -65,7 +65,12 @@ class ServiceAgent:
         )
         sources = _sources(response)
         answer = response.get("answer")
-        if response.get("action") == "reply" and isinstance(answer, str) and answer.strip():
+        if (
+            response.get("action") == "reply"
+            and not response.get("reason")
+            and isinstance(answer, str)
+            and answer.strip()
+        ):
             return ExpertResult.answered(task, answer.strip(), sources=sources)
         return ExpertResult.handoff(
             task,
@@ -82,7 +87,9 @@ class ServiceAgent:
         sources = valid_knowledge_sources(prepared)
         evidence = _context_text(prepared)
         issues = _issues(prepared)
-        if not prepared.get("can_answer") or not evidence or not sources:
+        # ``can_answer`` and source validation are diagnostics only.  Generate
+        # from every non-empty retrieval/rerank context during testing.
+        if not evidence:
             return ExpertResult.handoff(
                 task,
                 issues[0] if issues else "seller_rule_unavailable",
@@ -110,7 +117,13 @@ class ServiceAgent:
             return ExpertResult.handoff(task, "service_generation_failed", sources=sources)
         if not isinstance(answer, str) or not answer.strip():
             return ExpertResult.handoff(task, "service_generation_empty", sources=sources)
-        return ExpertResult.answered(task, answer.strip(), sources=sources)
+        return ExpertResult.answered(
+            task,
+            answer,
+            sources=sources,
+            evidence=evidence,
+            raw_answer=answer,
+        )
 
 
 def _context_text(prepared: Mapping[str, object]) -> str:

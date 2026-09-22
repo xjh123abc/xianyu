@@ -37,10 +37,11 @@ class EvidenceRag:
         self.item_ids.append(item_id)
         return {
             "can_answer": self.can_answer,
-            "context": {"context": "FTb 上卷请按说明书步骤操作。", "sources": [{"source": "canon_ftb.md", "index": 1}]}
-            if self.can_answer
-            else None,
-            "sources": [{"source": "canon_ftb.md", "index": 1}] if self.can_answer else [],
+            "context": {
+                "context": "FTb 上卷请按说明书步骤操作。",
+                "sources": [{"source": "canon_ftb.md", "index": 1}],
+            },
+            "sources": [{"source": "canon_ftb.md", "index": 1}],
             "results": [],
             "reliability": None,
         }
@@ -254,9 +255,10 @@ def test_service_agent_answers_shipping_facts_and_greeting_without_model() -> No
     generator.generate_xianyu_expert.assert_not_called()
 
 
-def test_service_agent_handoffs_when_common_rule_has_no_valid_evidence() -> None:
+def test_service_agent_generates_from_low_reliability_common_evidence() -> None:
     rag = EvidenceRag(can_answer=False)
     generator = Mock()
+    generator.generate_xianyu_expert.return_value = "模型使用低可靠度证据生成的回答。"
     knowledge = _knowledge(rag, generator)
 
     result = asyncio.run(
@@ -266,11 +268,12 @@ def test_service_agent_handoffs_when_common_rule_has_no_valid_evidence() -> None
         )
     )[0]
 
-    assert result.status == "handoff"
-    assert result.reason == "knowledge_evidence_unavailable"
-    assert result.missing_fields == ("seller_rule",)
+    assert result.status == "answered"
+    assert result.answer == "模型使用低可靠度证据生成的回答。"
+    assert result.raw_answer == result.answer
+    assert result.evidence
     assert rag.item_ids == [None]
-    generator.generate_xianyu_expert.assert_not_called()
+    generator.generate_xianyu_expert.assert_called_once()
 
 
 def test_service_agent_preserves_grounded_answer_without_a_legacy_text_guard() -> None:
@@ -316,5 +319,5 @@ def test_expert_prompts_hide_internal_item_ids_and_keep_untrusted_data_scoped() 
     assert "query_target" in planning_messages[1]["content"]
     assert "transaction_conditions" in planning_messages[1]["content"]
     assert "不能当成买家已选择" in planning_messages[1]["content"]
-    assert "必须用自然、简短的话总结和解释已有规则" in service_messages[0]["content"]
-    assert "不得添加证据之外的商品事实、退款承诺、赔偿承诺或卖家动作" in service_messages[0]["content"]
+    assert "只处理当前这一项发货、快递、售后或店铺规则问题" in service_messages[0]["content"]
+    assert "直接完成当前问题的回答" in service_messages[0]["content"]

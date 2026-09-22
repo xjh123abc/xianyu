@@ -12,7 +12,6 @@ from collections.abc import Mapping, Sequence
 from app.services.chat_response import non_rag_response
 
 
-AUTO_UNAVAILABLE_REPLY = "该问题目前暂无足够信息确认。"
 ITEM_CLARIFICATION_REPLY = "请补充商品编号或具体商品信息。"
 def item_source(item: Mapping[str, object]) -> dict[str, object]:
     """Represent MCP evidence without pretending it is a document chunk."""
@@ -88,14 +87,13 @@ def clarification(query: str, item_id: str | None = None) -> dict[str, object]:
     if item_id is not None:
         response["item_id"] = item_id
     return response
-
-
 def unavailable(
     query: str,
     answer: str,
     *,
     item: Mapping[str, object] | None = None,
     prepared: Mapping[str, object] | None = None,
+    reason: str | None = None,
 ) -> dict[str, object]:
     """Return safe unavailable evidence without requesting human takeover."""
 
@@ -116,9 +114,9 @@ def unavailable(
                 "reliability": prepared.get("reliability"),
             }
         )
+    if reason:
+        response["reason"] = reason
     return response
-
-
 def item_conflict(
     query: str,
     answer: str,
@@ -138,62 +136,4 @@ def item_conflict(
     response.update({"reason": "item_context_conflict", "next_step": "clarify"})
     if item_id is not None:
         response["item_id"] = item_id
-    return response
-
-
-def handoff(
-    query: str,
-    answer: str,
-    item: Mapping[str, object],
-    prepared: Mapping[str, object] | None = None,
-) -> dict[str, object]:
-    """Return an automatic unavailable reply without changing channel ownership.
-
-    The name remains for compatibility with the old expert callers.  It no
-    longer means an automatic human handoff.
-    """
-
-    response = non_rag_response(
-        query,
-        AUTO_UNAVAILABLE_REPLY,
-        can_answer=False,
-        route="xianyu",
-        action="reply",
-    )
-    response.update(
-        {
-            "reason": answer,
-            "item_id": item["item_id"],
-            "item_info": dict(item),
-            "next_step": None,
-            "sources": [item_source(item)],
-        }
-    )
-    if prepared is not None:
-        response.update(
-            {
-                "sources": [item_source(item), *valid_knowledge_sources(prepared)],
-                "results": prepared.get("results", []),
-                "reliability": prepared.get("reliability"),
-            }
-        )
-    return response
-
-
-def common_handoff(query: str, reason: str) -> dict[str, object]:
-    """Create a safe unavailable reply for an automatic common-knowledge gap.
-
-    Kept as a compatibility name for legacy callers; it never requests human
-    takeover and deliberately hides internal failure details from the buyer.
-    """
-
-    response = non_rag_response(
-        query,
-        AUTO_UNAVAILABLE_REPLY,
-        can_answer=False,
-        route="xianyu",
-        action="reply",
-    )
-    response["reason"] = reason
-    response["next_step"] = None
     return response

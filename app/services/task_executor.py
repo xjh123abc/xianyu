@@ -313,7 +313,8 @@ def _expert_result(
         if item_evidence not in sources:
             sources.insert(0, item_evidence)
     if result.status == "answered" and isinstance(result.answer, str) and result.answer.strip():
-        answer = result.answer.strip()
+        # Do not normalize or replace model text after a successful response.
+        answer = result.answer
         response: dict[str, object] = {
             "query": task.query,
             "route": "xianyu",
@@ -324,6 +325,8 @@ def _expert_result(
             "reliability": None,
             "next_step": None,
             "can_answer": True,
+            "evidence": result.evidence,
+            "raw_answer": result.raw_answer or answer,
         }
         if item is not None:
             response.update({"item_id": item["item_id"], "item_info": dict(item)})
@@ -335,7 +338,7 @@ def _expert_result(
             metadata={"response": response},
         )
     reason = result.reason or "expert_answer_unavailable"
-    answer = _safe_unavailable_answer(task, result.answer, reason)
+    answer = result.answer if isinstance(result.answer, str) else ""
     response = {
         "query": task.query,
         "route": "xianyu",
@@ -439,26 +442,14 @@ def _response_result(
             metadata={"response": dict(response)},
         )
     reason = response_reason or unavailable_reason
-    safe_answer = _safe_unavailable_answer(task, answer, reason)
     return TaskResult(
         task.task_id,
         "unavailable",
-        safe_answer,
+        answer if isinstance(answer, str) else "",
         safe_sources,
         reason,
         metadata={"response": dict(response)},
     )
-
-
-def _safe_unavailable_answer(task: Task, answer: object, reason: str) -> str:
-    """Remove legacy automatic-handoff wording at the TaskResult boundary."""
-
-    if isinstance(answer, str) and answer.strip() != "稍等我看看":
-        return answer.strip()
-    question = task.query
-    if reason == "knowledge_evidence_unavailable" and "周日" in question and "到" in question:
-        return "目前只能确认付款后48小时内发出，周日是否能送达暂时无法确认。"
-    return "该问题目前暂无足够信息确认。"
 
 
 class ServiceTaskHandler:

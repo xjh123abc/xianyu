@@ -46,8 +46,6 @@ class ResultMerger:
             has_answered = has_answered or result.status == "answered"
             all_clarify = all_clarify and result.status == "clarify"
 
-        if not answer_parts:
-            answer_parts.append("该问题目前暂无足够信息确认。")
         if not has_answered and all_clarify:
             response = non_rag_response(
                 query,
@@ -73,6 +71,8 @@ class ResultMerger:
             "next_step": None,
             "can_answer": all(result.status == "answered" for result in results),
             "task_types": [task.task_type for task in tasks],
+            "evidence": _debug_values(raw_responses, "evidence"),
+            "raw_answer": _debug_values(raw_responses, "raw_answer"),
         })
         if not response["can_answer"]:
             response["reason"] = next(
@@ -85,13 +85,20 @@ class ResultMerger:
     def _result_text(result: TaskResult, task: Task | None) -> str:
         """Render every executor outcome without leaking an internal reason."""
 
-        if result.status in {"answered", "clarify"} and result.answer:
-            return result.answer
-        if result.status == "unavailable":
-            return result.answer or "该问题目前暂无足够信息确认。"
-        if result.status == "error":
-            return result.answer or "该问题处理失败，请稍后重试。"
-        if result.answer:
-            return result.answer
-        label = task.query.strip() if task is not None else "该问题"
-        return f"{label or '该问题'}目前暂无足够信息确认。"
+        del task
+        return result.answer if isinstance(result.answer, str) else ""
+
+
+def _debug_values(
+    responses: Sequence[object], key: str
+) -> str | list[str] | None:
+    values = [
+        value
+        for response in responses
+        if isinstance(response, Mapping)
+        for value in [response.get(key)]
+        if isinstance(value, str) and value
+    ]
+    if not values:
+        return None
+    return values[0] if len(values) == 1 else values

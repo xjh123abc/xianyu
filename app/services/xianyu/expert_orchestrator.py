@@ -21,8 +21,6 @@ from app.services.xianyu.item_fact_responder import ItemFactResponder
 from app.services.xianyu.knowledge_responder import XianyuKnowledgeResponder
 from app.services.xianyu.responses import (
     clarification,
-    common_handoff,
-    handoff,
     item_source,
 )
 from config.settings import settings
@@ -94,7 +92,7 @@ class XianyuExpertOrchestrator:
         history: Sequence[Mapping[str, object]] | None = None,
         session_state: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
-        """Return exactly one reply or one fixed human-handoff decision."""
+        """Return one expert response without replacing model output."""
 
         normalized_query = str(query or "").strip()
         if not normalized_query:
@@ -380,15 +378,7 @@ class XianyuExpertOrchestrator:
             if item_evidence not in sources:
                 sources.insert(0, item_evidence)
         failures = [result for result in results if result.status != "answered"]
-        unavailable = [
-            f"{task.question_fragment}暂时无法确认。"
-            for task, result in zip(tasks, results)
-            if result.status != "answered"
-        ]
         if not answers:
-            # A planner/expert failure is not something the buyer can resolve
-            # by repeating the question.  Preserve AUTO mode and return the
-            # standard unavailable result instead of an old clarification.
             return self._handoff_response(
                 query,
                 item,
@@ -399,7 +389,7 @@ class XianyuExpertOrchestrator:
             "query": query,
             "route": "xianyu",
             "action": "reply",
-            "answer": "\n".join([*answers, *unavailable]),
+            "answer": "\n".join(answers),
             "sources": sources,
             "results": [],
             "reliability": None,
@@ -417,7 +407,17 @@ class XianyuExpertOrchestrator:
         results: Sequence[ExpertResult],
         reason: str,
     ) -> dict[str, object]:
-        response = handoff(query, reason, item) if item is not None else common_handoff(query, reason)
+        response: dict[str, object] = {
+            "query": query,
+            "route": "xianyu",
+            "action": "reply",
+            "answer": "",
+            "can_answer": False,
+            "next_step": None,
+            "reason": reason,
+        }
+        if item is not None:
+            response.update({"item_id": item["item_id"], "item_info": dict(item)})
         sources: list[Mapping[str, object]] = []
         if item is not None:
             sources.append(item_source(item))

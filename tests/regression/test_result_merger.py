@@ -71,7 +71,7 @@ def test_merger_keeps_partial_success_without_human_handoff(statuses: list[str])
     assert merged["action"] != "handoff"
     assert "human_handoff" not in str(merged)
     if "unavailable" in statuses:
-        assert "该问题目前暂无足够信息确认。" in merged["answer"]
+        assert "该问题目前暂无足够信息确认。" not in merged["answer"]
     if statuses.count("answered") == 2:
         assert "product 已确认" in merged["answer"]
         assert "price 已确认" in merged["answer"]
@@ -94,4 +94,4 @@ def test_merger_includes_every_result_when_service_is_unavailable() -> None:
     assert merged["action"] == "reply"
     assert "商品没有维修记录。" in merged["answer"]
     assert "目前价格可以小刀。" in merged["answer"]
-    assert "该问题目前暂无足够信息确认。" in merged["answer"]
+    assert "该问题目前暂无足够信息确认。" not in merged["answer"]
