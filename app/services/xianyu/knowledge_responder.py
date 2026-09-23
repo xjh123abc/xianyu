@@ -16,6 +16,7 @@ from app.services.query_planner import (
     QuestionPlan,
 )
 from app.services.knowledge_service import KnowledgeService
+from app.services.technical_knowledge_service import TechnicalKnowledgeService
 from app.services.xianyu.item_fact_responder import ItemFactResponder
 from app.services.xianyu.responses import valid_knowledge_sources
 
@@ -39,6 +40,7 @@ class XianyuKnowledgeResponder:
         fact_responder: ItemFactResponder,
         route_intent: Callable[[str], IntentMatch],
         legacy_item_handler: LegacyItemHandler | None = None,
+        technical_knowledge_service: TechnicalKnowledgeService | None = None,
     ) -> None:
         # Keep these arguments in the constructor while external compatibility
         # callers migrate; item fact decisions now belong to expert agents.
@@ -46,6 +48,7 @@ class XianyuKnowledgeResponder:
         self._knowledge_service = knowledge_service
         self._generator = generator
         self._legacy_item_handler = legacy_item_handler
+        self._technical_knowledge_service = technical_knowledge_service
 
     async def handle_item(
         self,
@@ -134,6 +137,7 @@ class XianyuKnowledgeResponder:
         *,
         item: Mapping[str, object] | None,
         scope: str,
+        allow_web_fallback: bool = False,
     ) -> dict[str, object]:
         """Prepare scoped evidence for one expert task without generating a reply.
 
@@ -154,6 +158,7 @@ class XianyuKnowledgeResponder:
         prepared = await self._prepare_evidence_needs(
             ({"question": question, "scope": scope},),
             collector_item,
+            allow_web_fallback=allow_web_fallback,
         )
         return prepared
 
@@ -161,6 +166,8 @@ class XianyuKnowledgeResponder:
         self,
         needs: Sequence[Mapping[str, str]],
         item: Mapping[str, object],
+        *,
+        allow_web_fallback: bool = False,
     ) -> dict[str, object]:
         """Collect scoped evidence for expert tasks."""
 
@@ -169,14 +176,17 @@ class XianyuKnowledgeResponder:
         results: list[object] = []
         issues: list[str] = []
         reliability: object = None
+        local_retrieval_available = True
         try:
             self._knowledge_service.warm_up()
         except Exception:
             logger.exception("Xianyu RAG warm-up failed for item_id=%s", item["item_id"])
             issues.append("knowledge_warmup_failed")
-            bundle = self._knowledge_bundle(contexts, sources, results, reliability)
-            bundle["issues"] = issues
-            return bundle
+            if not allow_web_fallback:
+                bundle = self._knowledge_bundle(contexts, sources, results, reliability)
+                bundle["issues"] = issues
+                return bundle
+            local_retrieval_available = False
 
         for need in needs:
             retrieval_query = self.retrieval_query(
@@ -187,24 +197,47 @@ class XianyuKnowledgeResponder:
                 retrieval_query = (
                     f"{retrieval_query} {COMMON_KNOWLEDGE_RETRIEVAL_HINT}"
                 ).strip()
-            try:
-                prepared = await asyncio.to_thread(
-                    self._knowledge_service.search,
-                    retrieval_query,
-                    "item" if need["scope"] == "item" else "merchant",
-                    platform="xianyu",
-                    item_id=str(item["item_id"])
-                    if need["scope"] == "item"
-                    else None,
-                )
-            except Exception:
-                logger.exception(
-                    "Xianyu RAG preparation failed for question=%s item_id=%s",
+            prepared: dict[str, object] | Mapping[str, object]
+            if local_retrieval_available:
+                try:
+                    prepared = await asyncio.to_thread(
+                        self._knowledge_service.search,
+                        retrieval_query,
+                        "item" if need["scope"] == "item" else "merchant",
+                        platform="xianyu",
+                        item_id=str(item["item_id"])
+                        if need["scope"] == "item"
+                        else None,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Xianyu RAG preparation failed for question=%s item_id=%s",
+                        need["question"],
+                        item["item_id"],
+                    )
+                    issues.append("knowledge_retrieval_failed")
+                    if not (need["scope"] == "item" and allow_web_fallback):
+                        continue
+                    prepared = self._knowledge_bundle([], [], [], None)
+                    prepared["issues"] = ["knowledge_retrieval_failed"]
+            else:
+                if not (need["scope"] == "item" and allow_web_fallback):
+                    continue
+                prepared = self._knowledge_bundle([], [], [], None)
+                prepared["issues"] = ["knowledge_warmup_failed"]
+
+            if need["scope"] == "item" and allow_web_fallback:
+                prepared = self._knowledge_service.search_model_knowledge(
                     need["question"],
-                    item["item_id"],
+                    item=item,
+                    local_prepared=prepared,
+                    technical_service=self._technical_knowledge_service,
                 )
-                issues.append("knowledge_retrieval_failed")
-                continue
+            current_issues = prepared.get("issues")
+            if isinstance(current_issues, list):
+                for issue in current_issues:
+                    if isinstance(issue, str) and issue not in issues:
+                        issues.append(issue)
 
             prepared_results = prepared.get("results")
             if isinstance(prepared_results, list):
@@ -223,7 +256,11 @@ class XianyuKnowledgeResponder:
             # guard, not permission to discard retrieved evidence.  A context
             # can be useful even when it has no source metadata yet.
             if not context_text:
-                issues.append("knowledge_evidence_unavailable")
+                if not (
+                    isinstance(current_issues, list)
+                    and any(isinstance(issue, str) for issue in current_issues)
+                ):
+                    issues.append("knowledge_evidence_unavailable")
                 continue
 
             contexts.append(f"[{need['scope']}] {need['question']}\n{context_text}")

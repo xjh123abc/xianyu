@@ -16,6 +16,7 @@ from app.generation.xianyu_expert_prompt import (
 from app.services.intent_router import IntentRouter
 from app.services.item_service import ItemService
 from app.services.knowledge_service import KnowledgeService
+from app.services.technical_knowledge_service import TechnicalKnowledgeService
 from app.services.xianyu.experts.contracts import ExpertContext, ExpertTask
 from app.services.xianyu.experts.product_agent import ProductAgent
 from app.services.xianyu.experts.service_agent import ServiceAgent
@@ -45,6 +46,41 @@ class EvidenceRag:
             "results": [],
             "reliability": None,
         }
+
+
+class EmptyEvidenceRag(EvidenceRag):
+    def prepare(self, query: str, *, item_id: str | None = None) -> dict[str, object]:
+        self.queries.append(query)
+        self.item_ids.append(item_id)
+        return {
+            "can_answer": False,
+            "context": None,
+            "sources": [],
+            "results": [],
+            "reliability": None,
+        }
+
+
+class FakeSearchClient:
+    def __init__(self, results: list[object]) -> None:
+        self.results = results
+        self.calls: list[dict[str, object]] = []
+
+    def search(
+        self,
+        query: str,
+        *,
+        include_domains: tuple[str, ...] | list[str],
+        max_results: int = 3,
+    ) -> list[object]:
+        self.calls.append(
+            {
+                "query": query,
+                "include_domains": tuple(include_domains),
+                "max_results": max_results,
+            }
+        )
+        return self.results
 
 
 def _item() -> dict[str, object]:
@@ -86,6 +122,21 @@ def _knowledge(rag: EvidenceRag, generator: Mock) -> XianyuKnowledgeResponder:
         generator=lambda: generator,  # type: ignore[arg-type]
         fact_responder=facts,
         route_intent=router.route,
+    )
+
+
+
+def _knowledge_with_technical_search(
+    rag: EvidenceRag,
+    generator: Mock,
+    technical_service: TechnicalKnowledgeService,
+) -> XianyuKnowledgeResponder:
+    return XianyuKnowledgeResponder(
+        knowledge_service=KnowledgeService(lambda: rag),  # type: ignore[arg-type]
+        generator=lambda: generator,  # type: ignore[arg-type]
+        fact_responder=ItemFactResponder(),
+        route_intent=IntentRouter().route,
+        technical_knowledge_service=technical_service,
     )
 
 
@@ -227,6 +278,122 @@ def test_product_agent_uses_selected_item_evidence_for_model_knowledge() -> None
     assert result.answer == "这台可以按说明书的上卷步骤操作。"
     assert rag.item_ids == ["CANON_FTB_001"]
     generator.generate_xianyu_expert.assert_called_once()
+
+
+def test_product_agent_uses_original_model_question_not_generic_label() -> None:
+    question = "Canon FTb 的测光系统原本使用什么电池供电？"
+    prepare_evidence = AsyncMock(
+        return_value={
+            "can_answer": True,
+            "context": {
+                "context": "Canon FTb exposure meter originally used a 1.35V mercury battery.",
+                "sources": [],
+            },
+            "sources": [],
+            "results": [],
+            "reliability": None,
+        }
+    )
+    generator = Mock()
+    generator.generate_xianyu_expert.return_value = "Canon FTb 测光系统原本使用 1.35V 汞电池。"
+    task = ExpertTask(
+        task_id="p_specific_battery",
+        expert="product",
+        question_fragment=question,
+        normalized_question="商品专项知识",
+        knowledge_scope="model_knowledge",
+        query_target="product.model_knowledge",
+    )
+
+    result = asyncio.run(
+        _product(prepare_evidence, generator).run(
+            [task],
+            ExpertContext(query=question, item=_item()),
+        )
+    )[0]
+
+    assert result.status == "answered"
+    prepare_evidence.assert_awaited_once()
+    assert prepare_evidence.await_args.args[0] == question
+    assert prepare_evidence.await_args.kwargs["allow_web_fallback"] is True
+    assert generator.generate_xianyu_expert.call_args.args[1] == question
+
+
+def test_product_agent_does_not_use_web_fallback_for_seller_test_records() -> None:
+    question = "测光和手机对比过吗？"
+    prepare_evidence = AsyncMock(
+        return_value={
+            "can_answer": False,
+            "context": None,
+            "sources": [],
+            "results": [],
+            "reliability": None,
+            "issues": ["knowledge_evidence_unavailable"],
+        }
+    )
+    generator = Mock()
+    task = ExpertTask(
+        task_id="p_meter_test_record",
+        expert="product",
+        question_fragment=question,
+        normalized_question=question,
+        knowledge_scope="model_knowledge",
+        query_target="product.model_knowledge",
+    )
+
+    result = asyncio.run(
+        _product(prepare_evidence, generator).run(
+            [task],
+            ExpertContext(query=question, item=_item()),
+        )
+    )[0]
+
+    assert result.status == "handoff"
+    assert result.reason == "knowledge_evidence_unavailable"
+    assert prepare_evidence.await_args.kwargs["allow_web_fallback"] is False
+    generator.generate_xianyu_expert.assert_not_called()
+
+
+def test_model_knowledge_web_search_used_when_local_evidence_is_missing() -> None:
+    from app.infrastructure.web_search_client import WebSearchResult
+
+    rag = EmptyEvidenceRag()
+    generator = Mock()
+    generator.generate_xianyu_expert.return_value = "联网证据回答。"
+    fake_search = FakeSearchClient(
+        [
+            WebSearchResult(
+                title="Canon FTb manual",
+                url="https://canon.com/manuals/ftb",
+                content="Canon FTb uses FD lenses and has a quick load film system.",
+            )
+        ]
+    )
+    technical = TechnicalKnowledgeService(
+        search_client=fake_search,  # type: ignore[arg-type]
+        enabled=True,
+        allowed_domains=("canon.com",),
+    )
+    knowledge = _knowledge_with_technical_search(rag, generator, technical)
+
+    result = asyncio.run(
+        _product(knowledge.prepare_evidence, generator).run(
+            [_task("p_web", "product", "这个型号怎么上卷？", "model_knowledge")],
+            ExpertContext(query="这个型号怎么上卷？", item=_item()),
+        )
+    )[0]
+
+    assert result.status == "answered"
+    assert fake_search.calls == [
+        {
+            "query": "Canon FTb 这个型号怎么上卷？",
+            "include_domains": ("canon.com",),
+            "max_results": 3,
+        }
+    ]
+    assert result.answer == "联网证据回答。"
+    assert result.sources[0]["source"] == "https://canon.com/manuals/ftb"
+    assert result.sources[0]["source_kind"] == "web_model_knowledge"
 
 
 def test_service_agent_answers_shipping_facts_and_greeting_without_model() -> None:

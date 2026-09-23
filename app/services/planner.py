@@ -252,20 +252,23 @@ class Planner:
                 question["scope"] == "item"
                 for question in clause_question_plan["knowledge_questions"]
             )
+            product_scoped_fallback = clause_needs_item or (
+                effective_item_id is not None
+                and not is_seller_scoped_query(clause)
+                and _looks_like_model_knowledge(clause)
+            )
             planned_expert_tasks.append(
                 ExpertTask(
                     task_id=f"fallback-{index}",
-                    expert="product" if clause_needs_item else "service",
+                    expert="product" if product_scoped_fallback else "service",
                     question_fragment=clause,
-                    normalized_question=(
-                        "商品专项知识" if clause_needs_item else "卖家通用规则"
-                    ),
+                    normalized_question=clause,
                     knowledge_scope=(
-                        "model_knowledge" if clause_needs_item else "seller_rule"
+                        "model_knowledge" if product_scoped_fallback else "seller_rule"
                     ),
                     query_target=(
                         "product.model_knowledge"
-                        if clause_needs_item
+                        if product_scoped_fallback
                         else "seller_rule.general"
                     ),
                     original_question=clause,
@@ -400,3 +403,26 @@ def _optional_order_id(value: object) -> str | None:
     if not isinstance(value, str):
         raise ValueError("Planner tasks contain invalid order_id")
     return value
+
+
+def _looks_like_model_knowledge(query: str) -> bool:
+    """Identify unplanned public model/technical questions for product fallback."""
+
+    lowered = str(query or "").casefold()
+    if re.search(r"[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z0-9][A-Za-z0-9-]*)+", query):
+        return True
+    return any(
+        term in lowered
+        for term in (
+            "测光",
+            "电池",
+            "兼容",
+            "卡口",
+            "说明书",
+            "操作",
+            "使用方法",
+            "参数",
+            "规格",
+            "系统",
+        )
+    )

@@ -55,12 +55,14 @@ class ProductAgent:
         if task.knowledge_scope != "model_knowledge":
             return ExpertResult.handoff(task, "unsupported_product_knowledge_scope")
 
+        question = _task_question(task)
         prepared = await self._prepare_evidence(
-            task.normalized_question,
+            question,
             item=context.item,
             scope="item",
+            allow_web_fallback=_allows_technical_fallback(question),
         )
-        return await self._answer_from_evidence(task, context, prepared)
+        return await self._answer_from_evidence(task, context, prepared, question)
 
     def _answer_item_fact(
         self,
@@ -95,6 +97,7 @@ class ProductAgent:
         task: ExpertTask,
         context: ExpertContext,
         prepared: Mapping[str, object],
+        question: str,
     ) -> ExpertResult:
         sources = valid_knowledge_sources(prepared)
         evidence = _context_text(prepared)
@@ -119,7 +122,7 @@ class ProductAgent:
             answer = await asyncio.to_thread(
                 generator.generate_xianyu_expert,
                 "product",
-                task.normalized_question,
+                question,
                 context.item,
                 evidence,
                 **kwargs,
@@ -187,3 +190,27 @@ def _remaining_timeout(context: ExpertContext) -> float | None:
     if context.deadline is None:
         return None
     return context.deadline - time.monotonic()
+
+
+def _task_question(task: ExpertTask) -> str:
+    """Prefer the buyer's exact sub-question over broad planner labels."""
+
+    return task.original_question.strip() or task.normalized_question.strip()
+
+
+def _allows_technical_fallback(question: str) -> bool:
+    """Use public web evidence only for model facts, not seller test records."""
+
+    lowered = question.casefold()
+    seller_verification_terms = (
+        "对比",
+        "实测",
+        "测试过",
+        "测过",
+        "记录",
+        "校准",
+        "准吗",
+        "准确",
+        "和手机",
+    )
+    return not any(term in lowered for term in seller_verification_terms)

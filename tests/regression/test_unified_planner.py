@@ -76,6 +76,21 @@ def test_planner_classifies_each_delimited_clause_with_the_single_question_rules
     )] == ["product", "price", "service"]
 
 
+def test_planner_falls_back_to_product_model_knowledge_when_item_context_exists() -> None:
+    query = "Canon FTb 的测光系统原本使用什么电池供电？"
+    tasks = _planner().plan(
+        query,
+        SessionContext(current_item_id="CANON_FTB_001"),
+    )
+
+    assert len(tasks) == 1
+    assert tasks[0].task_type == "product"
+    assert tasks[0].query_target == "product.model_knowledge"
+    assert tasks[0].metadata["knowledge_scope"] == "model_knowledge"
+    assert tasks[0].metadata["normalized_question"] == query.rstrip("？")
+    assert tasks[0].metadata["normalized_question"] != "商品专项知识"
+
+
 def test_planner_keeps_the_existing_order_route_as_one_order_task() -> None:
     tasks = _planner().plan("TEST1001 \u5230\u54ea\u4e86\uff1f", SessionContext())
 

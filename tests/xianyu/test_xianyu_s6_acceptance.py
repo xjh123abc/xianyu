@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,7 @@ from app.channels.xianyu.acceptance_gate import (
 )
 from app.services.query_planner import build_expert_plan
 from eval.batch_chat_test import QUESTIONS, _result_record, _task_records, _validate_response
+from scripts.run_xianyu_stage3 import _log
 from scripts.run_xianyu_stage3 import _authorise_start, _counts_acceptance_delivery
 
 
@@ -208,6 +210,26 @@ def test_real_worker_requires_report_outside_controlled_acceptance() -> None:
 
     with pytest.raises(ValueError, match="acceptance-report"):
         _authorise_start(args, "abc123")
+
+def test_buyer_event_log_keeps_plain_reason_enum(tmp_path: Path) -> None:
+    log_file = tmp_path / "xianyu.log"
+
+    _log(
+        log_file,
+        "buyer_event",
+        "ignored",
+        message_hash="message-hash",
+        chat_hash="chat-hash",
+        delivery=None,
+        reason="seller_echo",
+        reason_hash="reason-hash",
+    )
+
+    record = json.loads(log_file.read_text(encoding="utf-8").strip())
+    assert record["result"] == "ignored"
+    assert record["reason"] == "seller_echo"
+    assert record["reason_hash"] == "reason-hash"
+
 
 
 def test_controlled_acceptance_requires_one_exact_account_chat_and_query() -> None:

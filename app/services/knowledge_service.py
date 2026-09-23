@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Literal
 
 from app.services.rag_service import RAGService
+from app.services.technical_knowledge_service import TechnicalKnowledgeService
 
 
 KnowledgeScope = Literal["merchant", "product", "platform", "item"]
@@ -54,3 +55,30 @@ class KnowledgeService:
             "platform": str(platform or "").strip() or None,
             "product_model": str(product_model or "").strip() or None,
         }
+
+    def search_model_knowledge(
+        self,
+        query: str,
+        *,
+        item: Mapping[str, object],
+        local_prepared: Mapping[str, object] | None = None,
+        technical_service: TechnicalKnowledgeService | None = None,
+    ) -> dict[str, object]:
+        """Return local model evidence or a controlled web-search fallback."""
+
+        prepared = dict(local_prepared) if local_prepared is not None else self.search(
+            query,
+            "item",
+            platform="xianyu",
+            item_id=str(item.get("item_id", "")),
+        )
+        context = prepared.get("context")
+        context_text = (
+            str(context.get("context", "")).strip()
+            if isinstance(context, Mapping)
+            else ""
+        )
+        if context_text:
+            return prepared
+        service = technical_service or TechnicalKnowledgeService()
+        return service.prepare_model_evidence(query, item=item)

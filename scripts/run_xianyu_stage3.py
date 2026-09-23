@@ -223,6 +223,7 @@ async def run(args: argparse.Namespace) -> int:
                             message_hash=_digest(event.platform_message_id),
                             chat_hash=_digest(event.chat_id),
                             delivery=result.get("delivery"),
+                            reason=result.get("reason"),
                             reason_hash=_digest(result.get("reason")),
                         )
                         if (
