@@ -153,17 +153,19 @@ def test_unresolved_clarification_keeps_the_session_in_auto(tmp_path: Path) -> N
 
 def test_unanswerable_question_keeps_auto_and_allows_future_ai(tmp_path: Path) -> None:
     notifier = FakeNotifier()
-    instance, store = worker(tmp_path, FakeChat({"action": "handoff", "reason": "refund_amount_unknown"}), notifier)
+    chat = FakeChat({"action": "handoff", "reason": "refund_amount_unknown"})
+    instance, store = worker(tmp_path, chat, notifier)
     sender = FakeSender()
 
     result = asyncio.run(instance.process(message("m3", text="能补偿多少？"), sender))
+    chat.response = {"action": "reply", "answer": "付款后 48 小时内发出。"}
     later = asyncio.run(instance.process(message("m4", text="那什么时候发货？"), sender))
 
-    assert result["action"] == "answer"
+    assert result == {"action": "ignored", "reason": "refund_amount_unknown"}
     assert notifier.calls == []
     assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
     assert later["action"] == "answer"
-    assert len(sender.calls) == 2
+    assert len(sender.calls) == 1
 
 
 def test_resume_auto_endpoint_restores_one_human_conversation_to_buyer_processing(
@@ -236,7 +238,7 @@ def test_automatic_failure_modes_never_take_over_a_session(
 
     result = asyncio.run(instance.process(message(), FakeSender()))
 
-    assert result["action"] in {"answer", "clarify", "error"}
+    assert result["action"] in {"ignored", "clarify", "error"}
     assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
 
 
@@ -278,7 +280,7 @@ def test_seller_takeover_during_generation_supersedes_old_answer(tmp_path: Path)
     assert store.message("seller", "seller-takeover")["status"] == "SUPERSEDED"
 
 
-def test_http_handoff_remains_auto_and_sends_one_safe_reply(
+def test_http_handoff_remains_auto_and_sends_no_reply(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -307,9 +309,9 @@ def test_http_handoff_remains_auto_and_sends_one_safe_reply(
     first = asyncio.run(instance.process(inbound, sender))
     duplicate = asyncio.run(instance.process(inbound, sender))
 
-    assert first["action"] == "answer"
+    assert first == {"action": "ignored", "reason": reason}
     assert duplicate == {"action": "duplicate", "message_id": "http-s3-handoff"}
-    assert [call[2] for call in sender.calls] == [HANDOFF_NOTICE]
+    assert sender.calls == []
     assert notifier.calls == []
     state = store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")
     assert state["mode"] == "AUTO"

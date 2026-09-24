@@ -105,8 +105,14 @@ def test_complex_message_with_confirmed_facts_uses_full_message_and_replies(
 @pytest.mark.parametrize(
     ("query", "expected_answer"),
     [
-        ("不用包邮，能便宜吗？", "不包邮的话最低 ¥1470.00 可以拍。"),
-        ("我出邮费，价格能少一点吗？", "不包邮的话最低 ¥1470.00 可以拍。"),
+        (
+            "不用包邮，能便宜吗？",
+            "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。",
+        ),
+        (
+            "我出邮费，价格能少一点吗？",
+            "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。",
+        ),
     ],
 )
 def test_conditional_bargain_uses_the_automatic_discount_limit(
@@ -141,7 +147,7 @@ def test_unauthorised_pickup_condition_handoffs_instead_of_using_shipping_price(
     )
 
     assert result["action"] != "handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["answer"] == ""
     assert result["reason"] == "unsupported_price_condition"
     generator.generate_xianyu.assert_not_called()
 
@@ -163,12 +169,12 @@ def test_shipping_policy_controls_the_no_shipping_minimum() -> None:
 
     assert result["action"] == "reply"
     assert result["can_answer"] is True
-    assert result["answer"] == "不包邮的话最低 ¥1470.00 可以拍。"
+    assert result["answer"] == "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。"
     generator.generate_xianyu.assert_not_called()
 
 
-def test_conditional_bargain_without_a_known_policy_handoffs() -> None:
-    """A condition without an item policy cannot be priced safely."""
+def test_private_policy_is_independent_from_public_product_facts() -> None:
+    """Public facts cannot silently replace the server-private policy."""
 
     item = deepcopy(_canon_item())
     item["facts"] = {
@@ -192,8 +198,8 @@ def test_conditional_bargain_without_a_known_policy_handoffs() -> None:
     )
 
     assert result["action"] != "handoff"
-    assert result["can_answer"] is False
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["can_answer"] is True
+    assert result["answer"] == "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。"
     generator.generate_xianyu.assert_not_called()
 
 

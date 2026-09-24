@@ -1,0 +1,26 @@
+{
+  "CANON_FTB_001": {
+    "version": 1,
+    "listed_price_cents": 150000,
+    "seller_pays": {
+      "offers_cents": [149000, 148000, 147000, 146000, 145000, 144000, 143000, 142000, 141000, 140000],
+      "floor_cents": 140000
+    },
+    "buyer_pays": {
+      "offers_cents": [147000, 146000, 145000, 144000, 143000, 142000, 141000, 140000, 139000, 138000],
+      "floor_cents": 138000
+    }
+  },
+  "TEST_NEG_001": {
+    "version": 1,
+    "listed_price_cents": 150000,
+    "seller_pays": {
+      "offers_cents": [149000, 148000, 147000],
+      "floor_cents": 147000
+    },
+    "buyer_pays": {
+      "offers_cents": [148000, 147000, 146000],
+      "floor_cents": 146000
+    }
+  }
+}

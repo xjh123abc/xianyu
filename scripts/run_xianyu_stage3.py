@@ -1,8 +1,9 @@
 """Run the S3 Xianyu buyer-message -> /chat -> reply loop.
 
-The account stays disabled unless ``--enable`` is given.  A configured
-Enterprise WeChat group-bot webhook is required because every unanswerable
-question must notify the seller and switch its session to HUMAN.
+The account stays disabled unless a production enable or an explicitly scoped
+temporary mode is given. A configured Enterprise WeChat group-bot webhook is
+required because every unanswerable question must notify the seller and switch
+its session to HUMAN.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Mapping
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -79,6 +81,80 @@ def _log(path: Path, stage: str, result: str, **details: object) -> None:
         stream.write(line + "\n")
 
 
+def _temporary_mode(args: argparse.Namespace) -> str | None:
+    if getattr(args, "dev_live", False):
+        return "dev_live"
+    if args.controlled_acceptance:
+        return "controlled_acceptance"
+    return None
+
+
+def _out_of_scope_reason(args: argparse.Namespace, event: Any) -> str | None:
+    """Return an ignore reason before any out-of-scope event can call /chat."""
+
+    if getattr(args, "dev_live", False):
+        return None if event.chat_id == args.test_chat else "dev_live_scope"
+    if args.controlled_acceptance and (
+        event.chat_id != args.acceptance_chat
+        or event.text.strip() not in args.acceptance_query
+    ):
+        return "controlled_acceptance_scope"
+    return None
+
+
+async def _process_scoped_event(
+    args: argparse.Namespace,
+    event: Any,
+    store: ChannelStore,
+    worker: XianyuStage3Worker,
+    sender: WebSocketTextSender,
+) -> Mapping[str, Any] | None:
+    """Ignore other chats durably, or delegate one in-scope event unchanged."""
+
+    reason = _out_of_scope_reason(args, event)
+    if reason is not None:
+        if store.record_inbound(event):
+            store.mark_ignored(args.account, event.platform_message_id, reason)
+        return None
+    return await worker.process(event, sender)
+
+
+def _temporary_limit_reached(args: argparse.Namespace, processed: int) -> bool:
+    if getattr(args, "dev_live", False):
+        return args.dev_max_messages > 0 and processed >= args.dev_max_messages
+    if args.controlled_acceptance:
+        return processed >= args.acceptance_max_messages
+    return False
+
+
+def _current_project_commit(args: argparse.Namespace, project_root: Path) -> str | None:
+    """Bind production/acceptance to HEAD while leaving dev-live unbound."""
+
+    if getattr(args, "dev_live", False):
+        return None
+    return subprocess.run(
+        ["git", "-C", str(project_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.strip()
+
+
+@contextmanager
+def _account_activation(args: argparse.Namespace, worker: XianyuStage3Worker):
+    """Enable temporary modes and always restore their account to paused."""
+
+    temporary_mode = _temporary_mode(args)
+    if args.enable or temporary_mode is not None:
+        worker.enable_account()
+    try:
+        yield
+    finally:
+        if temporary_mode is not None:
+            worker.pause_account()
+
+
 async def _heartbeat(websocket: Any, generate_mid: Any, stop: asyncio.Event) -> None:
     while not stop.is_set():
         try:
@@ -101,19 +177,15 @@ async def run(args: argparse.Namespace) -> int:
     ).stdout.strip()
     if actual_commit != DEFAULT_REFERENCE_COMMIT:
         raise ValueError("reference checkout does not match the accepted pinned template commit")
-    current_commit = subprocess.run(
-        ["git", "-C", str(project_root), "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    ).stdout.strip()
+    current_commit = _current_project_commit(args, project_root)
     _authorise_start(args, current_commit)
     cookie_header, parsed_cookie, metadata = _load_cookie(project_root)
     values = dotenv_values(project_root / ".env")
     webhook = str(os.getenv("WECOM_WEBHOOK_URL") or values.get("WECOM_WEBHOOK_URL") or "").strip()
     if not webhook:
         raise ValueError("WECOM_WEBHOOK_URL is required before starting S3")
+    if not settings.xianyu_delivery_token:
+        raise ValueError("XIANYU_DELIVERY_TOKEN is required before starting T1 delivery reporting")
     _log(args.log_file, "cookie", "validated", configured=metadata["configured"], parsed_names=metadata["parsed_names"])
 
     _install_reference_imports(reference_root)
@@ -147,7 +219,11 @@ async def run(args: argparse.Namespace) -> int:
     worker = XianyuStage3Worker(
         store,
         account_id=account_id,
-        chat_client=ChatApiClient(args.chat_api, args.chat_timeout),
+        chat_client=ChatApiClient(
+            args.chat_api,
+            args.chat_timeout,
+            settings.xianyu_delivery_token,
+        ),
         notifier=WeComWebhookNotifier(webhook),
         diagnostic_sink=lambda details: _log(
             args.log_file,
@@ -156,108 +232,110 @@ async def run(args: argparse.Namespace) -> int:
             **dict(details),
         ),
     )
-    if args.enable or args.controlled_acceptance:
-        worker.enable_account()
-    if not store.account_state(account_id)["enabled"]:
-        raise RuntimeError("account is paused; run with --enable or use the control script to resume")
-
-    import websockets
-
-    refreshed_cookie = "; ".join(f"{name}={value}" for name, value in api.session.cookies.get_dict().items()) or cookie_header
-    headers = {"Cookie": refreshed_cookie, "Host": "wss-goofish.dingtalk.com", "Origin": "https://www.goofish.com", "User-Agent": "Mozilla/5.0"}
-    key = "additional_headers" if "additional_headers" in inspect.signature(websockets.connect).parameters else "extra_headers"
-    registration, acknowledgement = _registration_messages(token, device_id, generate_mid)
-    stop = asyncio.Event()
-    accepted_messages = 0
+    temporary_mode = _temporary_mode(args)
+    processed_messages = 0
     try:
-        async with websockets.connect(DEFAULT_WS_URL, open_timeout=15.0, **{key: headers}) as websocket:
-            # The platform requires its reference client's message UUID format;
-            # a standard RFC UUID can be written locally but rejected remotely.
-            sender = WebSocketTextSender(
-                websocket,
-                seller_id,
-                uuid_factory=generate_uuid,
-                mid_factory=generate_mid,
-            )
-            await websocket.send(registration)
-            await asyncio.sleep(1)
-            await websocket.send(acknowledgement)
-            _log(args.log_file, "websocket", "registered", account_hash=_digest(account_id))
-            heartbeat = asyncio.create_task(_heartbeat(websocket, generate_mid, stop))
+        with _account_activation(args, worker):
+            if not store.account_state(account_id)["enabled"]:
+                raise RuntimeError("account is paused; run with --enable or use the control script to resume")
+
+            import websockets
+
+            refreshed_cookie = "; ".join(f"{name}={value}" for name, value in api.session.cookies.get_dict().items()) or cookie_header
+            headers = {"Cookie": refreshed_cookie, "Host": "wss-goofish.dingtalk.com", "Origin": "https://www.goofish.com", "User-Agent": "Mozilla/5.0"}
+            key = "additional_headers" if "additional_headers" in inspect.signature(websockets.connect).parameters else "extra_headers"
+            registration, acknowledgement = _registration_messages(token, device_id, generate_mid)
+            stop = asyncio.Event()
             try:
-                while True:
-                    raw = await websocket.recv()
-                    if isinstance(raw, bytes):
-                        raw = raw.decode("utf-8", errors="replace")
+                async with websockets.connect(DEFAULT_WS_URL, open_timeout=15.0, **{key: headers}) as websocket:
+                    # The platform requires its reference client's message UUID format;
+                    # a standard RFC UUID can be written locally but rejected remotely.
+                    sender = WebSocketTextSender(
+                        websocket,
+                        seller_id,
+                        uuid_factory=generate_uuid,
+                        mid_factory=generate_mid,
+                    )
+                    await websocket.send(registration)
+                    await asyncio.sleep(1)
+                    await websocket.send(acknowledgement)
+                    _log(args.log_file, "websocket", "registered", account_hash=_digest(account_id))
+                    heartbeat = asyncio.create_task(_heartbeat(websocket, generate_mid, stop))
                     try:
-                        payload = json.loads(raw)
-                    except (TypeError, json.JSONDecodeError):
-                        continue
-                    if not isinstance(payload, Mapping):
-                        continue
-                    headers_in = payload.get("headers")
-                    incoming_mid = headers_in.get("mid") if isinstance(headers_in, Mapping) else None
-                    if incoming_mid and payload.get("code") != 200:
-                        ack_headers = {"mid": incoming_mid, "sid": headers_in.get("sid", "")}
-                        for header in ("app-key", "ua", "dt"):
-                            if header in headers_in:
-                                ack_headers[header] = headers_in[header]
-                        await websocket.send(json.dumps({"code": 200, "headers": ack_headers}))
-                    for event in iter_sync_events(payload, account_id=account_id, seller_id=seller_id, decrypt=decrypt):
-                        if args.controlled_acceptance and (
-                            event.chat_id != args.acceptance_chat
-                            or event.text.strip() not in args.acceptance_query
-                        ):
-                            if store.record_inbound(event):
-                                store.mark_ignored(
-                                    account_id,
-                                    event.platform_message_id,
-                                    "controlled_acceptance_scope",
+                        while True:
+                            raw = await websocket.recv()
+                            if isinstance(raw, bytes):
+                                raw = raw.decode("utf-8", errors="replace")
+                            try:
+                                payload = json.loads(raw)
+                            except (TypeError, json.JSONDecodeError):
+                                continue
+                            if not isinstance(payload, Mapping):
+                                continue
+                            headers_in = payload.get("headers")
+                            incoming_mid = headers_in.get("mid") if isinstance(headers_in, Mapping) else None
+                            if incoming_mid and payload.get("code") != 200:
+                                ack_headers = {"mid": incoming_mid, "sid": headers_in.get("sid", "")}
+                                for header in ("app-key", "ua", "dt"):
+                                    if header in headers_in:
+                                        ack_headers[header] = headers_in[header]
+                                await websocket.send(json.dumps({"code": 200, "headers": ack_headers}))
+                            for event in iter_sync_events(payload, account_id=account_id, seller_id=seller_id, decrypt=decrypt):
+                                result = await _process_scoped_event(
+                                    args, event, store, worker, sender
                                 )
-                            continue
-                        result = await worker.process(event, sender)
-                        _log(
-                            args.log_file,
-                            "buyer_event",
-                            str(result.get("action", "unknown")),
-                            message_hash=_digest(event.platform_message_id),
-                            chat_hash=_digest(event.chat_id),
-                            delivery=result.get("delivery"),
-                            reason=result.get("reason"),
-                            reason_hash=_digest(result.get("reason")),
-                        )
-                        if (
-                            args.controlled_acceptance
-                            and _counts_acceptance_delivery(result)
-                        ):
-                            accepted_messages += 1
-                            if accepted_messages >= args.acceptance_max_messages:
-                                return 0
-            finally:
-                stop.set()
-                heartbeat.cancel()
-                try:
-                    await heartbeat
-                except asyncio.CancelledError:
-                    pass
-    except Exception as exc:
-        _log(args.log_file, "websocket", "failed", error_type=type(exc).__name__)
-        return 1
+                                if result is None:
+                                    continue
+                                _log(
+                                    args.log_file,
+                                    "buyer_event",
+                                    str(result.get("action", "unknown")),
+                                    message_hash=_digest(event.platform_message_id),
+                                    chat_hash=_digest(event.chat_id),
+                                    delivery=result.get("delivery"),
+                                    reason=result.get("reason"),
+                                    reason_hash=_digest(result.get("reason")),
+                                )
+                                if temporary_mode and _counts_acceptance_delivery(result):
+                                    processed_messages += 1
+                                    if _temporary_limit_reached(args, processed_messages):
+                                        return 0
+                    finally:
+                        stop.set()
+                        heartbeat.cancel()
+                        try:
+                            await heartbeat
+                        except asyncio.CancelledError:
+                            pass
+            except Exception as exc:
+                _log(args.log_file, "websocket", "failed", error_type=type(exc).__name__)
+                return 1
+        return 0
     finally:
-        if args.controlled_acceptance:
-            worker.pause_account()
+        if temporary_mode is not None:
             _log(
                 args.log_file,
-                "controlled_acceptance",
+                temporary_mode,
                 "paused",
-                processed=accepted_messages,
+                processed=processed_messages,
             )
-    return 0
 
 
-def _authorise_start(args: argparse.Namespace, current_commit: str) -> None:
+def _authorise_start(args: argparse.Namespace, current_commit: str | None) -> None:
     """Allow either a tightly scoped trial or a fully approved production run."""
 
+    if getattr(args, "dev_live", False):
+        if args.enable:
+            raise ValueError("--enable cannot be combined with --dev-live")
+        if args.controlled_acceptance:
+            raise ValueError("--controlled-acceptance cannot be combined with --dev-live")
+        if not str(args.account or "").strip():
+            raise ValueError("--account is required for dev-live")
+        if not str(args.test_chat or "").strip():
+            raise ValueError("--test-chat is required for dev-live")
+        if args.dev_max_messages < 0:
+            raise ValueError("--dev-max-messages must be zero or greater")
+        return
     if args.controlled_acceptance:
         if args.enable:
             raise ValueError("--enable cannot be combined with --controlled-acceptance")
@@ -272,6 +350,8 @@ def _authorise_start(args: argparse.Namespace, current_commit: str) -> None:
         return
     if args.acceptance_report is None:
         raise ValueError("--acceptance-report is required before real automatic sending")
+    if current_commit is None:
+        raise ValueError("current Git commit is required before real automatic sending")
     load_s6_acceptance_report(
         args.acceptance_report,
         expected_commit=current_commit,
@@ -317,6 +397,18 @@ def main() -> int:
         help="exact buyer text allowed in controlled acceptance; repeat as needed",
     )
     parser.add_argument("--acceptance-max-messages", type=int, default=1)
+    parser.add_argument(
+        "--dev-live",
+        action="store_true",
+        help="temporarily process arbitrary buyer text from exactly one test chat",
+    )
+    parser.add_argument("--test-chat", default="")
+    parser.add_argument(
+        "--dev-max-messages",
+        type=int,
+        default=0,
+        help="stop after this many delivered test-chat replies; zero runs until interrupted",
+    )
     parser.add_argument("--enable", action="store_true", help="explicitly enable this account before listening")
     args = parser.parse_args()
     args.project_root = args.project_root.resolve()

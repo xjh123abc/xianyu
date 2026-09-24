@@ -89,6 +89,10 @@ class ChannelStore:
             self._add_column_if_missing(connection, "channel_messages", "handoff_reason TEXT")
             self._add_column_if_missing(connection, "channel_messages", "notification_state TEXT NOT NULL DEFAULT 'NONE'")
             self._add_column_if_missing(connection, "channel_messages", "notification_error TEXT")
+            self._add_column_if_missing(connection, "channel_messages", "turn_id TEXT")
+            self._add_column_if_missing(connection, "channel_messages", "proposal_id TEXT")
+            self._add_column_if_missing(connection, "channel_messages", "delivery_report_state TEXT NOT NULL DEFAULT 'NONE'")
+            self._add_column_if_missing(connection, "channel_messages", "delivery_report_error TEXT")
 
     @staticmethod
     def _add_column_if_missing(connection: sqlite3.Connection, table: str, definition: str) -> None:
@@ -621,6 +625,60 @@ class ChannelStore:
             delivery_state=state,
             error=error,
         )
+
+    def record_delivery_reference(
+        self,
+        account_id: str,
+        message_id: str,
+        *,
+        turn_id: str,
+        proposal_id: str,
+    ) -> None:
+        """Persist the opaque API proposal identifier before attempting send."""
+
+        if not turn_id.strip() or not proposal_id.strip():
+            raise ValueError("turn_id and proposal_id must not be blank")
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE channel_messages
+                   SET turn_id = ?, proposal_id = ?, delivery_report_state = 'PENDING',
+                       delivery_report_error = NULL
+                   WHERE account_id = ? AND platform_message_id = ?""",
+                (turn_id.strip(), proposal_id.strip(), account_id, message_id),
+            )
+
+    def pending_delivery_reports(self, account_id: str) -> list[dict[str, Any]]:
+        """Return receipts that may be retried without sending buyer text again."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT chat_id, platform_message_id, turn_id, proposal_id, delivery_state
+                   FROM channel_messages
+                   WHERE account_id = ?
+                     AND turn_id IS NOT NULL AND proposal_id IS NOT NULL
+                     AND delivery_state IN ('LOCAL_SUBMITTED', 'CONFIRMED', 'FAILED', 'UNKNOWN')
+                     AND delivery_report_state IN ('PENDING', 'RETRY')""",
+                (account_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_delivery_report(
+        self,
+        account_id: str,
+        message_id: str,
+        state: str,
+        *,
+        error: str | None = None,
+    ) -> None:
+        if state not in {"SENT", "RETRY", "REJECTED"}:
+            raise ValueError("invalid delivery report state")
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE channel_messages
+                   SET delivery_report_state = ?, delivery_report_error = ?
+                   WHERE account_id = ? AND platform_message_id = ?""",
+                (state, error, account_id, message_id),
+            )
 
     def _update_message(self, account_id: str, message_id: str, **fields: object) -> None:
         allowed = {"status", "delivery_state", "error"}

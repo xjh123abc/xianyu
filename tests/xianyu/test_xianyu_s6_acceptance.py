@@ -2,21 +2,59 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from argparse import Namespace
 from pathlib import Path
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+import scripts.run_xianyu_stage3 as stage3_runner
 
 from app.channels.xianyu.acceptance_gate import (
     AcceptanceGateError,
     REQUIRED_ACCEPTANCE_CASES,
     load_s6_acceptance_report,
 )
+from app.channels.xianyu.models import InboundMessage
 from app.services.query_planner import build_expert_plan
 from eval.batch_chat_test import QUESTIONS, _result_record, _task_records, _validate_response
-from scripts.run_xianyu_stage3 import _log
-from scripts.run_xianyu_stage3 import _authorise_start, _counts_acceptance_delivery
+from scripts.run_xianyu_stage3 import (
+    _account_activation,
+    _authorise_start,
+    _counts_acceptance_delivery,
+    _current_project_commit,
+    _log,
+    _process_scoped_event,
+    _temporary_limit_reached,
+)
+
+
+def _dev_args(**overrides: object) -> Namespace:
+    values: dict[str, object] = {
+        "dev_live": True,
+        "enable": False,
+        "controlled_acceptance": False,
+        "account": "test-seller",
+        "test_chat": "xianyu:seller:test-chat",
+        "dev_max_messages": 0,
+        "acceptance_report": None,
+        "acceptance_query": [],
+    }
+    values.update(overrides)
+    return Namespace(**values)
+
+
+def _event(message_id: str, chat_id: str, text: str) -> InboundMessage:
+    return InboundMessage(
+        account_id="test-seller",
+        platform_message_id=message_id,
+        chat_id=chat_id,
+        buyer_id="test-buyer",
+        text=text,
+        platform_item_id="listing-1",
+    )
 
 
 def _passed_report(commit: str) -> dict[str, object]:
@@ -211,6 +249,92 @@ def test_real_worker_requires_report_outside_controlled_acceptance() -> None:
     with pytest.raises(ValueError, match="acceptance-report"):
         _authorise_start(args, "abc123")
 
+
+def test_dev_live_needs_no_report_query_or_current_commit(monkeypatch) -> None:
+    args = _dev_args()
+    run_git = Mock(side_effect=AssertionError("dev-live must not inspect project HEAD"))
+    monkeypatch.setattr("scripts.run_xianyu_stage3.subprocess.run", run_git)
+
+    assert _current_project_commit(args, Path(".")) is None
+    _authorise_start(args, None)
+
+    run_git.assert_not_called()
+
+
+def test_dev_live_cli_parses_new_options_before_starting(tmp_path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_run(args: Namespace) -> int:
+        captured.update(vars(args))
+        return 0
+
+    monkeypatch.setattr(stage3_runner, "run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_xianyu_stage3.py",
+            "--project-root",
+            str(tmp_path),
+            "--reference-root",
+            str(tmp_path / "reference"),
+            "--db",
+            str(tmp_path / "channel.sqlite3"),
+            "--log-file",
+            str(tmp_path / "dev-live.log"),
+            "--account",
+            "test-seller",
+            "--dev-live",
+            "--test-chat",
+            "xianyu:seller:test-chat",
+            "--dev-max-messages",
+            "3",
+        ],
+    )
+
+    assert stage3_runner.main() == 0
+    assert captured["dev_live"] is True
+    assert captured["test_chat"] == "xianyu:seller:test-chat"
+    assert captured["dev_max_messages"] == 3
+    assert captured["acceptance_report"] is None
+    assert captured["acceptance_query"] == []
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"account": ""}, "--account"),
+        ({"test_chat": ""}, "--test-chat"),
+        ({"enable": True}, "--enable"),
+        ({"controlled_acceptance": True}, "--controlled-acceptance"),
+        ({"dev_max_messages": -1}, "--dev-max-messages"),
+    ],
+)
+def test_dev_live_rejects_missing_scope_or_conflicting_modes(
+    changes: dict[str, object], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _authorise_start(_dev_args(**changes), None)
+
+
+def test_dev_live_ignores_other_chats_before_calling_worker() -> None:
+    args = _dev_args()
+    event = _event("other-1", "xianyu:seller:other-chat", "任意问题")
+    store = Mock()
+    store.record_inbound.return_value = True
+    worker = Mock()
+    worker.process = AsyncMock()
+
+    result = asyncio.run(_process_scoped_event(args, event, store, worker, Mock()))
+
+    assert result is None
+    store.record_inbound.assert_called_once_with(event)
+    store.mark_ignored.assert_called_once_with(
+        "test-seller", "other-1", "dev_live_scope"
+    )
+    worker.process.assert_not_awaited()
+
+
 def test_buyer_event_log_keeps_plain_reason_enum(tmp_path: Path) -> None:
     log_file = tmp_path / "xianyu.log"
 
@@ -230,6 +354,62 @@ def test_buyer_event_log_keeps_plain_reason_enum(tmp_path: Path) -> None:
     assert record["reason"] == "seller_echo"
     assert record["reason_hash"] == "reason-hash"
 
+
+def test_dev_live_processes_multiple_arbitrary_texts_in_the_same_chat() -> None:
+    args = _dev_args()
+    events = [
+        _event("test-1", str(args.test_chat), "最低多少，能便宜点吗？"),
+        _event("test-2", str(args.test_chat), "这句话不在任何白名单里"),
+    ]
+    store = Mock()
+    worker = Mock()
+    worker.process = AsyncMock(
+        side_effect=[
+            {"action": "answer", "delivery": "confirmed"},
+            {"action": "answer", "delivery": "local_submitted"},
+        ]
+    )
+    sender = Mock()
+
+    results = [
+        asyncio.run(_process_scoped_event(args, event, store, worker, sender))
+        for event in events
+    ]
+
+    assert [result["delivery"] for result in results if result] == [
+        "confirmed",
+        "local_submitted",
+    ]
+    assert [call.args[0].chat_id for call in worker.process.await_args_list] == [
+        args.test_chat,
+        args.test_chat,
+    ]
+    assert [call.args[0].text for call in worker.process.await_args_list] == [
+        "最低多少，能便宜点吗？",
+        "这句话不在任何白名单里",
+    ]
+    store.record_inbound.assert_not_called()
+
+
+def test_dev_live_max_messages_zero_is_unbounded_and_positive_stops_at_limit() -> None:
+    unlimited = _dev_args(dev_max_messages=0)
+    limited = _dev_args(dev_max_messages=2)
+
+    assert _temporary_limit_reached(unlimited, 1000) is False
+    assert _temporary_limit_reached(limited, 1) is False
+    assert _temporary_limit_reached(limited, 2) is True
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("boom"), KeyboardInterrupt()])
+def test_dev_live_always_pauses_after_error_or_ctrl_c(failure: BaseException) -> None:
+    worker = Mock()
+
+    with pytest.raises(type(failure)):
+        with _account_activation(_dev_args(), worker):
+            raise failure
+
+    worker.enable_account.assert_called_once_with()
+    worker.pause_account.assert_called_once_with()
 
 
 def test_controlled_acceptance_requires_one_exact_account_chat_and_query() -> None:

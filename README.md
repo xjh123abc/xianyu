@@ -122,6 +122,21 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method Post `
   --acceptance-max-messages 1
 ```
 
+开发阶段可使用 `--dev-live` 在一个明确的真实测试会话中连续调试，不读取 S6 报告、不绑定当前 Git 提交，也不限制买家原文。其他会话在调用 `/chat` 之前即被忽略；退出、异常或 `Ctrl+C` 后账号自动暂停。`--dev-max-messages 0` 表示一直运行到手工退出，正数表示成功发送指定条数后退出：
+
+```powershell
+& "D:\conda_envs\rag-customer-service\python.exe" scripts/run_xianyu_stage3.py `
+  --reference-root .runtime/xianyu-template `
+  --db logs/xianyu_stage3.sqlite3 `
+  --log-file logs/xianyu_dev_live.log `
+  --account TEST_SELLER `
+  --dev-live `
+  --test-chat "xianyu:SELLER_ID:CHAT_ID" `
+  --dev-max-messages 0
+```
+
+`--dev-live` 不能与 `--enable` 或 `--controlled-acceptance` 同时使用。它仅用于开发期的单会话真实测试，不替代正式 S6 验收。
+
 正式常驻前，复制 [S6 验收报告模板](eval/baselines/expert_agent_s6_acceptance.template.json)，填写当前 Git 提交及实际结果。只有代码测试、60 条批测、A01—A18、真实模型、真实渠道均为 `passed` 且 `approved_for_auto_send=true` 时，运行器才接受该报告：
 
 ```powershell

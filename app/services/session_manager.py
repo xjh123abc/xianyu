@@ -35,7 +35,23 @@ _EMPTY_STATE = {
 }
 _UNSET = object()
 _SHIPPING_CONDITIONS = {"seller_pays", "buyer_pays"}
-_NEGOTIATION_KEYS = frozenset({"item_id", "round", "last_ai_offer", "last_buyer_offer"})
+_OFFER_STATUSES = frozenset(
+    {"none", "generated", "submitted", "confirmed", "failed", "unknown"}
+)
+_NEGOTIATION_KEYS = frozenset(
+    {
+        "item_id",
+        "round",
+        "last_ai_offer",
+        "last_buyer_offer",
+        "shipping_condition",
+        "policy_version",
+        "offer_status",
+        "pending_offer",
+        "last_committed_turn_id",
+        "last_proposal_id",
+    }
+)
 
 
 class SessionManager:
@@ -270,6 +286,18 @@ class SessionManager:
                 state["negotiation"] = self._updated_negotiation_state(state, negotiation)
             self._save(chat_id, session)
 
+    def update_negotiation(self, chat_id: str, updates: Mapping[str, object]) -> dict[str, object]:
+        """Persist a validated private negotiation transition without a chat turn."""
+
+        if not isinstance(updates, Mapping):
+            raise ValueError("negotiation updates must be a mapping")
+        _, session = self.get_or_create(chat_id)
+        state = session["state"]
+        negotiation = self._updated_negotiation_state(state, updates)
+        state["negotiation"] = negotiation
+        self._save(chat_id, session)
+        return dict(negotiation)
+
     @asynccontextmanager
     async def session_lock(self, chat_id: str) -> AsyncIterator[None]:
         """Serialize a full request for one chat, including across SQLite workers."""
@@ -363,7 +391,32 @@ class SessionManager:
         if isinstance(raw_round, int) and not isinstance(raw_round, bool) and raw_round >= 0:
             negotiation["round"] = raw_round
         for key in ("last_ai_offer", "last_buyer_offer"):
-            negotiation[key] = raw_negotiation.get(key)
+            value = raw_negotiation.get(key)
+            if _is_cents(value):
+                negotiation[key] = value
+        shipping = raw_negotiation.get("shipping_condition")
+        if shipping in _SHIPPING_CONDITIONS:
+            negotiation["shipping_condition"] = shipping
+        version = raw_negotiation.get("policy_version")
+        if _is_non_negative_int(version):
+            negotiation["policy_version"] = version
+        status = raw_negotiation.get("offer_status")
+        if status in _OFFER_STATUSES:
+            negotiation["offer_status"] = status
+        pending = raw_negotiation.get("pending_offer")
+        if isinstance(pending, Mapping):
+            try:
+                negotiation["pending_offer"] = cls._normalise_pending_offer(pending)
+            except ValueError:
+                # Older or malformed persisted data must never be guessed as a
+                # live quote.  Keep the valid committed state, if any.
+                negotiation["pending_offer"] = None
+                if negotiation["offer_status"] == "generated":
+                    negotiation["offer_status"] = "none"
+        for key in ("last_committed_turn_id", "last_proposal_id"):
+            value = raw_negotiation.get(key)
+            if isinstance(value, str) and value.strip():
+                negotiation[key] = value.strip()
         return negotiation
 
     @classmethod
@@ -389,8 +442,78 @@ class SessionManager:
             negotiation["round"] = round_number
         for key in ("last_ai_offer", "last_buyer_offer"):
             if key in updates:
-                negotiation[key] = updates[key]
+                value = updates[key]
+                if value is not None and not _is_cents(value):
+                    raise ValueError(f"negotiation.{key} must be non-negative cents or None")
+                negotiation[key] = value
+        if "shipping_condition" in updates:
+            value = updates["shipping_condition"]
+            if value is not None and value not in _SHIPPING_CONDITIONS:
+                raise ValueError("negotiation.shipping_condition is invalid")
+            negotiation["shipping_condition"] = value
+        if "policy_version" in updates:
+            value = updates["policy_version"]
+            if value is not None and not _is_non_negative_int(value):
+                raise ValueError("negotiation.policy_version must be a non-negative integer or None")
+            negotiation["policy_version"] = value
+        if "offer_status" in updates:
+            value = updates["offer_status"]
+            if value not in _OFFER_STATUSES:
+                raise ValueError("negotiation.offer_status is invalid")
+            negotiation["offer_status"] = value
+        if "pending_offer" in updates:
+            value = updates["pending_offer"]
+            negotiation["pending_offer"] = (
+                None if value is None else cls._normalise_pending_offer(value)
+            )
+        for key in ("last_committed_turn_id", "last_proposal_id"):
+            if key in updates:
+                value = updates[key]
+                if value is not None and (not isinstance(value, str) or not value.strip()):
+                    raise ValueError(f"negotiation.{key} must be a non-empty string or None")
+                negotiation[key] = value.strip() if isinstance(value, str) else None
         return negotiation
+
+    @staticmethod
+    def _normalise_pending_offer(value: object) -> dict[str, object]:
+        if not isinstance(value, Mapping):
+            raise ValueError("negotiation.pending_offer must be a mapping")
+        required = {
+            "proposal_id",
+            "turn_id",
+            "item_id",
+            "policy_version",
+            "price_cents",
+            "shipping_condition",
+            "round",
+        }
+        if set(value) != required:
+            raise ValueError("negotiation.pending_offer has an invalid contract")
+        proposal_id = value["proposal_id"]
+        turn_id = value["turn_id"]
+        item_id = value["item_id"]
+        version = value["policy_version"]
+        price = value["price_cents"]
+        shipping = value["shipping_condition"]
+        round_number = value["round"]
+        if any(
+            not isinstance(text, str) or not text.strip()
+            for text in (proposal_id, turn_id, item_id)
+        ):
+            raise ValueError("negotiation.pending_offer identifiers are invalid")
+        if not _is_non_negative_int(version) or not _is_cents(price):
+            raise ValueError("negotiation.pending_offer amount or version is invalid")
+        if shipping not in _SHIPPING_CONDITIONS or not _is_non_negative_int(round_number):
+            raise ValueError("negotiation.pending_offer condition is invalid")
+        return {
+            "proposal_id": proposal_id.strip(),
+            "turn_id": turn_id.strip(),
+            "item_id": item_id.strip().upper(),
+            "policy_version": version,
+            "price_cents": price,
+            "shipping_condition": shipping,
+            "round": round_number,
+        }
 
     @classmethod
     def _validated_xianyu_context_updates(
@@ -615,3 +738,11 @@ class SessionManager:
                 "DELETE FROM chat_session_locks WHERE chat_id = ? AND owner = ?",
                 (chat_id, owner),
             )
+
+
+def _is_non_negative_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _is_cents(value: object) -> bool:
+    return _is_non_negative_int(value)

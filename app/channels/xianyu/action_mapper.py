@@ -36,10 +36,10 @@ def map_chat_response(payload: Mapping[str, Any]) -> MappedAction:
     if action in {"ignore"}:
         return MappedAction("ignore", reason="api_requested_ignore")
     if action in {"handoff", "human_handoff"} or next_step in {"handoff", "human_handoff"}:
-        # Old API payloads may still use handoff.  Treat them as an
-        # unavailable automatic answer; only an explicit seller takeover may
-        # move the channel session to HUMAN.
-        return MappedAction("answer", text=answer, reason=reason) if answer else MappedAction("error", reason=reason)
+        # Old API payloads may still use handoff.  The channel no longer
+        # replies or takes over for that legacy action; explicit seller
+        # controls remain the only path into HUMAN mode.
+        return MappedAction("ignore", reason=reason or "legacy_handoff_ignored")
     if action in {"clarify", "clarification"} or next_step in {"clarify", "clarification"}:
         return MappedAction(
             "clarify",

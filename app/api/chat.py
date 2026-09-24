@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
     query: str = Field(min_length=1)
     chat_id: str = Field(min_length=1)
     item_id: str | None = None
+    turn_id: str | None = Field(default=None, min_length=1)
 
     @field_validator("query")
     @classmethod
@@ -101,6 +102,8 @@ class Response(BaseModel):
     facts: dict[str, Any] = Field(default_factory=dict)
     evidence: str | list[str] | None = None
     raw_answer: str | list[str] | None = None
+    proposal_id: str | None = None
+    turn_id: str | None = None
 
 
 @router.post(
@@ -110,9 +113,8 @@ class Response(BaseModel):
 )
 async def chat(request: ChatRequest) -> Response:
     """Receive a question and return the grounded pipeline result."""
-    service_response = await chat_service.chat_async(
-        request.query,
-        request.chat_id,
-        item_id=request.item_id,
-    )
+    kwargs: dict[str, object] = {"item_id": request.item_id}
+    if request.turn_id is not None:
+        kwargs["turn_id"] = request.turn_id
+    service_response = await chat_service.chat_async(request.query, request.chat_id, **kwargs)
     return Response(**service_response)
