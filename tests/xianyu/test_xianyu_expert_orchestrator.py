@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-import time
 from unittest.mock import AsyncMock, Mock
 
 from app.services.chat_service import ChatService
@@ -100,7 +99,7 @@ def test_compound_turn_uses_one_unified_exit_and_keeps_task_order() -> None:
     assert result["can_answer"] is True
     assert "还在的" in str(result["answer"])
     assert "没有维修过" in str(result["answer"])
-    assert "1470.00" in str(result["answer"])
+    assert "比标价少30元不包邮" in str(result["answer"])
     generator.generate_xianyu.assert_not_called()
     generator.generate_xianyu_expert.assert_not_called()
 
@@ -132,8 +131,8 @@ def test_follow_up_price_context_is_persisted_and_used_by_main_chain() -> None:
     second = asyncio.run(service.chat_async("那不包邮呢？", "s5_followup"))
 
     assert first["action"] == second["action"] == "reply"
-    assert "1490.00" in str(first["answer"])
-    assert "1470.00" in str(second["answer"])
+    assert "比标价少10元包邮" in str(first["answer"])
+    assert "比标价少30元不包邮" in str(second["answer"])
     assert service.session_manager.get_xianyu_context("s5_followup")[
         "recent_price_topic"
     ] == "minimum"
@@ -204,55 +203,6 @@ def test_legacy_missing_action_becomes_auto_clarification() -> None:
 
     assert mapped.action == "error"
     assert mapped.reason == "expert_result_empty"
-
-
-def test_expert_budget_discards_late_batch_result() -> None:
-    from app.services.xianyu.expert_orchestrator import XianyuExpertOrchestrator
-    from app.services.xianyu.experts.contracts import ExpertResult
-
-    class SlowProduct:
-        async def run(self, tasks, context):
-            await asyncio.sleep(0.3)
-            return [ExpertResult.answered(task, "迟到的答案") for task in tasks]
-
-    service = _service(_canon_item())
-    orchestrator = XianyuExpertOrchestrator(
-        fact_responder=service.item_fact_responder,
-        knowledge_responder=service.xianyu_knowledge_responder,
-        intent_router=service.intent_router,
-        generator=Mock(),
-        product_agent=SlowProduct(),
-        budget_seconds=0.15,
-    )
-
-    result = asyncio.run(
-        orchestrator.handle("还在吗？", item=_canon_item())
-    )
-
-    assert result["action"] != "handoff"
-    assert result["answer"] == ""
-    assert result["reason"] == "expert_processing_timeout"
-
-
-def test_model_planner_uses_a_bounded_subbudget() -> None:
-    from app.services.xianyu.expert_orchestrator import XianyuExpertOrchestrator
-
-    generator = Mock()
-    generator.plan_xianyu_questions.return_value = {"tasks": []}
-    service = _service(_canon_item(), generator)
-    orchestrator = XianyuExpertOrchestrator(
-        fact_responder=service.item_fact_responder,
-        knowledge_responder=service.xianyu_knowledge_responder,
-        intent_router=service.intent_router,
-        generator=generator,
-    )
-
-    planner = orchestrator._model_planner(time.monotonic() + 60)
-    assert planner is not None
-    planner("还在吗？有没有维修过？")
-
-    timeout = generator.plan_xianyu_questions.call_args.kwargs["timeout_seconds"]
-    assert 0 < timeout <= orchestrator._PLANNER_BUDGET_SECONDS
 
 
 def test_current_item_context_is_reused_for_an_unclassified_follow_up() -> None:

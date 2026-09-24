@@ -4,6 +4,7 @@ pydantic-settings
 qdrant-client
 python-dotenv
 openai
+langgraph==1.2.11
 rank-bm25
 pytest
 httpx

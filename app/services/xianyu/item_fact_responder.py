@@ -3,21 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 
 from app.services.intent_router import IntentMatch
-from app.services.query_planner import QuestionPlan
 from app.services.xianyu.experts.price_agent import PriceAgent
 from app.services.xianyu.responses import clarification, reply, unavailable
-
-
-@dataclass(frozen=True)
-class PlannedFactAnswer:
-    """Facts and evidence gaps found while handling a multi-part item question."""
-
-    answers: list[str]
-    unresolved: list[str]
-    has_conflict: bool = False
 
 
 class ItemFactResponder:
@@ -323,76 +312,12 @@ class ItemFactResponder:
 
         return clarification(query, item_id=str(item["item_id"]))
 
-    def answer_plan(
-        self,
-        query: str,
-        item: Mapping[str, object],
-        plan: QuestionPlan,
-    ) -> PlannedFactAnswer:
-        """Resolve fact portions of a multi-part question from the same rules."""
-
-        fact_answers: list[str] = []
-        unresolved_answers: list[str] = []
-        facts = self.structured_facts(item)
-        requested_structured_fields = {
-            field
-            for field in ("identity", "lens", "included_items", "condition", "history")
-            if field in plan["item_fields"]
-        }
-        if requested_structured_fields & self.fact_conflicts(facts):
-            return PlannedFactAnswer([], [], has_conflict=True)
-
-        if "listed_price_cents" in plan["item_fields"]:
-            cents = int(item["listed_price_cents"])
-            fact_answers.append(f"这台标价 ¥{cents / 100:.2f}。")
-        if "sale_status" in plan["item_fields"]:
-            status = item["sale_status"]
-            if status == "listed":
-                fact_answers.append("还在的，这台目前还没出。")
-            elif status == "sold":
-                fact_answers.append("这台已经出掉了。")
-            else:
-                unresolved_answers.append("这台现在还在不在，我这边暂时没确认。")
-
-        field_handlers = {
-            "lens": self.lens_fact_answer,
-            "included_items": self.included_items_fact_answer,
-            "condition": self.condition_fact_answer,
-            "identity": self.identity_fact_answer,
-        }
-        for field, handler in field_handlers.items():
-            if field not in requested_structured_fields:
-                continue
-            text, unresolved = handler(facts.get(field))
-            (unresolved_answers if unresolved else fact_answers).append(text)
-        if "history" in requested_structured_fields:
-            text, unresolved = self.history_fact_answer(query, facts.get("history"))
-            (unresolved_answers if unresolved else fact_answers).append(text)
-        return PlannedFactAnswer(fact_answers, unresolved_answers)
-
     @staticmethod
     def _natural_fact_value(value: str) -> str:
         """Render one confirmed seller value without exposing its storage label."""
 
         text = value.strip()
         return text if text.endswith(("。", "！", "？", "!", "?")) else f"{text}。"
-
-    @classmethod
-    def history_fact_answer(cls, query: str, value: object) -> tuple[str, bool]:
-        """Answer the history facet actually asked, preserving explicit negatives."""
-
-        if not isinstance(value, Mapping):
-            return "这台的维修、拆修和摔碰历史这边还没确认。", True
-        lowered = query.casefold()
-        key = "repair_history"
-        if "拆" in lowered:
-            key = "disassembly_history"
-        elif "摔" in lowered or "跌" in lowered:
-            key = "drop_history"
-        raw = value.get(key)
-        if isinstance(raw, str) and raw.strip() and raw.strip() != "unknown":
-            return cls._natural_fact_value(raw), False
-        return "这台的维修、拆修和摔碰历史这边还没确认。", True
 
     @staticmethod
     def structured_facts(item: Mapping[str, object]) -> Mapping[str, object]:
@@ -431,54 +356,6 @@ class ItemFactResponder:
         if not details:
             return "带镜头，具体型号和焦段这边还没确认。", False
         return "带的，" + "，".join(details) + "。", False
-
-    @staticmethod
-    def identity_fact_answer(value: object) -> tuple[str, bool]:
-        if not isinstance(value, Mapping):
-            return "品牌和型号这边还没确认。", True
-        parts = [
-            raw.strip()
-            for raw in (value.get("brand"), value.get("model"), value.get("category"))
-            if isinstance(raw, str) and raw.strip()
-        ]
-        if not parts:
-            return "品牌和型号这边还没确认。", True
-        return "这是 " + " ".join(parts) + "。", False
-
-    @staticmethod
-    def included_items_fact_answer(value: object) -> tuple[str, bool]:
-        if value is None:
-            return "配件这边还没确认。", True
-        if not isinstance(value, list) or not all(
-            isinstance(entry, str) and entry.strip() for entry in value
-        ):
-            return "配件这边还没确认。", True
-        if not value:
-            return "目前没有确认随附配件。", False
-        return "一起出的有：" + "、".join(value) + "。", False
-
-    @staticmethod
-    def condition_fact_answer(value: object) -> tuple[str, bool]:
-        if not isinstance(value, Mapping):
-            return "成色和功能这边还没确认。", True
-        details: list[str] = []
-        appearance = value.get("appearance")
-        function = value.get("function")
-        known_issues = value.get("known_issues")
-        if isinstance(appearance, str) and appearance.strip():
-            details.append(appearance.strip())
-        if isinstance(function, str) and function.strip():
-            details.append(function.strip())
-        if isinstance(known_issues, list) and all(
-            isinstance(issue, str) for issue in known_issues
-        ):
-            if known_issues:
-                details.append("已知问题有 " + "、".join(known_issues))
-            else:
-                details.append("暂时没有记录已知问题")
-        if not details:
-            return "成色和功能这边还没确认。", True
-        return "这台" + "；".join(details) + "。", False
 
     @staticmethod
     def attach_intent_metadata(

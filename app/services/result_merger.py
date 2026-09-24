@@ -85,7 +85,13 @@ class ResultMerger:
     def _result_text(result: TaskResult, task: Task | None) -> str:
         """Render every executor outcome without leaking an internal reason."""
 
-        del task
+        if task is not None:
+            intent_context = task.metadata.get("intent_context")
+            if (
+                isinstance(intent_context, Mapping)
+                and intent_context.get("reply_required") is False
+            ) or task.metadata.get("reply_required") is False:
+                return ""
         return result.answer if isinstance(result.answer, str) else ""
 
 

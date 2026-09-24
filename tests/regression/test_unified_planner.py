@@ -117,6 +117,8 @@ def test_planner_builds_each_clause_once_before_deduplicating_tasks(monkeypatch)
 def test_chat_service_uses_the_planner_boundary_instead_of_direct_router_calls() -> None:
     source = inspect.getsource(ChatService._chat_async_locked)
 
+    assert 'getattr(self.planner, "plan_async", None)' in source
+    assert "await plan_async(query, context, item_id=item_id)" in source
     assert "self.planner.plan(query, context, item_id=item_id)" in source
     for legacy_entrypoint in (
         "self.intent_router.route",

@@ -50,6 +50,11 @@ def test_to_expert_task_preserves_explicit_identity_target_and_dependencies() ->
             "normalized_question": "最低价",
             "knowledge_scope": "item_fact",
             "transaction_conditions": {"request_kind": "minimum"},
+            "intent_context": {
+                "need_id": "n2",
+                "intent": "price.minimum",
+                "reply_required": True,
+            },
         },
         query_target="price.minimum",
         depends_on_task_ids=("product-1",),
@@ -64,6 +69,11 @@ def test_to_expert_task_preserves_explicit_identity_target_and_dependencies() ->
     assert expert_task.query_target == task.query_target
     assert expert_task.depends_on_task_ids == task.depends_on_task_ids
     assert expert_task.transaction_conditions == {"request_kind": "minimum"}
+    assert expert_task.intent_context == {
+        "need_id": "n2",
+        "intent": "price.minimum",
+        "reply_required": True,
+    }
 
 
 class _RecordingHandler:
@@ -198,12 +208,12 @@ def test_xianyu_expert_handler_uses_each_task_query_without_reusing_combined_ans
     assert [result.answer for result in results] == [
         "没有维修过。",
         "最低 ¥1490.00 可以拍。",
-        "目前只能确认付款后48小时内发出，周日是否能送达暂时无法确认。",
+        "",
     ]
     assert results[-1].status == "unavailable"
 
 
-def test_unavailable_delivery_task_replaces_legacy_handoff_wording() -> None:
+def test_unavailable_delivery_task_keeps_no_legacy_handoff_text() -> None:
     class _ExpertOrchestrator:
         async def execute_tasks(self, tasks, context):
             del context
@@ -219,7 +229,7 @@ def test_unavailable_delivery_task_replaces_legacy_handoff_wording() -> None:
     ))
 
     assert result.status == "unavailable"
-    assert result.answer == "目前只能确认付款后48小时内发出，周日是否能送达暂时无法确认。"
+    assert result.answer == ""
 
 
 def test_order_handler_uses_the_standalone_order_route_for_combined_plan() -> None:
