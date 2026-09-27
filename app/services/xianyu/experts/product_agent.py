@@ -51,6 +51,14 @@ class ProductAgent:
         if context.item is None:
             return ExpertResult.handoff(task, "item_context_unavailable", missing_fields=("item",))
         if task.knowledge_scope == "item_fact":
+            remembered_reply = _recent_seller_reply(task.original_question, context.history)
+            if remembered_reply is not None:
+                return await self._answer_from_evidence(
+                    task,
+                    context,
+                    {"context": {"context": f"卖家刚才确认：{remembered_reply}"}},
+                    task.original_question,
+                )
             return self._answer_item_fact(task, context.item)
         if task.knowledge_scope != "model_knowledge":
             return ExpertResult.handoff(task, "unsupported_product_knowledge_scope")
@@ -196,6 +204,26 @@ def _task_question(task: ExpertTask) -> str:
     """Prefer the buyer's exact sub-question over broad planner labels."""
 
     return task.original_question.strip() or task.normalized_question.strip()
+
+
+def _recent_seller_reply(
+    question: str,
+    history: object,
+) -> str | None:
+    """Recall a tagged human seller reply for explicit conversational follow-ups."""
+    if not any(term in question for term in ("刚才", "刚刚", "前面", "你说", "你确认")):
+        return None
+    if not isinstance(history, (list, tuple)):
+        return None
+    for entry in reversed(history):
+        if not isinstance(entry, Mapping):
+            continue
+        if entry.get("role") != "assistant" or entry.get("source") != "seller_manual":
+            continue
+        content = entry.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+    return None
 
 
 def _allows_technical_fallback(question: str) -> bool:
