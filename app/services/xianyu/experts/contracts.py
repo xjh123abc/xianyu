@@ -15,6 +15,7 @@ ExpertKnowledgeScope = Literal[
     "model_knowledge",
     "seller_rule",
     "greeting",
+    "no_reply",
 ]
 ExpertResultStatus = Literal["answered", "handoff"]
 QueryTarget = Literal[
@@ -24,6 +25,7 @@ QueryTarget = Literal[
     "history.drop_history",
     "function.shutter",
     "function.overall",
+    "function.inspection_record",
     "condition.summary",
     "condition.scratches",
     "condition.dents",
@@ -55,6 +57,8 @@ QueryTarget = Literal[
     "seller_rule.general",
     "product.model_knowledge",
     "greeting",
+    "thanks",
+    "no_reply",
 ]
 VALID_QUERY_TARGETS = frozenset(get_args(QueryTarget))
 

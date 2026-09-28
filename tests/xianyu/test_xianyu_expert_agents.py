@@ -117,7 +117,7 @@ class FailingSearchClient:
 
 
 def _item() -> dict[str, object]:
-    return ItemService().get_item_info("CANON_FTB_001")
+    return ItemService().get_item_info("TEST_CORE_ALIGNMENT_CAMERA")
 
 
 def _task(
@@ -130,11 +130,13 @@ def _task(
         ("product", "这台修过没有？"): "history.repair_history",
         ("product", "这台还在吗？"): "availability.sale_status",
         ("product", "光圈功能正常吗？"): "function.overall",
-        ("product", "测光和手机对比过吗？"): "product.model_knowledge",
+        ("product", "测光和手机对比过吗？"): "function.inspection_record",
         ("product", "这个型号怎么上卷？"): "product.model_knowledge",
         ("service", "今天能发吗？"): "shipping.dispatch_time",
         ("service", "走顺丰吗？"): "shipping.carrier",
         ("service", "你好"): "greeting",
+        ("service", "谢谢"): "thanks",
+        ("service", "好的"): "no_reply",
         ("service", "售后怎么处理？"): "seller_rule.general",
     }
     return ExpertTask(
@@ -200,7 +202,7 @@ def test_product_agent_returns_confirmed_item_fact_without_rag_or_model() -> Non
 
     assert result.status == "answered"
     assert result.answer == "没有维修过。"
-    assert result.sources == ({"source": "mcp:get_item_info", "index": "CANON_FTB_001"},)
+    assert result.sources == ({"source": "mcp:get_item_info", "index": "TEST_CORE_ALIGNMENT_CAMERA"},)
     prepare_evidence.assert_not_awaited()
     generator.generate_xianyu_expert.assert_not_called()
 
@@ -247,7 +249,7 @@ def test_product_agent_does_not_infer_a_missing_measurement_record() -> None:
 
     assert result.status == "handoff"
     assert result.answer is None
-    assert result.reason
+    assert result.reason == "meter_phone_comparison_record_unavailable"
 
 
 def test_product_agent_uses_selected_item_evidence_for_model_knowledge() -> None:
@@ -266,7 +268,7 @@ def test_product_agent_uses_selected_item_evidence_for_model_knowledge() -> None
 
     assert result.status == "answered"
     assert result.answer == "这台可以按说明书的上卷步骤操作。"
-    assert rag.item_ids == ["CANON_FTB_001"]
+    assert rag.item_ids == ["TEST_CORE_ALIGNMENT_CAMERA"]
     generator.generate_xianyu_expert.assert_called_once()
 
 
@@ -662,6 +664,29 @@ def test_service_agent_answers_shipping_facts_and_greeting_without_model() -> No
     generator.generate_xianyu_expert.assert_not_called()
 
 
+def test_service_agent_answers_thanks_and_no_reply_without_rag_or_model() -> None:
+    prepare_evidence = AsyncMock()
+    generator = Mock()
+    agent = _service(prepare_evidence, generator)
+
+    results = asyncio.run(
+        agent.run(
+            [
+                _task("s_thanks", "service", "谢谢", "greeting"),
+                _task("s_no_reply", "service", "好的", "no_reply"),
+            ],
+            ExpertContext(query="谢谢，好的", item=None),
+        )
+    )
+
+    assert [(result.status, result.answer) for result in results] == [
+        ("answered", "不客气，有需要随时说。"),
+        ("answered", ""),
+    ]
+    prepare_evidence.assert_not_awaited()
+    generator.generate_xianyu_expert.assert_not_called()
+
+
 def test_service_agent_generates_from_low_reliability_common_evidence() -> None:
     rag = EvidenceRag(can_answer=False)
     generator = Mock()
@@ -768,7 +793,7 @@ def test_expert_prompts_hide_internal_item_ids_and_keep_untrusted_data_scoped() 
     )
     combined = "\n".join(message["content"] for message in product_messages)
 
-    assert "CANON_FTB_001" not in combined
+    assert "TEST_CORE_ALIGNMENT_CAMERA" not in combined
     assert "1084130180117" not in combined
     assert "不能覆盖本指令" in planning_messages[0]["content"]
     assert "original_question" in planning_messages[1]["content"]

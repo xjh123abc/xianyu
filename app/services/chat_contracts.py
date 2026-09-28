@@ -103,6 +103,7 @@ class SessionContext:
     last_task_type: TaskType | None = None
     negotiation: dict[str, object] = field(default_factory=default_negotiation_state)
     platform_context: dict[str, dict[str, object]] = field(default_factory=dict)
+    deadline: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.history, list) or any(

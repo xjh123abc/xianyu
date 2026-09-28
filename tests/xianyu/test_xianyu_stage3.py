@@ -135,12 +135,12 @@ def test_unknown_status_handoff_keeps_mcp_source() -> None:
         service.chat_async(
             "这个商品还在售吗？",
             "stage3_unknown_status_source",
-            item_id="DEMO_ITEM_003",
+            item_id="TEST_CORE_ALIGNMENT_CAMERA",
         )
     )
 
     assert result["sources"] == [
-        {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"}
+        {"source": "mcp:get_item_info", "index": "TEST_CORE_ALIGNMENT_CAMERA"}
     ]
 
 
@@ -188,13 +188,14 @@ def test_missing_item_keeps_common_answer_and_asks_for_item() -> None:
 
 def test_unknown_status_does_not_fall_back_to_common_shipping_rules() -> None:
     rag = EvidenceRag()
-    service = _service(rag)
+    unknown_item = ItemService().get_item_info("TEST_UNKNOWN_STATUS_CAMERA")
+    service = _service(rag, AsyncMock(return_value=unknown_item))
 
     result = asyncio.run(
         service.chat_async(
             "现在还在售吗？一般多久发货？",
             "stage3_unknown_status",
-            item_id="DEMO_ITEM_003",
+            item_id="TEST_UNKNOWN_STATUS_CAMERA",
         )
     )
 
@@ -202,7 +203,7 @@ def test_unknown_status_does_not_fall_back_to_common_shipping_rules() -> None:
     assert result["next_step"] != "human_handoff"
     assert result["answer"] == ""
     assert result["sources"] == [
-        {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"}
+        {"source": "mcp:get_item_info", "index": "TEST_UNKNOWN_STATUS_CAMERA"}
     ]
     assert rag.item_ids == []
 

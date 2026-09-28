@@ -7,7 +7,10 @@ the API and channel workers.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from collections.abc import Mapping
+from dataclasses import replace
 
 from app.generation.deepseek import DeepSeekGenerator
 from app.infrastructure.order_mcp_client import get_order_via_mcp
@@ -162,14 +165,32 @@ class ChatService:
         """Serialize one session while resolving and answering its next turn."""
 
         include_chat_id = chat_id is not None
+        budget_seconds = min(
+            float(getattr(settings, "xianyu_expert_budget_seconds", 25.0)),
+            float(getattr(settings, "xianyu_chat_api_timeout_seconds", 30.0)) * 0.9,
+        )
+        deadline = time.monotonic() + budget_seconds
         resolved_chat_id, _ = self.session_manager.get_or_create(chat_id)
-        async with self.session_manager.session_lock(resolved_chat_id):
-            response = await self._chat_async_locked(
-                query,
-                resolved_chat_id,
-                item_id=item_id,
-                turn_id=turn_id,
-            )
+        try:
+            async with asyncio.timeout_at(deadline):
+                async with self.session_manager.session_lock(resolved_chat_id):
+                    response = await self._chat_async_locked(
+                        query,
+                        resolved_chat_id,
+                        item_id=item_id,
+                        turn_id=turn_id,
+                        deadline=deadline,
+                    )
+        except TimeoutError:
+            response = {
+                "query": query,
+                "answer": "客服服务暂时不可用，请稍后再试。",
+                "can_answer": False,
+                "action": "error",
+                "route": "unified",
+                "reason": "turn_budget_exhausted",
+                "chat_id": resolved_chat_id,
+            }
         if not include_chat_id:
             response.pop("chat_id", None)
         return response
@@ -181,10 +202,13 @@ class ChatService:
         *,
         item_id: str | None = None,
         turn_id: str | None = None,
+        deadline: float | None = None,
     ) -> dict[str, object]:
         """Run the stable load → plan → execute transition boundary."""
 
         context = self.session_manager.load(chat_id)
+        if deadline is not None:
+            context = replace(context, deadline=deadline)
         plan_async = getattr(self.planner, "plan_async", None)
         if callable(plan_async):
             outcome = await plan_async(query, context, item_id=item_id)
@@ -262,6 +286,7 @@ class ChatService:
                     **({"resolved_item": dict(item)} if item is not None else {}),
                 },
             },
+            deadline=context.deadline,
         )
         message = ChatMessage(
             "xianyu",

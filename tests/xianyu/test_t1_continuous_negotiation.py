@@ -23,7 +23,7 @@ class NoRag:
         raise AssertionError("T1 price cases must not enter RAG")
 
 
-CURRENT_ITEM_ID = "CANON_FTB_001"
+CURRENT_ITEM_ID = "TEST_CORE_ALIGNMENT_CAMERA"
 
 
 def _item(item_id: str = CURRENT_ITEM_ID) -> dict[str, object]:

@@ -205,6 +205,12 @@ class PriceAgent:
         compatibility path and are never expanded into invented price tiers.
         """
 
+        # A known listing price answers a price question even when the platform
+        # cannot currently confirm whether the listing is still active.  Keep
+        # the stricter sale-status and policy gates for offers and discounts.
+        if match.intent == "PRICE":
+            return self._listed_price_decision(item)
+
         try:
             policy = self.policy_store.get(item)
         except NegotiationPolicyError as exc:
@@ -219,6 +225,34 @@ class PriceAgent:
             turn_id,
             request_kind,
             shipping_comparison,
+        )
+
+    def _listed_price_decision(self, item: Mapping[str, object]) -> PriceDecision:
+        """Answer from the current public listing price without negotiation data."""
+
+        if item.get("sale_status") == "sold":
+            return PriceDecision.answered("这件已经出掉了。")
+
+        price_cents = item.get("listed_price_cents")
+        if (
+            not isinstance(price_cents, int)
+            or isinstance(price_cents, bool)
+            or price_cents < 0
+        ):
+            return PriceDecision.handoff("listed_price_unavailable")
+
+        facts = self._facts(item)
+        conflicts = facts.get("fact_conflicts")
+        if (
+            isinstance(conflicts, list)
+            and "listed_price_cents" in conflicts
+            and item.get("data_source") != "seller_snapshot+xianyu_platform"
+        ):
+            return PriceDecision.handoff("price_fact_conflict:listed_price_cents")
+
+        return PriceDecision.answered(
+            f"这件标价是 {self._format_cents(price_cents)}。",
+            original_price_cents=price_cents,
         )
 
     def _policy_decide(
@@ -598,15 +632,6 @@ class PriceAgent:
     @staticmethod
     def _shipping_label(condition: ShippingCondition) -> str:
         return "包邮" if condition == "seller_pays" else "（不包邮）"
-
-    def _offer_answer(self, price_cents: int, condition: ShippingCondition) -> str:
-        return self._reply_from_plan(
-            _NegotiationReplyPlan(
-                "COUNTER",
-                shipping_condition=condition,
-                counter_offer_cents=price_cents,
-            )
-        )
 
     def _reply_from_plan(self, plan: _NegotiationReplyPlan) -> str:
         """Render the authorised price decision without changing any amount."""

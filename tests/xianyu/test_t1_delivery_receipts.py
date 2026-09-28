@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 from fastapi.testclient import TestClient
@@ -14,11 +13,6 @@ from app.channels.xianyu.models import InboundMessage, SendReceipt
 from app.channels.xianyu.stage3_worker import XianyuStage3Worker
 from app.channels.xianyu.store import ChannelStore
 from app.main import app
-
-
-class _Notifier:
-    async def notify_handoff(self, **kwargs: Any) -> None:
-        del kwargs
 
 
 class _Sender:
@@ -111,7 +105,6 @@ def test_worker_reports_confirmed_delivery_without_sending_a_second_message(
         store,
         account_id="seller",
         chat_client=chat,
-        notifier=_Notifier(),
     )
     worker.enable_account()
     message = InboundMessage(
@@ -146,7 +139,6 @@ def test_worker_retries_a_failed_receipt_without_resending_buyer_text(tmp_path: 
         store,
         account_id="seller",
         chat_client=chat,
-        notifier=_Notifier(),
     )
     worker.enable_account()
     message = InboundMessage(

@@ -132,6 +132,7 @@ class XianyuExpertTaskHandler:
             xianyu_context=context.platform_context.get("xianyu", {}),
             negotiation=context.negotiation,
             turn_id=message.turn_id,
+            deadline=context.deadline,
         )
         results = await self._expert_orchestrator.execute_tasks(
             [expert_task],
@@ -207,7 +208,7 @@ def to_expert_task(task: Task) -> ExpertTask:
     dependencies = _task_dependencies(task)
     if normalized_question is None:
         raise ValueError("expert task is missing normalized_question")
-    if knowledge_scope not in {"item_fact", "model_knowledge", "seller_rule", "greeting"}:
+    if knowledge_scope not in {"item_fact", "model_knowledge", "seller_rule", "greeting", "no_reply"}:
         raise ValueError("expert task contains an invalid knowledge_scope")
     if query_target not in VALID_QUERY_TARGETS:
         raise ValueError("expert task contains an invalid query_target")
@@ -245,6 +246,26 @@ def _expert_result(
         item_evidence = item_source(item)
         if item_evidence not in sources:
             sources.insert(0, item_evidence)
+    if result.status == "answered" and _is_no_reply_task(task):
+        response: dict[str, object] = {
+            "query": task.query,
+            "route": "xianyu",
+            "action": "ignore",
+            "answer": "",
+            "sources": sources,
+            "results": [],
+            "reliability": None,
+            "next_step": None,
+            "can_answer": True,
+            "reason": "no_reply_required",
+        }
+        return TaskResult(
+            task.task_id,
+            "answered",
+            "",
+            sources,
+            metadata={"response": response},
+        )
     if result.status == "answered" and isinstance(result.answer, str) and result.answer.strip():
         # Do not normalize or replace model text after a successful response.
         answer = result.answer
@@ -280,8 +301,35 @@ def _expert_result(
             sources,
             metadata=metadata,
         )
+    recovered_price = _recover_listed_price(task, item)
+    if recovered_price is not None:
+        response = {
+            "query": task.query,
+            "route": "xianyu",
+            "action": "reply",
+            "answer": recovered_price,
+            "sources": sources,
+            "results": [],
+            "reliability": None,
+            "next_step": None,
+            "can_answer": True,
+            "reason": "listed_price_recovered_from_item_facts",
+        }
+        if item is not None:
+            response.update({"item_id": item["item_id"], "item_info": dict(item)})
+        return TaskResult(
+            task.task_id,
+            "answered",
+            recovered_price,
+            sources,
+            metadata={"response": response},
+        )
     reason = result.reason or "expert_answer_unavailable"
-    answer = result.answer if isinstance(result.answer, str) else ""
+    answer = (
+        result.answer.strip()
+        if isinstance(result.answer, str) and result.answer.strip()
+        else _unavailable_answer(task, item)
+    )
     response = {
         "query": task.query,
         "route": "xianyu",
@@ -303,6 +351,106 @@ def _expert_result(
         sources,
         reason,
         metadata={"response": response},
+    )
+
+
+def _recover_listed_price(
+    task: Task,
+    item: Mapping[str, object] | None,
+) -> str | None:
+    """Use the validated public price if the pricing expert could not answer."""
+
+    if (
+        task.task_type != "price"
+        or task.query_target != "price.listed_price"
+        or item is None
+        or item.get("sale_status") == "sold"
+    ):
+        return None
+    price = item.get("listed_price_cents")
+    if not isinstance(price, int) or isinstance(price, bool) or price < 0:
+        return None
+    facts = item.get("facts")
+    conflicts = facts.get("fact_conflicts") if isinstance(facts, Mapping) else None
+    if (
+        isinstance(conflicts, list)
+        and "listed_price_cents" in conflicts
+        and item.get("data_source") != "seller_snapshot+xianyu_platform"
+    ):
+        return None
+    return f"这件标价是 ¥{price // 100}.{price % 100:02d}。"
+
+
+def _unavailable_answer(
+    task: Task,
+    item: Mapping[str, object] | None,
+) -> str:
+    """Give the buyer confirmed partial facts when an expert lacks one field."""
+
+    if task.query_target == "shipping.dispatch_time" and "周日" in task.query:
+        return "我目前没有可靠的物流时效信息，不能确定周日能否送达。"
+
+    if item is None:
+        return "我还没找到对应的商品资料。发一下商品链接或商品名称，我就能结合商品信息回答。"
+
+    target_labels = {
+        "availability.sale_status": "最新在售状态",
+        "condition.summary": "成色和外观细节",
+        "condition.scratches": "划痕情况",
+        "condition.dents": "磕碰情况",
+        "condition.known_issues": "已知瑕疵",
+        "function.overall": "功能状态",
+        "function.shutter": "快门状态",
+        "function.inspection_record": "实测记录",
+        "history.repair_history": "维修记录",
+        "history.drop_history": "摔碰记录",
+        "history.disassembly_history": "拆修记录",
+        "accessories.items": "具体配件清单",
+        "accessories.completeness": "配件是否齐全",
+        "product_info.sale_reason": "出售原因",
+        "price.listed_price": "当前标价",
+        "price.minimum": "最低可成交价",
+        "price.offer": "这个报价是否可以接受",
+        "price.additional_discount": "还能优惠多少",
+        "shipping.fee": "运费信息",
+        "shipping.dispatch_time": "发货时间",
+        "shipping.carrier": "快递信息",
+        "after_sale.return_policy": "售后规则",
+    }
+    label = target_labels.get(task.query_target, "这项具体信息")
+    facts = item.get("facts")
+    conflicts = facts.get("fact_conflicts") if isinstance(facts, Mapping) else None
+    price = item.get("listed_price_cents")
+    price_is_known = (
+        isinstance(price, int)
+        and not isinstance(price, bool)
+        and price >= 0
+        and (
+            not isinstance(conflicts, list)
+            or "listed_price_cents" not in conflicts
+            or item.get("data_source") == "seller_snapshot+xianyu_platform"
+        )
+    )
+    if task.task_type == "price" and price_is_known:
+        price_text = f"¥{price // 100}.{price % 100:02d}"
+        if task.query_target == "price.listed_price":
+            return f"目前能确认的商品标价是 {price_text}。"
+        return f"目前能确认的商品标价是 {price_text}；{label}暂时没有确认记录。"
+    if task.query_target == "availability.sale_status" and price_is_known:
+        price_text = f"¥{price // 100}.{price % 100:02d}"
+        return f"商品标价是 {price_text}，但闲鱼最新在售状态还没同步，我暂时不能确认是否还能拍。"
+    return f"商品资料里暂时没有{label}的可靠信息。"
+
+
+def _is_no_reply_task(task: Task) -> bool:
+    intent_context = task.metadata.get("intent_context")
+    return (
+        task.query_target == "no_reply"
+        or task.metadata.get("knowledge_scope") == "no_reply"
+        or (
+            isinstance(intent_context, Mapping)
+            and intent_context.get("intent") == "service.no_reply"
+        )
     )
 
 

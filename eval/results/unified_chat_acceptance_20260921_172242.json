@@ -1,0 +1,1494 @@
+{
+  "generated_at": "2026-09-21T17:23:31+08:00",
+  "base_url": "http://127.0.0.1:8000",
+  "notes": [
+    "This runner called the live HTTP /chat endpoint and did not replace application dependencies.",
+    "阻塞 means the case still requires a manual or separately executed check; it is never counted as PASS."
+  ],
+  "summary": {
+    "通过": 4,
+    "失败": 0,
+    "阻塞": 10
+  },
+  "cases": [
+    {
+      "case_id": "A01",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这个商品标价多少？",
+          "chat_id": "qa_a01_001",
+          "item_id": "DEMO_ITEM_001"
+        },
+        {
+          "query": "这个商品还能买吗？",
+          "chat_id": "qa_a01_002",
+          "item_id": "DEMO_ITEM_002"
+        },
+        {
+          "query": "这个商品还在售吗？",
+          "chat_id": "qa_a01_003",
+          "item_id": "DEMO_ITEM_003"
+        }
+      ],
+      "expected": "001 标价 1280 元；002 已售出；003 状态未知且不承诺可买。",
+      "response": [
+        {
+          "_request_error": "Cannot call live /chat at http://127.0.0.1:8000/chat: <urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"
+        },
+        {
+          "query": "这个商品还能买吗？",
+          "answer": "这件已经出掉了。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_002"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a01_002",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_002",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_002",
+            "title": "八成新机械键盘",
+            "listed_price_cents": 56000,
+            "sale_status": "sold",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "机械键盘",
+                "brand": null,
+                "model": "unknown"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "八成新，正常使用痕迹",
+                "scratches": "unknown",
+                "dents": "unknown"
+              },
+              "negotiation": "unknown",
+              "function": {
+                "overall": "working",
+                "shutter": "not_applicable"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "键盘本体"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "unknown",
+                "carrier": "unknown",
+                "shipping_fee": "unknown",
+                "dispatch_time": "unknown",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "unknown",
+                "usage": "unknown",
+                "sale_reason": "unknown"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "unknown",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "OTHER",
+          "required_fields": [],
+          "facts": {}
+        },
+        {
+          "query": "这个商品还在售吗？",
+          "answer": "该问题目前暂无足够信息确认。",
+          "reason": "sale_status_unavailable",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_003"
+            }
+          ],
+          "can_answer": false,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a01_003",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_003",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_003",
+            "title": "家用半自动咖啡机",
+            "listed_price_cents": 98000,
+            "sale_status": "unknown",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "咖啡机",
+                "brand": null,
+                "model": "unknown"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": "unknown",
+                "summary": "unknown",
+                "scratches": "unknown",
+                "dents": "unknown"
+              },
+              "negotiation": "unknown",
+              "function": {
+                "overall": "unknown",
+                "shutter": "not_applicable"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": "unknown",
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "unknown",
+                "carrier": "unknown",
+                "shipping_fee": "unknown",
+                "dispatch_time": "unknown",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "unknown",
+                "usage": "unknown",
+                "sale_reason": "unknown"
+              },
+              "after_sale": {
+                "transaction_channel": "unknown",
+                "return_policy": "manual_review",
+                "description_policy": "unknown",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "AVAILABILITY",
+          "required_fields": [
+            "sale_status"
+          ],
+          "facts": {
+            "sale_status": "unknown"
+          }
+        }
+      ],
+      "reason": "真实 /chat 调用未完成：Cannot call live /chat at http://127.0.0.1:8000/chat: <urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"
+    },
+    {
+      "case_id": "A02",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "你们店售后怎么处理？",
+          "chat_id": "qa_a02_general"
+        }
+      ],
+      "expected": "新会话无商品也使用通用规则，不要求模式或商品。",
+      "response": [
+        {
+          "query": "你们店售后怎么处理？",
+          "answer": "根据店铺通用售后规则，售后处理主要按以下原则进行：\n\n1. **以订单和商品页面约定为准**：商品详情、聊天记录、订单页中明确承诺的售后条件（如退换货、维修、补发等），会按承诺履行，卖家不会在售后阶段单方面降低标准。\n\n2. **平台内处理**：退款、退货、换货、维修、补发、赔付等，优先在原交易平台内完成并保留记录，不会引导脱离平台私下转账或处理。\n\n3. **规则优先级**：如遇冲突，按“法律法规 > 平台当前规则 > 订单/商品页面明确约定 > 卖家内部规则”的顺序处理。“不退不换”等自定义说明不能排除法律、平台规则或已作出的有效承诺。\n\n4. **如实描述**：商品成色、功能、瑕疵、维修史等信息以实际描述为准；资料未记录的事项，只能说明“当前资料未记录/暂无法确认”，不会擅自认定。\n\n具体到某一笔订单的售后结果，需要结合该订单的商品页面约定和平台规则来判断。如果你有具体订单或商品，可以补充信息，我帮你对照规则看。",
+          "sources": [
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a02_general",
+          "action": "reply"
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：售后表述与 seller_rules.md 原文和适用边界一致"
+    },
+    {
+      "case_id": "A03",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "多少钱？收到有质量问题怎么办？",
+          "chat_id": "qa_a03_combined",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "同次请求保留 1280 元商品事实和真实通用规则证据。",
+      "response": [
+        {
+          "query": "多少钱？收到有质量问题怎么办？",
+          "answer": "这件标价是 ¥1280.00。\n收到后如果发现质量问题，可以按这个顺序处理：\n\n1. **先留证据**：拍清楚问题部位的照片或视频，比如故障表现、外观瑕疵、与描述不符的地方，同时保留商品详情页、聊天记录和订单信息。\n\n2. **在闲鱼订单内发起售后**：通过订单页面申请退款、退货或换货，不要脱离平台私下处理，平台内的记录是后续处理的基础。\n\n3. **按描述和约定判断**：这件商品描述为“正常使用痕迹，外观整体干净，机身底部有轻微使用划痕，功能正常、快门正常”，配件是机身、背带、镜头盖。如果问题属于描述里已说明的轻微划痕，一般不算质量问题；如果是描述之外的功能故障、明显磕碰或与描述不符，可以按平台流程申请处理。\n\n4. **注意边界**：具体能不能退、能不能换，要结合平台规则、订单页约定和实际证据来判断，这里不能直接承诺处理结果。\n\n简单说：**先留证，再在闲鱼订单内发起售后，按商品描述和平台规则走流程。**",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "unified",
+          "chat_id": "qa_a03_combined",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "PRICE",
+          "required_fields": [
+            "listed_price_cents"
+          ],
+          "facts": {
+            "listed_price_cents": 128000
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：质量问题答复与已确认售后条款逐项一致"
+    },
+    {
+      "case_id": "A04",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这台相机以前摔过吗？多少钱？",
+          "chat_id": "qa_a04_unknown",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "未知事实不得编造，且组合问题仍保留 1280 元。",
+      "response": [
+        {
+          "query": "这台相机以前摔过吗？多少钱？",
+          "answer": "该问题目前暂无足够信息确认。\n这件标价是 ¥1280.00。",
+          "reason": "摔碰历史_unavailable",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": false,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "unified",
+          "chat_id": "qa_a04_unknown",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "REPAIR_HISTORY",
+          "required_fields": [
+            "history"
+          ],
+          "facts": {
+            "history": {
+              "repair_history": "unknown",
+              "drop_history": "unknown",
+              "disassembly_history": "unknown"
+            }
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：没有声称相机从未摔过，并明确资料未记录"
+    },
+    {
+      "case_id": "A05",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个多少钱？",
+          "chat_id": "qa_a05_missing_item"
+        }
+      ],
+      "expected": "无商品上下文时询问具体商品，不随机选择。",
+      "response": [
+        {
+          "query": "这个多少钱？",
+          "answer": "请补充商品编号或具体商品信息。",
+          "reason": "buyer_question_requires_clarification",
+          "sources": [],
+          "can_answer": false,
+          "next_step": "clarify",
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a05_missing_item",
+          "action": "clarify"
+        }
+      ],
+      "reason": "请求买家补充商品信息；未随机绑定商品；内部原因明确为需要商品上下文"
+    },
+    {
+      "case_id": "A06",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a06_missing",
+          "item_id": "XXX999"
+        }
+      ],
+      "expected": "明确未找到 XXX999，不用其他商品或旧价格代替。",
+      "response": [
+        {
+          "query": "这个商品多少钱？",
+          "answer": "这件商品我暂时没查到，麻烦确认一下。",
+          "reason": "item_context_conflict",
+          "sources": [],
+          "can_answer": false,
+          "next_step": "clarify",
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a06_missing",
+          "action": "clarify",
+          "item_id": "XXX999",
+          "intent": "PRICE",
+          "required_fields": [
+            "listed_price_cents"
+          ],
+          "facts": {}
+        }
+      ],
+      "reason": "保留请求编号 XXX999；内部决策明确 XXX999 与可用商品上下文冲突；未对不存在商品作肯定回答；不存在商品请求买家确认商品信息；未使用其他商品价格"
+    },
+    {
+      "case_id": "A07",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a07_memory",
+          "item_id": "DEMO_ITEM_001"
+        },
+        {
+          "query": "那售后怎么处理？",
+          "chat_id": "qa_a07_memory"
+        },
+        {
+          "query": "它有什么配件？",
+          "chat_id": "qa_a07_memory"
+        }
+      ],
+      "expected": "同一会话三轮保持 001；规则和配件来自各自真实资料。",
+      "response": [
+        {
+          "query": "这个商品多少钱？",
+          "answer": "这件标价是 ¥1280.00。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a07_memory",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "PRICE",
+          "required_fields": [
+            "listed_price_cents"
+          ],
+          "facts": {
+            "listed_price_cents": 128000
+          }
+        },
+        {
+          "query": "那售后怎么处理？",
+          "answer": "售后按闲鱼平台规则走，交易和售后都在闲鱼内完成，退款、退货等以平台流程为准，卖家不能单方面降低已承诺的标准。\n\n这件商品描述里确认的是：正常使用痕迹、机身底部轻微划痕、功能正常、快门正常，配件为机身、背带、镜头盖。如果收到后与这些描述不符，可以在闲鱼订单内发起售后；如果只是个人不喜欢，是否支持退货要看平台规则和商品页面约定，目前页面没有额外承诺。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a07_memory",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "OTHER",
+          "required_fields": [],
+          "facts": {}
+        },
+        {
+          "query": "它有什么配件？",
+          "answer": "一起出的有 相机机身、相机背带、镜头盖。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a07_memory",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "ACCESSORIES",
+          "required_fields": [
+            "accessories",
+            "accessory_details"
+          ],
+          "facts": {
+            "accessories": [
+              "相机机身",
+              "相机背带",
+              "镜头盖"
+            ],
+            "accessory_details": {
+              "completeness": "unknown",
+              "original_accessories": "unknown",
+              "image_items": "unknown",
+              "manual_or_packaging": "unknown"
+            }
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：第三轮配件与 001 商品资料一致，第二轮规则无额外承诺"
+    },
+    {
+      "case_id": "A08",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a08_switch",
+          "item_id": "DEMO_ITEM_001"
+        },
+        {
+          "query": "这个商品还能买吗？",
+          "chat_id": "qa_a08_switch",
+          "item_id": "DEMO_ITEM_002"
+        },
+        {
+          "query": "那它还能买吗？",
+          "chat_id": "qa_a08_switch"
+        },
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a08_fresh"
+        }
+      ],
+      "expected": "显式切换后保持 002；新会话不继承商品。",
+      "response": [
+        {
+          "query": "这个商品多少钱？",
+          "answer": "这件标价是 ¥1280.00。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a08_switch",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "PRICE",
+          "required_fields": [
+            "listed_price_cents"
+          ],
+          "facts": {
+            "listed_price_cents": 128000
+          }
+        },
+        {
+          "query": "这个商品还能买吗？",
+          "answer": "这件已经出掉了。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_002"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a08_switch",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_002",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_002",
+            "title": "八成新机械键盘",
+            "listed_price_cents": 56000,
+            "sale_status": "sold",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "机械键盘",
+                "brand": null,
+                "model": "unknown"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "八成新，正常使用痕迹",
+                "scratches": "unknown",
+                "dents": "unknown"
+              },
+              "negotiation": "unknown",
+              "function": {
+                "overall": "working",
+                "shutter": "not_applicable"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "键盘本体"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "unknown",
+                "carrier": "unknown",
+                "shipping_fee": "unknown",
+                "dispatch_time": "unknown",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "unknown",
+                "usage": "unknown",
+                "sale_reason": "unknown"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "unknown",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "OTHER",
+          "required_fields": [],
+          "facts": {}
+        },
+        {
+          "query": "那它还能买吗？",
+          "answer": "这件已经出掉了。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_002"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a08_switch",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_002",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_002",
+            "title": "八成新机械键盘",
+            "listed_price_cents": 56000,
+            "sale_status": "sold",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "机械键盘",
+                "brand": null,
+                "model": "unknown"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "八成新，正常使用痕迹",
+                "scratches": "unknown",
+                "dents": "unknown"
+              },
+              "negotiation": "unknown",
+              "function": {
+                "overall": "working",
+                "shutter": "not_applicable"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "键盘本体"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "unknown",
+                "carrier": "unknown",
+                "shipping_fee": "unknown",
+                "dispatch_time": "unknown",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "unknown",
+                "usage": "unknown",
+                "sale_reason": "unknown"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "unknown",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "OTHER",
+          "required_fields": [],
+          "facts": {}
+        },
+        {
+          "query": "这个商品多少钱？",
+          "answer": "请补充商品编号或具体商品信息。",
+          "reason": "buyer_question_requires_clarification",
+          "sources": [],
+          "can_answer": false,
+          "next_step": "clarify",
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a08_fresh",
+          "action": "clarify"
+        }
+      ],
+      "reason": "切换后及后续轮次均为 002；002 当轮及后续结构化状态正确；002 两轮均由结构化事实直接回答；新会话没有继承商品并请求补充商品信息"
+    },
+    {
+      "case_id": "A09",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这个商品带 USB 数据线吗？",
+          "chat_id": "qa_a09_filter",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "检索和最终来源不得引入只属于 002 的 USB 数据线资料。",
+      "response": [
+        {
+          "query": "这个商品带 USB 数据线吗？",
+          "answer": "缺少依据",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "items/DEMO_ITEM_001.md",
+              "index": 17
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a09_filter",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "OTHER",
+          "required_fields": [],
+          "facts": {}
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：答案没有把 002 的 USB 数据线错误承诺给 001；Dense/BM25 过滤另由单元测试证明"
+    },
+    {
+      "case_id": "A10",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "你们店支持七天无理由退货吗？",
+          "chat_id": "qa_a10_old_promise"
+        }
+      ],
+      "expected": "不承诺未确认的七天无理由退货，不回退旧全库。",
+      "response": [
+        {
+          "query": "你们店支持七天无理由退货吗？",
+          "answer": "根据当前店铺通用售后规则，七天无理由退货并不是所有商品都默认支持，需要看具体订单页面、商品详情页或平台服务标识是否有明确标注。如果商品页面已明确承诺支持七天无理由，就按该承诺执行；如果没有标注，则不能直接认定支持。",
+          "sources": [
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a10_old_promise",
+          "action": "reply"
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：答案没有承诺七天无理由退货，且仅依据当前通用规则说明边界"
+    },
+    {
+      "case_id": "A11",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a11_price_only",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "纯价格请求由 MCP 事实直接回答，不受 RAG/Rerank 阈值阻断。",
+      "response": [
+        {
+          "query": "这个商品多少钱？",
+          "answer": "这件标价是 ¥1280.00。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a11_price_only",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "PRICE",
+          "required_fields": [
+            "listed_price_cents"
+          ],
+          "facts": {
+            "listed_price_cents": 128000
+          }
+        }
+      ],
+      "reason": "返回 1280.00 元；有效 MCP 事实可回答；来源仅为 MCP 商品工具"
+    },
+    {
+      "case_id": "A12",
+      "status": "阻塞",
+      "input": [],
+      "expected": "模拟 MCP 失败时不编价格，仍保留可用售后规则并标明价格查询失败。",
+      "response": [],
+      "reason": "真实服务验收脚本不得篡改运行配置来制造 MCP 故障；由 test_mcp_failure_keeps_independent_common_knowledge_answer 单元测试注入故障验证。"
+    },
+    {
+      "case_id": "A13",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这个商品多少钱？收到有质量问题怎么办？",
+          "chat_id": "qa_a13_no_mode",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "请求仅含 query/chat_id/item_id，商品和规则证据都生效。",
+      "response": [
+        {
+          "query": "这个商品多少钱？收到有质量问题怎么办？",
+          "answer": "这件标价是 ¥1280.00。\n收到后如果认为有质量问题，可以按下面处理：\n\n1. **先保留证据**  \n   拍开箱/收货视频、问题部位照片或视频，保留聊天记录和订单信息。\n\n2. **优先在闲鱼平台内申请售后**  \n   退款、退货、换货、维修、补发等，都通过原交易平台申请并保留记录，不要脱离平台私下转账或协商赔偿。\n\n3. **结合本商品已有描述判断**  \n   当前商品描述为：功能整体正常、快门正常，机身底部有轻微使用划痕，未见明显磕碰，配件为相机机身、背带、镜头盖。  \n   如果收到后的问题属于描述中未提及、且影响正常使用的故障，可以按平台售后流程申请处理；如果只是与“轻微使用划痕”等已描述成色相符的痕迹，通常不属于质量问题。\n\n4. **售后处理方式**  \n   本商品售后标注为“manual_review”，即需要结合平台规则和实际情况审核，不是直接承诺退货退款或赔偿。最终以闲鱼平台判定和订单页面约定为准。\n\n简单说：先留证，再在闲鱼内申请售后；是否支持退货、退款或维修，要看实际问题是否属于未描述的质量故障，以及平台审核结果。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "unified",
+          "chat_id": "qa_a13_no_mode",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-13T10:00:00+08:00",
+            "facts": {
+              "identity": {
+                "category": "胶片相机",
+                "brand": null,
+                "model": "复古胶片相机套装"
+              },
+              "condition": {
+                "appearance": null,
+                "function": null,
+                "known_issues": [],
+                "summary": "正常使用痕迹，外观整体干净",
+                "scratches": "机身底部有轻微使用划痕",
+                "dents": "未见明显磕碰"
+              },
+              "negotiation": "firm",
+              "function": {
+                "overall": "working",
+                "shutter": "working"
+              },
+              "history": {
+                "repair_history": "unknown",
+                "drop_history": "unknown",
+                "disassembly_history": "unknown"
+              },
+              "accessories": [
+                "相机机身",
+                "相机背带",
+                "镜头盖"
+              ],
+              "accessory_details": {
+                "completeness": "unknown",
+                "original_accessories": "unknown",
+                "image_items": "unknown",
+                "manual_or_packaging": "unknown"
+              },
+              "shipping": {
+                "ship_from": "上海",
+                "carrier": "中通快递",
+                "shipping_fee": "包邮",
+                "dispatch_time": "付款后 24 小时内发出",
+                "negotiation_policy": null,
+                "negotiation_express_policy": null
+              },
+              "product_info": {
+                "production_year": "unknown",
+                "beginner_suitability": "yes",
+                "usage": "装入对应胶卷后，确认电池和过片状态即可使用；新手建议先阅读基础胶片拍摄教程。",
+                "sale_reason": "整理闲置"
+              },
+              "after_sale": {
+                "transaction_channel": "xianyu",
+                "return_policy": "manual_review",
+                "description_policy": "seller_confirmed",
+                "inspection_confirmation": "unknown"
+              }
+            }
+          },
+          "intent": "PRICE",
+          "required_fields": [
+            "listed_price_cents"
+          ],
+          "facts": {
+            "listed_price_cents": 128000
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：售后内容与 seller_rules.md 一致"
+    },
+    {
+      "case_id": "A14",
+      "status": "阻塞",
+      "input": [],
+      "expected": "旧测试、真实联调和清理检查均完成，公开输出无底价/Cookie 且无双主链路。",
+      "response": [],
+      "reason": "本脚本只负责真实 /chat；pytest、真实 MCP 和静态清理检查必须在脚本外实际执行并记录，未执行前不能写通过。"
+    }
+  ]
+}

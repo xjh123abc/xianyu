@@ -6,10 +6,9 @@ import asyncio
 import json
 import logging
 import re
+import time
 from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Any
-
 from app.services.chat_contracts import SessionContext
 from app.services.intent_contracts import UnderstandingResult, UserNeed
 
@@ -24,11 +23,26 @@ _AMOUNT_RE = re.compile(r"(?<!\d)[¥￥]?\s*(\d{1,7}(?:\.\d{1,2})?)\s*(元|块|r
 _REPAIR_TERMS = ("修过", "维修", "拆修", "摔过", "摔", "跌过")
 _CONDITION_TERMS = ("成色", "外观", "新不新", "使用痕迹")
 _AVAILABILITY_TERMS = ("还在吗", "还在售", "在售吗", "还有吗", "有货", "能拍", "能买吗", "还能买", "还没卖", "卖掉了吗")
+_SALE_REASON_TERMS = ("为什么卖", "为什么要卖", "为啥卖", "因为什么卖")
 _IDENTITY_TERMS = ("什么型号", "型号", "品牌")
 _ACCESSORY_TERMS = ("配件", "带哪些", "带什么", "带啥", "包含", "附件", "齐不齐")
 _LENS_INFO_TERMS = ("带什么镜头", "带啥镜头", "镜头是什么", "什么镜头", "镜头焦段", "焦距")
-_FUNCTION_TERMS = ("快门正常", "快门坏", "功能正常", "能不能正常用", "能正常用")
-_PRICE_LISTED_TERMS = ("多少钱", "多少价格", "什么价", "价格", "标价", "售价")
+_FUNCTION_TERMS = ("快门正常", "快门坏", "功能正常", "能不能正常用", "能正常用", "能用不", "能用吗", "能不能用")
+_SELLER_INSPECTION_TERMS = (
+    "对比过",
+    "和手机",
+    "实测",
+    "测试过",
+    "测过",
+    "检测过",
+    "校准过",
+    "记录",
+)
+_WARRANTY_TERMS = ("保修", "质保", "保多久", "保多长")
+_PRICE_LISTED_TERMS = (
+    "多少钱", "多少价格", "什么价", "什么价格", "价格多少", "标价", "售价",
+    "怎么卖", "卖多少钱", "卖多少",
+)
 _PRICE_MIN_TERMS = ("最低", "底价", "便宜", "少点", "少一点", "优惠", "小刀", "刀吗", "出多少", "多少能出")
 _PRICE_MORE_TERMS = ("再少", "再便宜", "再优惠", "再刀", "还能少")
 _PRICE_CONFIRM_TERMS = ("就按", "刚才那个价", "刚才说的", "这个价")
@@ -54,6 +68,41 @@ _RETURN_SHIPPING_FEE_TERMS = (
 )
 _VAGUE_TERMS = ("那怎么办", "怎么办", "咋办", "那咋办")
 _NEGATED_PRODUCT_TERMS = ("不是问镜头型号", "不是问型号", "不是问镜头参数", "不是问成色")
+_THANKS_RE = re.compile(
+    r"(?:谢谢|谢了|感谢|多谢|辛苦了|thanks|thank\s+you|thx)[！!。？?~ ]*",
+    re.IGNORECASE,
+)
+_NO_REPLY_RE = re.compile(
+    r"(?:好|好的|好嘞|ok|okay|收到|明白|知道了|嗯|嗯嗯|不用了|先不用了|没事了|先这样)[！!。？?~ ]*",
+    re.IGNORECASE,
+)
+_NO_REPLY_EVENT_TERMS = (
+    "已读",
+    "已送达",
+    "消息送达",
+    "系统消息",
+    "系统事件",
+    "自动消息",
+    "拍下未付款",
+    "买家进入会话",
+    "买家离开会话",
+)
+_NO_REPLY_EXPLICIT_TERMS = ("不用回复", "不用回", "无需回复", "别回复", "别回")
+_POLITE_ONLY_TERMS = (
+    "你好",
+    "您好",
+    "哈喽",
+    "hello",
+    "hi",
+    "谢谢",
+    "谢了",
+    "感谢",
+    "多谢",
+    "辛苦了",
+    "thanks",
+    "thank you",
+    "thx",
+)
 
 
 class IntentAnalyzer:
@@ -82,11 +131,28 @@ class IntentAnalyzer:
             return UnderstandingResult.error("empty_intent_query")
 
         deterministic = _deterministic_understanding(query, context, item_id=item_id)
-        if deterministic is not None:
+        if deterministic is not None and (
+            deterministic.status != "ready"
+            or _covers_complete_query(query, deterministic.needs)
+            or self._semantic_planner is None
+        ):
             return deterministic
 
         if self._semantic_planner is None:
             return UnderstandingResult.error("intent_semantic_model_unavailable")
+
+        timeout_seconds = self._timeout_seconds
+        if context.deadline is not None:
+            timeout_seconds = min(
+                timeout_seconds, context.deadline - time.monotonic()
+            )
+        if timeout_seconds <= 0:
+            if deterministic is not None and deterministic.status == "ready":
+                return UnderstandingResult.ready(
+                    _with_safe_fallback_needs(query, deterministic.needs),
+                    model_called=False,
+                )
+            return UnderstandingResult.error("intent_model_timeout")
 
         try:
             payload = await asyncio.wait_for(
@@ -94,18 +160,42 @@ class IntentAnalyzer:
                     self._semantic_planner,
                     query,
                     history=context.history,
-                    timeout_seconds=self._timeout_seconds,
+                    timeout_seconds=timeout_seconds,
                 ),
-                timeout=self._timeout_seconds,
+                timeout=timeout_seconds,
             )
         except (asyncio.TimeoutError, TimeoutError):
             logger.warning("Intent semantic model timed out")
+            if deterministic is not None and deterministic.status == "ready":
+                return UnderstandingResult.ready(
+                    _with_safe_fallback_needs(query, deterministic.needs),
+                    model_called=True,
+                )
+            fallback_needs = _fallback_needs_for_uncovered_clauses(query, ())
+            if fallback_needs:
+                return UnderstandingResult.ready(fallback_needs, model_called=True)
             return UnderstandingResult.error("intent_model_timeout", model_called=True)
         except Exception:
             logger.warning("Intent semantic model failed", exc_info=True)
+            if deterministic is not None and deterministic.status == "ready":
+                return UnderstandingResult.ready(
+                    _with_safe_fallback_needs(query, deterministic.needs),
+                    model_called=True,
+                )
+            fallback_needs = _fallback_needs_for_uncovered_clauses(query, ())
+            if fallback_needs:
+                return UnderstandingResult.ready(fallback_needs, model_called=True)
             return UnderstandingResult.error("intent_model_failed", model_called=True)
 
         if payload is None:
+            if deterministic is not None and deterministic.status == "ready":
+                return UnderstandingResult.ready(
+                    _with_safe_fallback_needs(query, deterministic.needs),
+                    model_called=True,
+                )
+            fallback_needs = _fallback_needs_for_uncovered_clauses(query, ())
+            if fallback_needs:
+                return UnderstandingResult.ready(fallback_needs, model_called=True)
             return UnderstandingResult.error(
                 "intent_semantic_model_unavailable",
                 model_called=True,
@@ -113,9 +203,37 @@ class IntentAnalyzer:
 
         parsed = _parse_model_payload(payload, query)
         if parsed.status == "ready":
+            valid_model_needs = tuple(
+                need for need in parsed.needs if _model_need_keeps_source_meaning(need)
+            )
+            needs = _merge_rule_and_model_needs(
+                query,
+                deterministic.needs if deterministic is not None else (),
+                valid_model_needs,
+            )
+            needs = _with_safe_fallback_needs(query, needs)
+            if not needs:
+                return UnderstandingResult.error(
+                    "intent_semantic_empty_after_validation",
+                    raw_response=payload,
+                    model_called=True,
+                )
             return UnderstandingResult.ready(
-                parsed.needs,
+                needs,
                 dependencies=parsed.dependencies,
+                raw_response=payload,
+                model_called=True,
+            )
+        if deterministic is not None and deterministic.status == "ready":
+            return UnderstandingResult.ready(
+                _with_safe_fallback_needs(query, deterministic.needs),
+                raw_response=payload,
+                model_called=True,
+            )
+        fallback_needs = _fallback_needs_for_uncovered_clauses(query, ())
+        if fallback_needs:
+            return UnderstandingResult.ready(
+                fallback_needs,
                 raw_response=payload,
                 model_called=True,
             )
@@ -155,6 +273,29 @@ def _deterministic_understanding(
             )
         )
         return UnderstandingResult.ready(needs)
+    if _is_thanks(lowered):
+        needs.append(
+            _need(
+                "service.thanks",
+                query,
+                "普通感谢",
+                subject="seller",
+                outcome="thanks",
+            )
+        )
+        return UnderstandingResult.ready(needs)
+    if _is_no_reply(query, lowered):
+        needs.append(
+            _need(
+                "service.no_reply",
+                query,
+                "无需回复",
+                subject="system_or_closing",
+                outcome="no_reply",
+                reply_required=False,
+            )
+        )
+        return UnderstandingResult.ready(needs)
 
     repair_as_condition = _repair_is_only_transaction_condition(lowered)
     if _has_any(lowered, _AVAILABILITY_TERMS):
@@ -176,6 +317,17 @@ def _deterministic_understanding(
                 "查询当前商品品牌或型号",
                 subject="当前商品",
                 outcome="identity_model",
+            )
+        )
+
+    if _has_any(lowered, _SALE_REASON_TERMS):
+        needs.append(
+            _need(
+                "product.sale_reason",
+                _source(query, _SALE_REASON_TERMS),
+                "查询卖家出售当前商品的原因",
+                subject="当前商品",
+                outcome="sale_reason",
             )
         )
 
@@ -237,6 +389,17 @@ def _deterministic_understanding(
                 "查询当前商品功能是否正常",
                 subject="当前商品",
                 outcome="function_status",
+            )
+        )
+
+    if _asks_seller_inspection_record(lowered):
+        needs.append(
+            _need(
+                "product.inspection_record",
+                _source(query, _SELLER_INSPECTION_TERMS),
+                _inspection_record_normalized(lowered),
+                subject=_inspection_record_subject(lowered),
+                outcome="inspection_record",
             )
         )
 
@@ -480,6 +643,178 @@ def _dedupe_needs(needs: Sequence[UserNeed]) -> list[UserNeed]:
     return deduped
 
 
+def _merge_rule_and_model_needs(
+    query: str,
+    rule_needs: Sequence[UserNeed],
+    model_needs: Sequence[UserNeed],
+) -> tuple[UserNeed, ...]:
+    """Keep deterministic needs and add only distinct model-completed needs."""
+
+    merged = [*rule_needs]
+    for need in model_needs:
+        if any(_same_semantic_need(existing, need) for existing in merged):
+            continue
+        merged.append(need)
+    return _renumber_needs(_ordered_needs(query, merged))
+
+
+def _with_safe_fallback_needs(
+    query: str,
+    needs: Sequence[UserNeed],
+) -> tuple[UserNeed, ...]:
+    fallback_needs = _fallback_needs_for_uncovered_clauses(query, needs)
+    if not fallback_needs:
+        return tuple(needs)
+    return _merge_rule_and_model_needs(query, needs, fallback_needs)
+
+
+def _fallback_needs_for_uncovered_clauses(
+    query: str,
+    needs: Sequence[UserNeed],
+) -> tuple[UserNeed, ...]:
+    """Add only low-risk visible fallbacks for clauses rules/model missed."""
+
+    fallbacks: list[UserNeed] = []
+    parts = [part.strip() for part in _PUNCT_RE.split(query) if part.strip()]
+    for part in parts:
+        lowered = part.casefold()
+        if _clause_is_covered(part, (*needs, *fallbacks)):
+            continue
+        if _asks_warranty(lowered):
+            fallbacks.append(
+                _need(
+                    "after_sale.consult",
+                    part,
+                    "咨询当前商品保修或售后规则",
+                    subject="保修",
+                    outcome="warranty_policy",
+                )
+            )
+        elif _asks_seller_inspection_record(lowered):
+            fallbacks.append(
+                _need(
+                    "product.inspection_record",
+                    part,
+                    _inspection_record_normalized(lowered),
+                    subject=_inspection_record_subject(lowered),
+                    outcome="inspection_record",
+                )
+            )
+    return _renumber_needs(fallbacks) if fallbacks else ()
+
+
+def _model_need_keeps_source_meaning(need: UserNeed) -> bool:
+    """Reject model needs that change a buyer clause into another business meaning."""
+
+    source = " ".join((need.original_question, *need.source_texts)).casefold()
+    if _asks_warranty(source) and need.intent != "after_sale.consult":
+        return False
+    if _asks_seller_inspection_record(source) and need.intent == "product.model_knowledge":
+        return False
+    if (
+        need.intent == "product.identity_model"
+        and not _has_any(source, _IDENTITY_TERMS)
+        and need.requested_outcome != "identity_model"
+    ):
+        return False
+    return True
+
+
+def _same_semantic_need(left: UserNeed, right: UserNeed) -> bool:
+    if left.intent != right.intent:
+        return False
+    left_sources = _need_sources(left)
+    right_sources = _need_sources(right)
+    return any(
+        left_source in right_source or right_source in left_source
+        for left_source in left_sources
+        for right_source in right_sources
+        if left_source and right_source
+    )
+
+
+def _need_sources(need: UserNeed) -> tuple[str, ...]:
+    return tuple(
+        source
+        for source in (
+            _canonical_source(need.original_question),
+            *(_canonical_source(source) for source in need.source_texts),
+        )
+        if source
+    )
+
+
+def _covers_complete_query(query: str, needs: Sequence[UserNeed]) -> bool:
+    """Return whether deterministic needs explain every meaningful clause."""
+
+    parts = [part.strip() for part in _PUNCT_RE.split(query) if part.strip()]
+    if not parts:
+        return False
+    return all(_clause_is_covered(part, needs) for part in parts)
+
+
+def _clause_is_covered(clause: str, needs: Sequence[UserNeed]) -> bool:
+    lowered = clause.casefold().strip()
+    if not lowered:
+        return True
+    if _is_polite_clause(lowered):
+        return True
+    return any(
+        _need_covers_clause(lowered, need)
+        or _scenario_condition_covers_clause(lowered, need)
+        for need in needs
+    )
+
+
+def _need_covers_clause(lowered_clause: str, need: UserNeed) -> bool:
+    candidates = [need.original_question, need.normalized_question, *need.source_texts]
+    return any(
+        lowered_clause in _canonical_source(candidate)
+        or _canonical_source(candidate) in lowered_clause
+        for candidate in candidates
+        if _canonical_source(candidate)
+    )
+
+
+def _scenario_condition_covers_clause(lowered_clause: str, need: UserNeed) -> bool:
+    for condition in need.conditions:
+        if condition.get("type") != "scenario":
+            continue
+        event = str(condition.get("event") or "").casefold()
+        if event and event != "商品有问题" and _event_terms_match_clause(event, lowered_clause):
+            return True
+        if (
+            condition.get("modality") == "reported_unverified"
+            and any(term in lowered_clause for term in ("收到", "到手", "收货"))
+            and any(term in lowered_clause for term in _DAMAGE_TERMS)
+        ):
+            return True
+    return False
+
+
+def _event_terms_match_clause(event: str, lowered_clause: str) -> bool:
+    if event in lowered_clause:
+        return True
+    if "镜头裂" in event and "镜头" in lowered_clause and any(term in lowered_clause for term in ("裂", "开裂", "裂痕")):
+        return True
+    if "镜片碎" in event and "镜片" in lowered_clause and "碎" in lowered_clause:
+        return True
+    if "快门坏" in event and "快门" in lowered_clause and "坏" in lowered_clause:
+        return True
+    return False
+
+
+def _is_polite_clause(lowered: str) -> bool:
+    cleaned = lowered.strip("，,。.!！?？、；;~ ")
+    if not cleaned:
+        return True
+    return any(cleaned == term.casefold() for term in _POLITE_ONLY_TERMS)
+
+
+def _canonical_source(value: object) -> str:
+    return str(value or "").casefold().strip("，,。.!！?？、；;~ ")
+
+
 def _ordered_needs(query: str, needs: Sequence[UserNeed]) -> list[UserNeed]:
     indexed = list(enumerate(needs))
     indexed.sort(key=lambda entry: (_need_position(query, entry[1]), entry[0]))
@@ -610,13 +945,18 @@ def _after_sale_needs(query: str, context: SessionContext) -> list[UserNeed]:
     lowered = query.casefold()
     needs: list[UserNeed] = []
     condition = _scenario_condition(lowered)
+    references: tuple[Mapping[str, object], ...] = ()
+    if not _has_scenario_context(condition):
+        inherited = _scenario_condition_from_history(context.history)
+        if inherited is not None:
+            condition, reference = inherited
+            references = (reference,)
     if _asks_after_sale(lowered) and _asks_return_or_after_sale_policy(lowered):
         normalized = _after_sale_normalized(condition, lowered)
-        references = ()
         if _is_contextual_return_followup(lowered):
             previous = _recent_user_text(context.history)
             if previous:
-                references = ({"role": "user", "content": previous},)
+                references = references or ({"role": "user", "content": previous},)
                 normalized = f"结合上一轮情景，{normalized}"
         needs.append(
             _need(
@@ -625,7 +965,7 @@ def _after_sale_needs(query: str, context: SessionContext) -> list[UserNeed]:
                 normalized,
                 subject=_subject_from_text(lowered),
                 outcome="return_or_after_sale_policy",
-                conditions=(condition,) if condition else (),
+                conditions=(condition,) if _has_scenario_context(condition) else (),
                 context_references=references,
             )
         )
@@ -638,6 +978,7 @@ def _after_sale_needs(query: str, context: SessionContext) -> list[UserNeed]:
                 subject="退货运费",
                 outcome="return_shipping_fee",
                 conditions=(condition,) if _has_scenario_context(condition) else (),
+                context_references=references,
             )
         )
     if "多久到" in lowered or "多久到账" in lowered:
@@ -649,6 +990,7 @@ def _after_sale_needs(query: str, context: SessionContext) -> list[UserNeed]:
                 subject="退款时效",
                 outcome="refund_timing",
                 conditions=(condition,) if _has_scenario_context(condition) else (),
+                context_references=references,
             )
         )
     return needs
@@ -715,6 +1057,19 @@ def _is_greeting(lowered: str) -> bool:
     return re.fullmatch(r"(?:你好|您好|哈喽|hello|hi)[！!。？? ]*", lowered) is not None
 
 
+def _is_thanks(lowered: str) -> bool:
+    return _THANKS_RE.fullmatch(lowered) is not None
+
+
+def _is_no_reply(query: str, lowered: str) -> bool:
+    cleaned = lowered.strip("，,。.!！?？、；;~ ")
+    if _NO_REPLY_RE.fullmatch(cleaned) is not None:
+        return True
+    if any(term in lowered for term in _NO_REPLY_EXPLICIT_TERMS):
+        return True
+    return any(term in str(query or "") for term in _NO_REPLY_EVENT_TERMS)
+
+
 def _is_vague_followup(lowered: str) -> bool:
     return lowered.strip("？?。!！ ") in _VAGUE_TERMS
 
@@ -764,12 +1119,42 @@ def _asks_model_knowledge(lowered: str) -> bool:
         or _asks_lens_or_accessories(lowered)
         or _asks_shipping_fee(lowered)
         or _asks_carrier(lowered)
+        or _asks_seller_inspection_record(lowered)
     ):
         return False
     return any(
         term in lowered
         for term in ("50mm", "适合", "怎么用", "怎么装", "安装", "测光", "电池", "兼容", "外接", "闪光灯", "自拍功能", "数据线", "usb")
     )
+
+
+def _asks_warranty(lowered: str) -> bool:
+    return _has_any(lowered, _WARRANTY_TERMS)
+
+
+def _asks_seller_inspection_record(lowered: str) -> bool:
+    if not _has_any(lowered, _SELLER_INSPECTION_TERMS):
+        return False
+    return any(
+        term in lowered
+        for term in ("测光", "手机", "对比", "实测", "测试", "检测", "校准", "准不准", "准吗")
+    )
+
+
+def _inspection_record_subject(lowered: str) -> str:
+    if "测光" in lowered:
+        return "测光检测记录"
+    if "快门" in lowered:
+        return "快门检测记录"
+    if "镜头" in lowered:
+        return "镜头检测记录"
+    return "实物检测记录"
+
+
+def _inspection_record_normalized(lowered: str) -> str:
+    if "测光" in lowered and ("手机" in lowered or "对比" in lowered):
+        return "查询当前商品是否有测光与手机对比记录"
+    return "查询当前商品是否有对应实物检测记录"
 
 
 def _asks_after_sale(lowered: str) -> bool:
@@ -859,10 +1244,24 @@ def _scenario_condition(lowered: str) -> dict[str, object]:
     }
 
 
+def _scenario_condition_from_history(
+    history: Sequence[Mapping[str, object]],
+) -> tuple[dict[str, object], Mapping[str, object]] | None:
+    previous = _recent_user_text(history)
+    if not previous:
+        return None
+    condition = _scenario_condition(previous.casefold())
+    if not _has_scenario_context(condition):
+        return None
+    return condition, {"role": "user", "content": previous}
+
+
 def _after_sale_normalized(condition: Mapping[str, object], lowered: str) -> str:
     event = str(condition.get("event") or "该情况")
     timing = str(condition.get("timing") or "unspecified")
     modality = condition.get("modality")
+    if not _has_scenario_context(condition):
+        return "咨询当前商品是否支持退货或售后处理"
     if "请直接退款" in lowered:
         return f"买家报告{event}并请求直接退款，确认当前支持的售后处理方式"
     if modality == "reported_unverified":

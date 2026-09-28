@@ -24,6 +24,12 @@ class ChatClient(Protocol):
     ) -> Mapping[str, Any]:
         ...
 
+    async def record_conversation_event(
+        self, *, account_id: str, chat_id: str, event_id: str, role: str,
+        source: str, content: str
+    ) -> Mapping[str, Any]:
+        ...
+
 
 class ChatApiClient:
     def __init__(
@@ -81,4 +87,30 @@ class ChatApiClient:
             payload = response.json()
         if not isinstance(payload, Mapping):
             raise ValueError("delivery response must be a JSON object")
+        return payload
+
+    async def record_conversation_event(
+        self, *, account_id: str, chat_id: str, event_id: str, role: str,
+        source: str, content: str
+    ) -> Mapping[str, Any]:
+        """Append a channel event to chat history without generating a reply."""
+        if not self.delivery_token:
+            raise RuntimeError("XIANYU_DELIVERY_TOKEN is not configured")
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.base_url}/internal/chat/events",
+                json={
+                    "account_id": account_id,
+                    "chat_id": chat_id,
+                    "event_id": event_id,
+                    "role": role,
+                    "source": source,
+                    "content": content,
+                },
+                headers={"X-Internal-Token": self.delivery_token},
+            )
+            response.raise_for_status()
+            payload = response.json()
+        if not isinstance(payload, Mapping):
+            raise ValueError("conversation event response must be a JSON object")
         return payload

@@ -1,0 +1,832 @@
+{
+  "generated_at": "2026-09-10T18:22:50+08:00",
+  "base_url": "http://127.0.0.1:8010",
+  "notes": [
+    "This runner called the live HTTP /chat endpoint and did not replace application dependencies.",
+    "阻塞 means the case still requires a manual or separately executed check; it is never counted as PASS."
+  ],
+  "summary": {
+    "通过": 5,
+    "失败": 0,
+    "阻塞": 9
+  },
+  "cases": [
+    {
+      "case_id": "A01",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个商品标价多少？",
+          "chat_id": "qa_a01_001",
+          "item_id": "DEMO_ITEM_001"
+        },
+        {
+          "query": "这个商品还能买吗？",
+          "chat_id": "qa_a01_002",
+          "item_id": "DEMO_ITEM_002"
+        },
+        {
+          "query": "这个商品还在售吗？",
+          "chat_id": "qa_a01_003",
+          "item_id": "DEMO_ITEM_003"
+        }
+      ],
+      "expected": "001 标价 1280 元；002 已售出；003 状态未知且不承诺可买。",
+      "response": [
+        {
+          "query": "这个商品标价多少？",
+          "answer": "“复古胶片相机套装”的卖家维护标价为 ¥1280.00。资料更新时间：2026-09-09T09:00:00+08:00。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a01_001",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        },
+        {
+          "query": "这个商品还能买吗？",
+          "answer": "“八成新机械键盘”的卖家资料标记为已售出。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_002"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a01_002",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_002",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_002",
+            "title": "八成新机械键盘",
+            "listed_price_cents": 56000,
+            "sale_status": "sold",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:05:00+08:00"
+          }
+        },
+        {
+          "query": "这个商品还在售吗？",
+          "answer": "该商品当前状态在卖家资料中标记为未知，无法替你确认，请联系卖家核实。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_003"
+            }
+          ],
+          "can_answer": false,
+          "next_step": "human_handoff",
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a01_003",
+          "action": "handoff",
+          "item_id": "DEMO_ITEM_003",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_003",
+            "title": "家用半自动咖啡机",
+            "listed_price_cents": 98000,
+            "sale_status": "unknown",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:10:00+08:00"
+          }
+        }
+      ],
+      "reason": "001 返回 1280.00 元；002 返回已售出；003 明确状态未知且不作肯定承诺；三项均包含真实商品工具来源"
+    },
+    {
+      "case_id": "A02",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "你们店售后怎么处理？",
+          "chat_id": "qa_a02_general"
+        }
+      ],
+      "expected": "新会话无商品也使用通用规则，不要求模式或商品。",
+      "response": [
+        {
+          "query": "你们店售后怎么处理？",
+          "answer": "根据当前参考资料，只能确认以下售后边界：\n\n- 二手商品的成色、瑕疵和配件，以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价等附加条件，需要卖家单独确认，机器人不会自行承诺。\n- 如果资料冲突、售卖状态未知，或你提出争议，会先停止自动承诺，并转卖家处理。\n- 这份资料是卖家通用规则演示快照，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时订单/政策查询结果。\n\n因此，具体“你们店售后怎么处理”无法仅凭该资料确认。建议直接转人工客服或联系卖家，并提供具体订单/商品信息，由卖家确认售后方案。",
+          "sources": [
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": {
+            "can_answer": true,
+            "next_step": "context_builder",
+            "reason": "sufficient_evidence",
+            "top_rerank_score": 7.5,
+            "threshold": 0.5
+          },
+          "results": [
+            {
+              "content": "# 闲鱼卖家通用规则（演示快照）\n\n这是一份卖家人工确认的演示资料，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时库存或订单查询结果。\n\n## 发货与沟通\n\n- 已确认付款后，卖家通常会在 48 小时内安排发出；具体以卖家最新确认和商品页面说明为准。\n- 发出后会在对话中补充可公开的物流信息；未确认的物流状态不作承诺。\n- 买家应在付款前确认商品成色、配件和功能。资料没有写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n## 售后与边界\n\n- 二手商品的成色、瑕疵和配件以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价和其他附加条件需要卖家单独确认，机器人不自行承诺。\n- 资料冲突、售卖状态未知或买家提出争议时，先停止自动承诺并转卖家处理。\n\n## 资料性质\n\n本文件的更新时间和适用范围必须如实说明。不能把本地快照描述成刚刚从闲鱼平台实时查询到的库存、订单或政策。\n",
+              "score": 0.03278688524590164,
+              "source": "common/seller_rules.md",
+              "chunk_index": 0
+            }
+          ],
+          "route": "xianyu",
+          "chat_id": "qa_a02_general",
+          "action": "reply"
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：售后表述与 seller_rules.md 原文和适用边界一致"
+    },
+    {
+      "case_id": "A03",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "多少钱？收到有质量问题怎么办？",
+          "chat_id": "qa_a03_combined",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "同次请求保留 1280 元商品事实和真实通用规则证据。",
+      "response": [
+        {
+          "query": "多少钱？收到有质量问题怎么办？",
+          "answer": "“复古胶片相机套装”的卖家维护标价为 ¥1280.00。资料更新时间：2026-09-09T09:00:00+08:00。\n根据现有参考资料，无法确认具体的质量问题退换/赔付流程。资料明确：出现争议时应先停止自动承诺，并转卖家处理。\n\n建议你：\n1. 保留商品问题照片/视频、聊天记录、商品页面说明等证据；\n2. 直接联系卖家协商处理；\n3. 若协商不成或涉及订单争议，转人工客服处理。\n\n当前资料只是本地演示快照，不代表闲鱼平台统一规则或实时政策，因此不能承诺退货、退款或赔付结果。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": {
+            "can_answer": true,
+            "next_step": "context_builder",
+            "reason": "sufficient_evidence",
+            "top_rerank_score": 7.25,
+            "threshold": 0.5
+          },
+          "results": [
+            {
+              "content": "# 闲鱼卖家通用规则（演示快照）\n\n这是一份卖家人工确认的演示资料，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时库存或订单查询结果。\n\n## 发货与沟通\n\n- 已确认付款后，卖家通常会在 48 小时内安排发出；具体以卖家最新确认和商品页面说明为准。\n- 发出后会在对话中补充可公开的物流信息；未确认的物流状态不作承诺。\n- 买家应在付款前确认商品成色、配件和功能。资料没有写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n## 售后与边界\n\n- 二手商品的成色、瑕疵和配件以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价和其他附加条件需要卖家单独确认，机器人不自行承诺。\n- 资料冲突、售卖状态未知或买家提出争议时，先停止自动承诺并转卖家处理。\n\n## 资料性质\n\n本文件的更新时间和适用范围必须如实说明。不能把本地快照描述成刚刚从闲鱼平台实时查询到的库存、订单或政策。\n",
+              "score": 0.03278688524590164,
+              "source": "common/seller_rules.md",
+              "chunk_index": 0
+            }
+          ],
+          "route": "xianyu",
+          "chat_id": "qa_a03_combined",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：质量问题答复与已确认售后条款逐项一致"
+    },
+    {
+      "case_id": "A04",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这台相机以前摔过吗？多少钱？",
+          "chat_id": "qa_a04_unknown",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "未知事实不得编造，且组合问题仍保留 1280 元。",
+      "response": [
+        {
+          "query": "这台相机以前摔过吗？多少钱？",
+          "answer": "“复古胶片相机套装”的卖家维护标价为 ¥1280.00。资料更新时间：2026-09-09T09:00:00+08:00。\n资料里没有记录这台相机是否摔过，**无法确认**，也不能据此推断“没摔过”。\n\n如果关心这一点，建议成交前让卖家再次确认，或转人工/卖家核实。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "items/DEMO_ITEM_001.md",
+              "index": 1
+            },
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": {
+            "can_answer": true,
+            "next_step": "context_builder",
+            "reason": "sufficient_evidence",
+            "top_rerank_score": 8.875,
+            "threshold": 0.5
+          },
+          "results": [
+            {
+              "content": "# 复古胶片相机套装：商品说明（演示）\n\n这台相机为卖家记录的九成新机身，正常使用痕迹主要在底部边角。快门、测光和闪光灯已在卖家上次整理时做过基础测试，但没有专业检测报告。\n\n随商品提供原厂背带、镜头前后盖和一个通用电池。说明书不在套装内，电池容量和续航不作额外保证。\n\n资料没有记录完整维修史。买家如果关心维修、拆修或特定功能，应在成交前让卖家再次确认。\n",
+              "score": 0.03278688524590164,
+              "source": "items/DEMO_ITEM_001.md",
+              "chunk_index": 1
+            },
+            {
+              "content": "# 闲鱼卖家通用规则（演示快照）\n\n这是一份卖家人工确认的演示资料，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时库存或订单查询结果。\n\n## 发货与沟通\n\n- 已确认付款后，卖家通常会在 48 小时内安排发出；具体以卖家最新确认和商品页面说明为准。\n- 发出后会在对话中补充可公开的物流信息；未确认的物流状态不作承诺。\n- 买家应在付款前确认商品成色、配件和功能。资料没有写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n## 售后与边界\n\n- 二手商品的成色、瑕疵和配件以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价和其他附加条件需要卖家单独确认，机器人不自行承诺。\n- 资料冲突、售卖状态未知或买家提出争议时，先停止自动承诺并转卖家处理。\n\n## 资料性质\n\n本文件的更新时间和适用范围必须如实说明。不能把本地快照描述成刚刚从闲鱼平台实时查询到的库存、订单或政策。\n",
+              "score": 0.03225806451612903,
+              "source": "common/seller_rules.md",
+              "chunk_index": 0
+            }
+          ],
+          "route": "xianyu",
+          "chat_id": "qa_a04_unknown",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：没有声称相机从未摔过，并明确资料未记录"
+    },
+    {
+      "case_id": "A05",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个多少钱？",
+          "chat_id": "qa_a05_missing_item"
+        }
+      ],
+      "expected": "无商品上下文时询问具体商品，不随机选择。",
+      "response": [
+        {
+          "query": "这个多少钱？",
+          "answer": "请提供具体商品编号（例如 DEMO_ITEM_001），我再帮你查询对应商品。",
+          "sources": [],
+          "can_answer": false,
+          "next_step": "clarify_question",
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a05_missing_item",
+          "action": "clarify"
+        }
+      ],
+      "reason": "返回 clarify；未随机绑定商品；要求提供商品编号"
+    },
+    {
+      "case_id": "A06",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a06_missing",
+          "item_id": "XXX999"
+        }
+      ],
+      "expected": "明确未找到 XXX999，不用其他商品或旧价格代替。",
+      "response": [
+        {
+          "query": "这个商品多少钱？",
+          "answer": "未找到商品 XXX999，请核对商品编号。",
+          "sources": [],
+          "can_answer": false,
+          "next_step": "clarify_question",
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a06_missing",
+          "action": "clarify",
+          "item_id": "XXX999"
+        }
+      ],
+      "reason": "保留请求编号 XXX999；明确告知 XXX999 未找到；未对不存在商品作肯定回答；未使用其他商品价格"
+    },
+    {
+      "case_id": "A07",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a07_memory",
+          "item_id": "DEMO_ITEM_001"
+        },
+        {
+          "query": "那售后怎么处理？",
+          "chat_id": "qa_a07_memory"
+        },
+        {
+          "query": "它有什么配件？",
+          "chat_id": "qa_a07_memory"
+        }
+      ],
+      "expected": "同一会话三轮保持 001；规则和配件来自各自真实资料。",
+      "response": [
+        {
+          "query": "这个商品多少钱？",
+          "answer": "“复古胶片相机套装”的卖家维护标价为 ¥1280.00。资料更新时间：2026-09-09T09:00:00+08:00。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a07_memory",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        },
+        {
+          "query": "那售后怎么处理？",
+          "answer": "按这份演示快照，售后没有写明统一的退换货时限或流程，所以具体售后处理方式**无法确认**，需要转人工客服/卖家确认。\n\n可依据的规则是：\n\n1. 二手商品的成色、瑕疵、配件，以**对应商品资料和双方确认内容**为准。  \n2. 多件打包、赠品、包邮、改价等附加条件，需要**卖家单独确认**，机器人不自行承诺。  \n3. 如果资料冲突、售卖状态未知，或你提出争议，会**先停止自动承诺，转",
+          "sources": [
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": {
+            "can_answer": true,
+            "next_step": "context_builder",
+            "reason": "sufficient_evidence",
+            "top_rerank_score": 7.5625,
+            "threshold": 0.5
+          },
+          "results": [
+            {
+              "content": "# 闲鱼卖家通用规则（演示快照）\n\n这是一份卖家人工确认的演示资料，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时库存或订单查询结果。\n\n## 发货与沟通\n\n- 已确认付款后，卖家通常会在 48 小时内安排发出；具体以卖家最新确认和商品页面说明为准。\n- 发出后会在对话中补充可公开的物流信息；未确认的物流状态不作承诺。\n- 买家应在付款前确认商品成色、配件和功能。资料没有写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n## 售后与边界\n\n- 二手商品的成色、瑕疵和配件以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价和其他附加条件需要卖家单独确认，机器人不自行承诺。\n- 资料冲突、售卖状态未知或买家提出争议时，先停止自动承诺并转卖家处理。\n\n## 资料性质\n\n本文件的更新时间和适用范围必须如实说明。不能把本地快照描述成刚刚从闲鱼平台实时查询到的库存、订单或政策。\n",
+              "score": 0.03278688524590164,
+              "source": "common/seller_rules.md",
+              "chunk_index": 0
+            }
+          ],
+          "route": "xianyu",
+          "chat_id": "qa_a07_memory",
+          "action": "reply"
+        },
+        {
+          "query": "它有什么配件？",
+          "answer": "根据商品资料，这套复古胶片相机套装的配件包括：\n\n- 原厂背带\n- 镜头前后盖\n- 一个通用电池\n\n说明书不在套装内；电池容量和续航不作额外保证。  \n其他配件资料未记录，不能推断为“没有”。如果你还关心特定配件，建议成交前让卖家再次确认。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "items/DEMO_ITEM_001.md",
+              "index": 1
+            },
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": {
+            "can_answer": true,
+            "next_step": "context_builder",
+            "reason": "sufficient_evidence",
+            "top_rerank_score": 6.75,
+            "threshold": 0.5
+          },
+          "results": [
+            {
+              "content": "# 复古胶片相机套装：商品说明（演示）\n\n这台相机为卖家记录的九成新机身，正常使用痕迹主要在底部边角。快门、测光和闪光灯已在卖家上次整理时做过基础测试，但没有专业检测报告。\n\n随商品提供原厂背带、镜头前后盖和一个通用电池。说明书不在套装内，电池容量和续航不作额外保证。\n\n资料没有记录完整维修史。买家如果关心维修、拆修或特定功能，应在成交前让卖家再次确认。\n",
+              "score": 0.03278688524590164,
+              "source": "items/DEMO_ITEM_001.md",
+              "chunk_index": 1
+            },
+            {
+              "content": "# 闲鱼卖家通用规则（演示快照）\n\n这是一份卖家人工确认的演示资料，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时库存或订单查询结果。\n\n## 发货与沟通\n\n- 已确认付款后，卖家通常会在 48 小时内安排发出；具体以卖家最新确认和商品页面说明为准。\n- 发出后会在对话中补充可公开的物流信息；未确认的物流状态不作承诺。\n- 买家应在付款前确认商品成色、配件和功能。资料没有写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n## 售后与边界\n\n- 二手商品的成色、瑕疵和配件以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价和其他附加条件需要卖家单独确认，机器人不自行承诺。\n- 资料冲突、售卖状态未知或买家提出争议时，先停止自动承诺并转卖家处理。\n\n## 资料性质\n\n本文件的更新时间和适用范围必须如实说明。不能把本地快照描述成刚刚从闲鱼平台实时查询到的库存、订单或政策。\n",
+              "score": 0.03225806451612903,
+              "source": "common/seller_rules.md",
+              "chunk_index": 0
+            }
+          ],
+          "route": "xianyu",
+          "chat_id": "qa_a07_memory",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：第三轮配件与 001 商品资料一致，第二轮规则无额外承诺"
+    },
+    {
+      "case_id": "A08",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a08_switch",
+          "item_id": "DEMO_ITEM_001"
+        },
+        {
+          "query": "这个商品还能买吗？",
+          "chat_id": "qa_a08_switch",
+          "item_id": "DEMO_ITEM_002"
+        },
+        {
+          "query": "那它还能买吗？",
+          "chat_id": "qa_a08_switch"
+        },
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a08_fresh"
+        }
+      ],
+      "expected": "显式切换后保持 002；新会话不继承商品。",
+      "response": [
+        {
+          "query": "这个商品多少钱？",
+          "answer": "“复古胶片相机套装”的卖家维护标价为 ¥1280.00。资料更新时间：2026-09-09T09:00:00+08:00。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a08_switch",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        },
+        {
+          "query": "这个商品还能买吗？",
+          "answer": "“八成新机械键盘”的卖家资料标记为已售出。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_002"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a08_switch",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_002",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_002",
+            "title": "八成新机械键盘",
+            "listed_price_cents": 56000,
+            "sale_status": "sold",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:05:00+08:00"
+          }
+        },
+        {
+          "query": "那它还能买吗？",
+          "answer": "“八成新机械键盘”的卖家资料标记为已售出。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_002"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a08_switch",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_002",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_002",
+            "title": "八成新机械键盘",
+            "listed_price_cents": 56000,
+            "sale_status": "sold",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:05:00+08:00"
+          }
+        },
+        {
+          "query": "这个商品多少钱？",
+          "answer": "请提供具体商品编号（例如 DEMO_ITEM_001），我再帮你查询对应商品。",
+          "sources": [],
+          "can_answer": false,
+          "next_step": "clarify_question",
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a08_fresh",
+          "action": "clarify"
+        }
+      ],
+      "reason": "切换后及后续轮次均为 002；002 当轮及后续状态正确；002 两轮均由结构化事实直接回答；新会话没有继承商品"
+    },
+    {
+      "case_id": "A09",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这个商品带 USB 数据线吗？",
+          "chat_id": "qa_a09_filter",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "检索和最终来源不得引入只属于 002 的 USB 数据线资料。",
+      "response": [
+        {
+          "query": "这个商品带 USB 数据线吗？",
+          "answer": "无法确认。商品说明中列明的随附配件只有：原厂背带、镜头前后盖、通用电池；未提及 USB 数据线。按规则，资料没写明的配件不能推断为“没有”。\n\n建议成交前直接让卖家确认是否包含 USB 数据线；如卖家未确认，不要默认带或不带。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "items/DEMO_ITEM_001.md",
+              "index": 1
+            },
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": {
+            "can_answer": true,
+            "next_step": "context_builder",
+            "reason": "sufficient_evidence",
+            "top_rerank_score": 2.5,
+            "threshold": 0.5
+          },
+          "results": [
+            {
+              "content": "# 复古胶片相机套装：商品说明（演示）\n\n这台相机为卖家记录的九成新机身，正常使用痕迹主要在底部边角。快门、测光和闪光灯已在卖家上次整理时做过基础测试，但没有专业检测报告。\n\n随商品提供原厂背带、镜头前后盖和一个通用电池。说明书不在套装内，电池容量和续航不作额外保证。\n\n资料没有记录完整维修史。买家如果关心维修、拆修或特定功能，应在成交前让卖家再次确认。\n",
+              "score": 0.03278688524590164,
+              "source": "items/DEMO_ITEM_001.md",
+              "chunk_index": 1
+            },
+            {
+              "content": "# 闲鱼卖家通用规则（演示快照）\n\n这是一份卖家人工确认的演示资料，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时库存或订单查询结果。\n\n## 发货与沟通\n\n- 已确认付款后，卖家通常会在 48 小时内安排发出；具体以卖家最新确认和商品页面说明为准。\n- 发出后会在对话中补充可公开的物流信息；未确认的物流状态不作承诺。\n- 买家应在付款前确认商品成色、配件和功能。资料没有写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n## 售后与边界\n\n- 二手商品的成色、瑕疵和配件以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价和其他附加条件需要卖家单独确认，机器人不自行承诺。\n- 资料冲突、售卖状态未知或买家提出争议时，先停止自动承诺并转卖家处理。\n\n## 资料性质\n\n本文件的更新时间和适用范围必须如实说明。不能把本地快照描述成刚刚从闲鱼平台实时查询到的库存、订单或政策。\n",
+              "score": 0.03225806451612903,
+              "source": "common/seller_rules.md",
+              "chunk_index": 0
+            }
+          ],
+          "route": "xianyu",
+          "chat_id": "qa_a09_filter",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：答案没有把 002 的 USB 数据线错误承诺给 001；Dense/BM25 过滤另由单元测试证明"
+    },
+    {
+      "case_id": "A10",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "你们店支持七天无理由退货吗？",
+          "chat_id": "qa_a10_old_promise"
+        }
+      ],
+      "expected": "不承诺未确认的七天无理由退货，不回退旧全库。",
+      "response": [
+        {
+          "query": "你们店支持七天无理由退货吗？",
+          "answer": "根据提供的资料，**无法确认本店是否支持七天无理由退货**。  \n资料中未写明该政策，且二手商品售后以对应商品资料和双方确认内容为准。建议您购买前直接联系卖家或转人工客服确认具体退货规则。",
+          "sources": [
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": {
+            "can_answer": true,
+            "next_step": "context_builder",
+            "reason": "sufficient_evidence",
+            "top_rerank_score": 5.125,
+            "threshold": 0.5
+          },
+          "results": [
+            {
+              "content": "# 闲鱼卖家通用规则（演示快照）\n\n这是一份卖家人工确认的演示资料，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时库存或订单查询结果。\n\n## 发货与沟通\n\n- 已确认付款后，卖家通常会在 48 小时内安排发出；具体以卖家最新确认和商品页面说明为准。\n- 发出后会在对话中补充可公开的物流信息；未确认的物流状态不作承诺。\n- 买家应在付款前确认商品成色、配件和功能。资料没有写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n## 售后与边界\n\n- 二手商品的成色、瑕疵和配件以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价和其他附加条件需要卖家单独确认，机器人不自行承诺。\n- 资料冲突、售卖状态未知或买家提出争议时，先停止自动承诺并转卖家处理。\n\n## 资料性质\n\n本文件的更新时间和适用范围必须如实说明。不能把本地快照描述成刚刚从闲鱼平台实时查询到的库存、订单或政策。\n",
+              "score": 0.03278688524590164,
+              "source": "common/seller_rules.md",
+              "chunk_index": 0
+            }
+          ],
+          "route": "xianyu",
+          "chat_id": "qa_a10_old_promise",
+          "action": "reply"
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：答案没有承诺七天无理由退货，且仅依据当前通用规则说明边界"
+    },
+    {
+      "case_id": "A11",
+      "status": "通过",
+      "input": [
+        {
+          "query": "这个商品多少钱？",
+          "chat_id": "qa_a11_price_only",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "纯价格请求由 MCP 事实直接回答，不受 RAG/Rerank 阈值阻断。",
+      "response": [
+        {
+          "query": "这个商品多少钱？",
+          "answer": "“复古胶片相机套装”的卖家维护标价为 ¥1280.00。资料更新时间：2026-09-09T09:00:00+08:00。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            }
+          ],
+          "can_answer": true,
+          "next_step": null,
+          "reliability": null,
+          "results": [],
+          "route": "xianyu",
+          "chat_id": "qa_a11_price_only",
+          "action": "reply",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        }
+      ],
+      "reason": "返回 1280.00 元；有效 MCP 事实可回答；来源仅为 MCP 商品工具"
+    },
+    {
+      "case_id": "A12",
+      "status": "阻塞",
+      "input": [],
+      "expected": "模拟 MCP 失败时不编价格，仍保留可用售后规则并标明价格查询失败。",
+      "response": [],
+      "reason": "真实服务验收脚本不得篡改运行配置来制造 MCP 故障；由 test_mcp_failure_keeps_independent_common_knowledge_answer 单元测试注入故障验证。"
+    },
+    {
+      "case_id": "A13",
+      "status": "阻塞",
+      "input": [
+        {
+          "query": "这个商品多少钱？收到有质量问题怎么办？",
+          "chat_id": "qa_a13_no_mode",
+          "item_id": "DEMO_ITEM_001"
+        }
+      ],
+      "expected": "请求仅含 query/chat_id/item_id，商品和规则证据都生效。",
+      "response": [
+        {
+          "query": "这个商品多少钱？收到有质量问题怎么办？",
+          "answer": "“复古胶片相机套装”的卖家维护标价为 ¥1280.00。资料更新时间：2026-09-09T09:00:00+08:00。\n商品问题回答生成失败，请转人工客服。",
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "DEMO_ITEM_001"
+            },
+            {
+              "source": "common/seller_rules.md",
+              "index": 0
+            }
+          ],
+          "can_answer": false,
+          "next_step": "human_handoff",
+          "reliability": {
+            "can_answer": true,
+            "next_step": "context_builder",
+            "reason": "sufficient_evidence",
+            "top_rerank_score": 7.25,
+            "threshold": 0.5
+          },
+          "results": [
+            {
+              "content": "# 闲鱼卖家通用规则（演示快照）\n\n这是一份卖家人工确认的演示资料，只适用于本地示例商品，不代表闲鱼平台统一规则，也不是实时库存或订单查询结果。\n\n## 发货与沟通\n\n- 已确认付款后，卖家通常会在 48 小时内安排发出；具体以卖家最新确认和商品页面说明为准。\n- 发出后会在对话中补充可公开的物流信息；未确认的物流状态不作承诺。\n- 买家应在付款前确认商品成色、配件和功能。资料没有写明的维修史、隐藏瑕疵或配件，不推测为“没有”。\n\n## 售后与边界\n\n- 二手商品的成色、瑕疵和配件以对应商品资料及双方确认内容为准。\n- 多件打包、赠品、包邮、改价和其他附加条件需要卖家单独确认，机器人不自行承诺。\n- 资料冲突、售卖状态未知或买家提出争议时，先停止自动承诺并转卖家处理。\n\n## 资料性质\n\n本文件的更新时间和适用范围必须如实说明。不能把本地快照描述成刚刚从闲鱼平台实时查询到的库存、订单或政策。\n",
+              "score": 0.03278688524590164,
+              "source": "common/seller_rules.md",
+              "chunk_index": 0
+            }
+          ],
+          "route": "xianyu",
+          "chat_id": "qa_a13_no_mode",
+          "action": "handoff",
+          "item_id": "DEMO_ITEM_001",
+          "item_info": {
+            "found": true,
+            "item_id": "DEMO_ITEM_001",
+            "title": "复古胶片相机套装",
+            "listed_price_cents": 128000,
+            "sale_status": "listed",
+            "data_source": "seller_manual",
+            "updated_at": "2026-09-09T09:00:00+08:00"
+          }
+        }
+      ],
+      "reason": "自动边界检查通过；需人工对照真实资料复核：售后内容与 seller_rules.md 一致"
+    },
+    {
+      "case_id": "A14",
+      "status": "阻塞",
+      "input": [],
+      "expected": "旧测试、真实联调和清理检查均完成，公开输出无底价/Cookie 且无双主链路。",
+      "response": [],
+      "reason": "本脚本只负责真实 /chat；pytest、真实 MCP 和静态清理检查必须在脚本外实际执行并记录，未执行前不能写通过。"
+    }
+  ]
+}

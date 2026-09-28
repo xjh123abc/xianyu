@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import logging
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -211,11 +211,14 @@ class XianyuExpertOrchestrator:
                 continue
             if result.status == "answered":
                 if not isinstance(result.answer, str) or not result.answer.strip():
-                    completed[task.task_id] = ExpertResult.handoff(
-                        task,
-                        "expert_result_empty",
-                        sources=result.sources,
-                    )
+                    if _allows_empty_answer(task):
+                        completed[task.task_id] = result
+                    else:
+                        completed[task.task_id] = ExpertResult.handoff(
+                            task,
+                            "expert_result_empty",
+                            sources=result.sources,
+                        )
                 else:
                     completed[task.task_id] = result
             elif result.status == "handoff":
@@ -237,3 +240,11 @@ class XianyuExpertOrchestrator:
         if deadline is None:
             return 30.0
         return max(deadline - time.monotonic(), 0.001)
+
+
+def _allows_empty_answer(task: ExpertTask) -> bool:
+    return (
+        task.knowledge_scope == "no_reply"
+        or task.query_target == "no_reply"
+        or task.intent_context.get("intent") == "service.no_reply"
+    )

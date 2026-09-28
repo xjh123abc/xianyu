@@ -15,7 +15,7 @@ from app.services.xianyu.item_fact_responder import ItemFactResponder
 
 
 def _canon_item() -> dict[str, object]:
-    return ItemService().get_item_info("CANON_FTB_001")
+    return ItemService().get_item_info("TEST_CORE_ALIGNMENT_CAMERA")
 
 
 def _decision(query: str, item: dict[str, object] | None = None) -> PriceDecision:
@@ -146,6 +146,16 @@ def test_price_agent_does_not_accept_a_sold_item() -> None:
     assert decision.status == "answered"
     assert decision.answer == "这件已经出掉了。"
     assert decision.minimum_price_cents is None
+
+
+def test_listing_price_is_answered_when_platform_sale_status_is_unknown() -> None:
+    item = deepcopy(_canon_item())
+    item["sale_status"] = "unknown"
+
+    decision = _decision("这台相机怎么卖的？", item)
+
+    assert decision.status == "answered"
+    assert decision.answer == "这件标价是 ¥1500.00。"
 
 
 def test_price_agent_recalculates_from_the_original_price_on_every_turn() -> None:

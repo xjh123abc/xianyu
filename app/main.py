@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 
 from app.api.chat import chat_service, router as chat_router
 from app.api.chat_delivery import router as chat_delivery_router
+from app.api.chat_events import router as chat_events_router
 from app.api.conversations import router as conversations_router
 
 app = FastAPI(title="E-commerce AI Customer Service")
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 app.include_router(chat_router)
 app.include_router(chat_delivery_router)
+app.include_router(chat_events_router)
 app.include_router(conversations_router)
 
 

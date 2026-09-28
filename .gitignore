@@ -2,6 +2,7 @@
 .rag_ingestion_manifest.json
 .xianyu_ingestion_manifest.json
 data/private/
+data/xianyu/platform_items.json
 *.db
 *.sqlite3
 logs/

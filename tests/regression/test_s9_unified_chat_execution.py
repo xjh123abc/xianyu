@@ -49,7 +49,7 @@ _TASKS = [
 class _Planner:
     def plan(self, query: str, context: SessionContext, *, item_id: str | None = None) -> list[Task]:
         assert query == _QUERY
-        assert item_id == "CANON_FTB_001"
+        assert item_id == "TEST_CORE_ALIGNMENT_CAMERA"
         del context
         return _TASKS
 
@@ -68,10 +68,13 @@ class _Executor:
         tasks: Sequence[Task],
         message: ChatMessage,
         context: SessionContext,
+        *,
+        precomputed_responses: dict[str, dict[str, object]] | None = None,
     ) -> list[TaskResult]:
+        del precomputed_responses
         self.tasks = list(tasks)
-        assert message.item_id == "CANON_FTB_001"
-        assert context.current_item_id == "CANON_FTB_001"
+        assert message.item_id == "TEST_CORE_ALIGNMENT_CAMERA"
+        assert context.current_item_id == "TEST_CORE_ALIGNMENT_CAMERA"
         return [
             TaskResult("product-1", "answered", "没有维修记录。"),
             TaskResult("price-1", "answered", "最低 100 元。"),
@@ -93,7 +96,7 @@ class _Merger:
 
 class _Mcp:
     async def get_item_info(self, item_id: str) -> dict[str, object]:
-        assert item_id == "CANON_FTB_001"
+        assert item_id == "TEST_CORE_ALIGNMENT_CAMERA"
         return ItemService().get_item_info(item_id)
 
 
@@ -108,7 +111,7 @@ def test_chat_service_sends_product_price_and_service_results_to_result_merger()
     merger = _Merger()
     service.result_merger = merger  # type: ignore[assignment]
 
-    response = asyncio.run(service.chat_async(_QUERY, "s9-unified", item_id="CANON_FTB_001"))
+    response = asyncio.run(service.chat_async(_QUERY, "s9-unified", item_id="TEST_CORE_ALIGNMENT_CAMERA"))
 
     assert response["action"] == "reply"
     assert [task.task_type for task in executor.tasks] == ["product", "price", "service"]

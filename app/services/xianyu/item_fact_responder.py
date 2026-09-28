@@ -19,6 +19,7 @@ class ItemFactResponder:
         "history.drop_history": IntentMatch("REPAIR_HISTORY", ("history",), "rule"),
         "function.shutter": IntentMatch("FUNCTION", ("function",), "rule"),
         "function.overall": IntentMatch("FUNCTION", ("function",), "rule"),
+        "function.inspection_record": IntentMatch("INSPECTION_RECORD", ("inspection_record",), "rule"),
         "condition.summary": IntentMatch("CONDITION", ("condition",), "rule"),
         "condition.scratches": IntentMatch("DEFECT", ("condition",), "rule"),
         "condition.dents": IntentMatch("DEFECT", ("condition",), "rule"),
@@ -191,6 +192,19 @@ class ItemFactResponder:
             if value == "not_applicable":
                 return answer("这件商品不适用快门功能。")
             return needs_human("function_status_unavailable")
+
+        if intent == "INSPECTION_RECORD":
+            records = facts.get("inspection_record")
+            if isinstance(records, Mapping):
+                key = "meter_phone_comparison" if "测光" in lowered and ("手机" in lowered or "对比" in lowered) else "general"
+                value = known(records.get(key))
+                if value:
+                    return answer(self._natural_fact_value(value))
+            if isinstance(records, str) and known(records):
+                return answer(self._natural_fact_value(records))
+            if "测光" in lowered and ("手机" in lowered or "对比" in lowered):
+                return needs_human("meter_phone_comparison_record_unavailable")
+            return needs_human("inspection_record_unavailable")
 
         if intent == "ACCESSORIES":
             if query_target in {"lens.details", "lens.focal_length_mm"} or (

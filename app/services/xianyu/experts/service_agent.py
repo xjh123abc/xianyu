@@ -21,6 +21,7 @@ class ServiceAgent:
     """Handle shipping, after-sale, common seller rules, and simple greetings."""
 
     _GREETING = "你好，有什么想了解的？"
+    _THANKS = "不客气，有需要随时说。"
 
     def __init__(
         self,
@@ -42,7 +43,11 @@ class ServiceAgent:
         if task.expert != "service":
             return ExpertResult.handoff(task, "task_expert_mismatch")
         if task.knowledge_scope == "greeting":
+            if task.query_target == "thanks":
+                return ExpertResult.answered(task, self._THANKS)
             return ExpertResult.answered(task, self._GREETING)
+        if task.knowledge_scope == "no_reply":
+            return ExpertResult.answered(task, "")
         if task.knowledge_scope == "item_fact":
             return self._answer_item_fact(task, context)
         if task.knowledge_scope != "seller_rule":

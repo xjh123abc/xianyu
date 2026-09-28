@@ -81,7 +81,7 @@ def _service(
 
 
 def _canon_item() -> dict[str, object]:
-    return ItemService().get_item_info("CANON_FTB_001")
+    return ItemService().get_item_info("TEST_CORE_ALIGNMENT_CAMERA")
 
 
 def test_compound_turn_uses_one_unified_exit_and_keeps_task_order() -> None:
@@ -92,7 +92,7 @@ def test_compound_turn_uses_one_unified_exit_and_keeps_task_order() -> None:
         service.chat_async(
             "还在吗？有没有维修过？不包邮最低多少？",
             "s5_compound",
-            item_id="CANON_FTB_001",
+            item_id="TEST_CORE_ALIGNMENT_CAMERA",
         )
     )
     assert result["action"] == "reply", result
@@ -126,7 +126,7 @@ def test_follow_up_price_context_is_persisted_and_used_by_main_chain() -> None:
     service = _service(_canon_item())
 
     first = asyncio.run(
-        service.chat_async("包邮最低多少？", "s5_followup", item_id="CANON_FTB_001")
+        service.chat_async("包邮最低多少？", "s5_followup", item_id="TEST_CORE_ALIGNMENT_CAMERA")
     )
     second = asyncio.run(service.chat_async("那不包邮呢？", "s5_followup"))
 
@@ -136,6 +136,19 @@ def test_follow_up_price_context_is_persisted_and_used_by_main_chain() -> None:
     assert service.session_manager.get_xianyu_context("s5_followup")[
         "recent_price_topic"
     ] == "minimum"
+
+
+def test_no_reply_turn_returns_ignore_through_unified_main_chain() -> None:
+    generator = Mock()
+    service = _service(_canon_item(), generator)
+
+    result = asyncio.run(service.chat_async("好的", "s5_no_reply"))
+
+    assert result["action"] == "ignore"
+    assert result["answer"] == ""
+    assert result["reason"] == "no_reply_required"
+    generator.generate_xianyu.assert_not_called()
+    generator.generate_xianyu_expert.assert_not_called()
 
 
 def test_unified_unavailable_reason_survives_http_serialization(monkeypatch) -> None:
@@ -187,7 +200,7 @@ def test_missing_model_result_is_fail_closed() -> None:
         service.chat_async(
             "测光对比过吗？顺便还在吗？",
             "s5_missing_model_result",
-            item_id="CANON_FTB_001",
+            item_id="TEST_CORE_ALIGNMENT_CAMERA",
         )
     )
 
@@ -209,13 +222,13 @@ def test_current_item_context_is_reused_for_an_unclassified_follow_up() -> None:
     service = _service(_canon_item(), rag_service=EmptyRag())
 
     asyncio.run(
-        service.chat_async("还在吗？", "s5_current_item", item_id="CANON_FTB_001")
+        service.chat_async("还在吗？", "s5_current_item", item_id="TEST_CORE_ALIGNMENT_CAMERA")
     )
     result = asyncio.run(service.chat_async("测光对比过吗？", "s5_current_item"))
 
     assert result["action"] != "handoff"
-    assert result["item_id"] == "CANON_FTB_001"
-    assert "knowledge_evidence_unavailable" in str(result["reason"])
+    assert result["item_id"] == "TEST_CORE_ALIGNMENT_CAMERA"
+    assert "meter_phone_comparison_record_unavailable" in str(result["reason"])
 
 
 def test_common_seller_rule_also_uses_the_unified_orchestrator() -> None:

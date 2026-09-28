@@ -14,7 +14,8 @@ _PLAN_SYSTEM_PROMPT = """你是闲鱼客服问题规划器，只输出 JSON。
 _SEMANTIC_INTENT_SYSTEM_PROMPT = """你是闲鱼客服语义理解器，只输出 JSON。
 你只识别买家当前消息里的真实需求，不回答买家，不补充商品事实，不承诺售后、价格或发货。
 先理解完整消息，再拆成 1 到 N 个独立需求；不得仅按标点、关键词或专家名称合并/拆分。
-保留假设、否定、金额、运费、时效、对象和前置条件。历史只用于补全省略和指代，不得新增当前没问的问题。"""
+保留假设、否定、金额、运费、时效、对象和前置条件。历史只用于补全省略和指代，不得新增当前没问的问题。
+问候、感谢和明确无需回复的收尾/系统事件属于 service 语义；无需回复必须标记 reply_required=false。"""
 
 _PRODUCT_SYSTEM_PROMPT = """你是闲鱼商品专家，只处理当前这一项商品问题。
 结合输入的当前商品事实和证据，直接完成当前问题的回答。
@@ -80,7 +81,7 @@ def build_xianyu_semantic_intent_messages(
         "needs": [
             {
                 "need_id": "n1",
-                "intent": "product.repair_history|product.condition_summary|product.condition_issue|product.lens_details|product.accessories|product.function|product.model_knowledge|product.availability|product.identity_model|price.listed_price|price.minimum|price.offer|price.additional_discount|price.confirm|shipping.dispatch_time|shipping.carrier|shipping.fee|after_sale.consult|after_sale.return_shipping_fee|after_sale.refund_timing|service.greeting",
+                "intent": "product.repair_history|product.condition_summary|product.condition_issue|product.lens_details|product.accessories|product.function|product.inspection_record|product.model_knowledge|product.availability|product.identity_model|product.sale_reason|price.listed_price|price.minimum|price.offer|price.additional_discount|price.confirm|shipping.dispatch_time|shipping.carrier|shipping.fee|after_sale.consult|after_sale.return_shipping_fee|after_sale.refund_timing|service.greeting|service.thanks|service.no_reply",
                 "original_question": "必须逐字来自当前消息的完整子问题",
                 "normalized_question": "规范化后的内部问题",
                 "subject": "当前商品/镜头/快门/退款时效等",
@@ -110,7 +111,11 @@ def build_xianyu_semantic_intent_messages(
             + "2. original_question 和 source_texts 必须能在当前消息中找到，不能改写成商品事实。\n"
             + "3. 同一个专家下的多个独立需求必须拆开，例如退货资格和退回运费是谁出是两个需求。\n"
             + "4. 条件成交中只作为前提的核验需求 reply_required=false，并让成交/价格需求依赖它。\n"
-            + "5. 系统故障或 JSON 不确定时返回 status=error，不要伪装成买家没说清楚。",
+            + "5. 纯系统事件、已读、收到、好的等无需回复内容用 service.no_reply 且 reply_required=false；谢谢用 service.thanks。\n"
+            + "6. 保修/质保问题是 after_sale.consult，不能改成型号或商品身份问题。\n"
+            + "7. 询问这台实物是否检测、实测、校准或和手机对比过，用 product.inspection_record；只有型号原理、参数、用法才用 product.model_knowledge。\n"
+            + "8. “这件怎么卖”“卖多少钱”等口语问法是在问当前商品标价，映射到 price.listed_price；“为什么卖”或“为啥卖”映射到 product.sale_reason。\n"
+            + "9. 系统故障或 JSON 不确定时返回 status=error，不要伪装成买家没说清楚。",
         },
     ]
 

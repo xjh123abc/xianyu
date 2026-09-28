@@ -71,7 +71,7 @@ _REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 
 
 _BUYER_NEED_GROUPS = (
-    ("多少钱", "价格", "标价", "什么价", "拍的话"),
+    ("多少钱", "价格", "标价", "售价", "什么价", "什么价格", "怎么卖", "卖多少钱", "卖多少", "拍的话"),
     ("还在", "还没卖", "没卖", "还没出", "在售", "卖掉", "卖出", "售出", "已售", "有货"),
     ("配件", "带什么", "包含", "镜头"),
     ("成色", "外观", "划痕", "磕碰"),
@@ -184,7 +184,10 @@ class IntentRouter:
             return "ACCESSORIES"
         if any(term in lowered for term in ("型号", "哪一年", "哪年生产", "新手", "怎么用", "为什么卖", "为什么要卖")):
             return "PRODUCT_INFO"
-        if any(term in lowered for term in ("多少钱", "什么价", "标价", "价格", "拍的话")):
+        if any(term in lowered for term in (
+            "多少钱", "什么价", "什么价格", "价格多少", "标价", "售价",
+            "怎么卖", "卖多少钱", "卖多少", "拍的话",
+        )):
             return "PRICE"
         if any(term in lowered for term in ("还在吗", "还没出", "还没卖", "没卖", "还能拍", "卖掉了吗", "有货", "在售", "卖出")):
             return "AVAILABILITY"

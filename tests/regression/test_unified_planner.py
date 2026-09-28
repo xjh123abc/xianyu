@@ -80,7 +80,7 @@ def test_planner_falls_back_to_product_model_knowledge_when_item_context_exists(
     query = "Canon FTb 的测光系统原本使用什么电池供电？"
     tasks = _planner().plan(
         query,
-        SessionContext(current_item_id="CANON_FTB_001"),
+        SessionContext(current_item_id="TEST_CORE_ALIGNMENT_CAMERA"),
     )
 
     assert len(tasks) == 1

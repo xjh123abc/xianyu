@@ -95,3 +95,59 @@ def test_merger_includes_every_result_when_service_is_unavailable() -> None:
     assert "商品没有维修记录。" in merged["answer"]
     assert "目前价格可以小刀。" in merged["answer"]
     assert "该问题目前暂无足够信息确认。" not in merged["answer"]
+
+
+def test_merger_outputs_ignore_when_all_tasks_are_no_reply() -> None:
+    task = Task(
+        "q1",
+        "service",
+        "好的",
+        {
+            "knowledge_scope": "no_reply",
+            "reply_required": False,
+            "intent_context": {"intent": "service.no_reply", "reply_required": False},
+        },
+        query_target="no_reply",
+        execution_mode="xianyu_expert",
+    )
+
+    merged = ResultMerger().merge(
+        "好的",
+        [task],
+        [TaskResult("q1", "answered", "")],
+    )
+
+    assert merged["action"] == "ignore"
+    assert merged["answer"] == ""
+    assert merged["reason"] == "no_reply_required"
+
+
+def test_merger_ignores_no_reply_subtasks_in_mixed_message() -> None:
+    tasks = [
+        Task(
+            "q1",
+            "service",
+            "好的",
+            {
+                "knowledge_scope": "no_reply",
+                "reply_required": False,
+                "intent_context": {"intent": "service.no_reply", "reply_required": False},
+            },
+            query_target="no_reply",
+            execution_mode="xianyu_expert",
+        ),
+        Task("q2", "price", "最低多少"),
+    ]
+
+    merged = ResultMerger().merge(
+        "好的，最低多少",
+        tasks,
+        [
+            TaskResult("q1", "answered", ""),
+            TaskResult("q2", "answered", "最低 ¥1490.00 可以拍。"),
+        ],
+    )
+
+    assert merged["action"] == "reply"
+    assert merged["answer"] == "最低 ¥1490.00 可以拍。"
+    assert merged["can_answer"] is True

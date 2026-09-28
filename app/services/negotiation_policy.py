@@ -11,6 +11,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from config.settings import settings
+
 
 class NegotiationPolicyError(ValueError):
     """Raised when a private policy cannot safely be used."""
@@ -42,8 +44,14 @@ class NegotiationPolicyStore:
     """Load one small JSON policy file with strict, fail-closed validation."""
 
     def __init__(self, path: str | Path | None = None) -> None:
-        default_path = Path(__file__).resolve().parents[2] / "data/xianyu/negotiation_policies.json"
-        self.path = Path(path) if path is not None else default_path
+        configured_path = (
+            Path(settings.xianyu_negotiation_policy_path)
+            if settings is not None
+            else Path("data/xianyu/negotiation_policies.json")
+        )
+        if not configured_path.is_absolute():
+            configured_path = Path(__file__).resolve().parents[2] / configured_path
+        self.path = Path(path) if path is not None else configured_path
         self._cached_mtime_ns: int | None = None
         self._cached: dict[str, NegotiationPolicy] = {}
 

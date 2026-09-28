@@ -1,0 +1,1683 @@
+{
+  "generated_at": "2026-09-24T20:14:37",
+  "workspace": "D:\\rag demo智能客服\\ecommerce-ai-customer-service",
+  "safety": {
+    "real_buyer_send": false,
+    "real_item_authorization_mutation": false,
+    "mcp": "FakeMcp returning local ItemService snapshot only",
+    "sender": "FakeSender; only channel mapper branch simulated"
+  },
+  "commands": [
+    "python -m pytest tests\\regression\\test_semantic_intent_planner.py tests\\regression\\test_result_merger.py tests\\regression\\test_task_executor.py tests\\regression\\test_expert_workflow.py tests\\regression\\test_unified_planner.py tests\\api\\test_xianyu_expert_contract.py tests\\xianyu\\test_xianyu_expert_agents.py tests\\xianyu\\test_xianyu_expert_orchestrator.py tests\\xianyu\\test_xianyu_price_agent.py tests\\xianyu\\test_t1_continuous_negotiation.py -q",
+    "python -m pytest tests\\xianyu\\test_xianyu_stage3_worker.py -q",
+    "inline acceptance runner generated this report"
+  ],
+  "pytest": {
+    "t3_related_matrix": "112 passed in 18.79s",
+    "channel_worker_ignore_matrix": "25 passed in 19.26s"
+  },
+  "records": [
+    {
+      "id": "natural_greeting",
+      "group": "simulated_main_chain",
+      "query": "??",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "service-1",
+          "type": "service",
+          "query": "??",
+          "query_target": null,
+          "execution_mode": "general_rag",
+          "normalized_question": null,
+          "knowledge_scope": null,
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": null,
+        "model_called": null,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "7919d0b0826147f991f9d2ba368fba25",
+          "node": "service_node",
+          "task_id": "service-1",
+          "task_type": "service",
+          "execution_mode": "general_rag",
+          "query_target": null,
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.213,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "service-1",
+          "status": "answered",
+          "answer": "??????",
+          "reason": null
+        }
+      ],
+      "answer": "??????",
+      "response": {
+        "action": "reply",
+        "answer": "??????",
+        "can_answer": true,
+        "reason": null,
+        "route": "rag",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "one_greeting_task",
+          "passed": false
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        },
+        {
+          "name": "no_rag_or_expert_model",
+          "passed": true
+        },
+        {
+          "name": "reply",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "natural_thanks",
+      "group": "simulated_main_chain",
+      "query": "??",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "service-1",
+          "type": "service",
+          "query": "??",
+          "query_target": null,
+          "execution_mode": "general_rag",
+          "normalized_question": null,
+          "knowledge_scope": null,
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": null,
+        "model_called": null,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "f271648c32644ea7bc672e4b9e9d9249",
+          "node": "service_node",
+          "task_id": "service-1",
+          "task_type": "service",
+          "execution_mode": "general_rag",
+          "query_target": null,
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.216,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "service-1",
+          "status": "answered",
+          "answer": "??????",
+          "reason": null
+        }
+      ],
+      "answer": "??????",
+      "response": {
+        "action": "reply",
+        "answer": "??????",
+        "can_answer": true,
+        "reason": null,
+        "route": "rag",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "one_thanks_task",
+          "passed": false
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        },
+        {
+          "name": "reply",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "pure_system_event_ignore",
+      "group": "simulated_main_chain",
+      "query": "[??] ??????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "service-1",
+          "type": "service",
+          "query": "[??] ??????",
+          "query_target": null,
+          "execution_mode": "general_rag",
+          "normalized_question": null,
+          "knowledge_scope": null,
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": null,
+        "model_called": null,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "b8035a09781b4c4eaca7f132b85f7f89",
+          "node": "service_node",
+          "task_id": "service-1",
+          "task_type": "service",
+          "execution_mode": "general_rag",
+          "query_target": null,
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.179,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "service-1",
+          "status": "answered",
+          "answer": "??????",
+          "reason": null
+        }
+      ],
+      "answer": "??????",
+      "response": {
+        "action": "reply",
+        "answer": "??????",
+        "can_answer": true,
+        "reason": null,
+        "route": "rag",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "no_reply_task",
+          "passed": false
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        },
+        {
+          "name": "action_ignore",
+          "passed": false
+        },
+        {
+          "name": "service_node",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "colloquial_availability",
+      "group": "simulated_main_chain",
+      "query": "???",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "???",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "???",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_semantic_model_unavailable",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "d563a953cb1b4565b741c5293108d98b",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 1.576,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "???????????????????????????????????????????????????????????",
+          "reason": null
+        }
+      ],
+      "answer": "???????????????????????????????????????????????????????????",
+      "response": {
+        "action": "reply",
+        "answer": "???????????????????????????????????????????????????????????",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "???",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "???",
+            "evidence": "[common] ???\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "availability_task",
+          "passed": false
+        },
+        {
+          "name": "model_calls_0",
+          "passed": false
+        },
+        {
+          "name": "answered",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "colloquial_function",
+      "group": "simulated_main_chain",
+      "query": "???",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "???",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "???",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_semantic_model_unavailable",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "111f5bf40ba74cdba1cb15057ca7bfe5",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.953,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "???????????????????????????????????????????????????????????",
+          "reason": null
+        }
+      ],
+      "answer": "???????????????????????????????????????????????????????????",
+      "response": {
+        "action": "reply",
+        "answer": "???????????????????????????????????????????????????????????",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "???",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "???",
+            "evidence": "[common] ???\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "function_task",
+          "passed": false
+        },
+        {
+          "name": "model_calls_0",
+          "passed": false
+        },
+        {
+          "name": "answered",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "return_shipping_fee_with_damage_background",
+      "group": "simulated_main_chain",
+      "query": "????????????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "????????????",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "????????????",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_semantic_model_unavailable",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "490838f232c64920b7f51c1b39a0f288",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.818,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "???????????????????????????????????????????????????????????",
+          "reason": null
+        }
+      ],
+      "answer": "???????????????????????????????????????????????????????????",
+      "response": {
+        "action": "reply",
+        "answer": "???????????????????????????????????????????????????????????",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "????????????",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "????????????",
+            "evidence": "[common] ????????????\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "one_fee_task",
+          "passed": true
+        },
+        {
+          "name": "intent_fee",
+          "passed": false
+        },
+        {
+          "name": "condition_kept",
+          "passed": false
+        },
+        {
+          "name": "not_over_split",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "return_policy_and_shipping_fee_two_needs",
+      "group": "simulated_main_chain",
+      "query": "????????????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "????????????",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "????????????",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_semantic_model_unavailable",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "f2a175970f284b58ac592d03f8290cfd",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.914,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "???????????????????????????????????????????????????????????",
+          "reason": null
+        }
+      ],
+      "answer": "???????????????????????????????????????????????????????????",
+      "response": {
+        "action": "reply",
+        "answer": "???????????????????????????????????????????????????????????",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "????????????",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "????????????",
+            "evidence": "[common] ????????????\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "two_service_needs",
+          "passed": false
+        },
+        {
+          "name": "not_merged_by_expert",
+          "passed": false
+        },
+        {
+          "name": "model_calls_0",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "thanks_min_price_not_ignored",
+      "group": "simulated_main_chain",
+      "query": "???????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "???????",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "???????",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_semantic_model_unavailable",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "bd8e1333dce84c8bad0239e0cabaa6cd",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 1.027,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "???????????????????????????????????????????????????????????",
+          "reason": null
+        }
+      ],
+      "answer": "???????????????????????????????????????????????????????????",
+      "response": {
+        "action": "reply",
+        "answer": "???????????????????????????????????????????????????????????",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "???????",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "???????",
+            "evidence": "[common] ???????\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "price_only",
+          "passed": false
+        },
+        {
+          "name": "not_ignore",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "multi_question_four_needs",
+      "group": "simulated_main_chain",
+      "query": "???????????????????????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "???????????????????????",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "???????????????????????",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_semantic_model_unavailable",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "d9ac6b568e114c91b26b1b0823fec8e9",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.921,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "???????????????????????????????????????????????????????????",
+          "reason": null
+        }
+      ],
+      "answer": "???????????????????????????????????????????????????????????",
+      "response": {
+        "action": "reply",
+        "answer": "???????????????????????????????????????????????????????????",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "???????????????????????",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "???????????????????????",
+            "evidence": "[common] ???????????????????????\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "four_tasks",
+          "passed": false
+        },
+        {
+          "name": "nodes_all",
+          "passed": false
+        },
+        {
+          "name": "model_calls_0",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "partial_unknown_keeps_known_answers",
+      "group": "simulated_main_chain",
+      "query": "?????????????????????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "?????????????????????",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "?????????????????????",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_semantic_model_unavailable",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "2f973a633b0e4e69a8dd667cdbdf9beb",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "unavailable",
+          "reason": "knowledge_evidence_unavailable",
+          "duration_ms": 0.333,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "unavailable",
+          "answer": "",
+          "reason": "knowledge_evidence_unavailable"
+        }
+      ],
+      "answer": "",
+      "response": {
+        "action": "reply",
+        "answer": "",
+        "can_answer": false,
+        "reason": "knowledge_evidence_unavailable",
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "?????????????????????",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "three_tasks",
+          "passed": false
+        },
+        {
+          "name": "partial_failure_retained",
+          "passed": false
+        },
+        {
+          "name": "no_handoff",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "continuous_followup_shipping_condition",
+      "group": "simulated_main_chain",
+      "query": "??????",
+      "history_turns": [
+        {
+          "query": "???????",
+          "item_id": "CANON_FTB_001",
+          "turn_id": "followup-1"
+        }
+      ],
+      "prior_outputs": [
+        {
+          "action": "reply",
+          "answer": "???????????????????????????????????????????????????????????",
+          "can_answer": true,
+          "reason": null,
+          "route": "xianyu",
+          "item_id": "CANON_FTB_001"
+        }
+      ],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "??????",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "??????",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 2,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_semantic_model_unavailable",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "8c7813fc76b640d6b40e23692d754399",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.91,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "???????????????????????????????????????????????????????????",
+          "reason": null
+        }
+      ],
+      "answer": "???????????????????????????????????????????????????????????",
+      "response": {
+        "action": "reply",
+        "answer": "???????????????????????????????????????????????????????????",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "???????",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          },
+          {
+            "query": "??????",
+            "history_count": 2,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "???????",
+            "evidence": "[common] ???????\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          },
+          {
+            "expert": "service",
+            "question": "??????",
+            "evidence": "[common] ??????\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [
+                {
+                  "role": "user",
+                  "content": "???????"
+                },
+                {
+                  "role": "assistant",
+                  "content": "???????????????????????????????????????????????????????????"
+                }
+              ],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "price_followup_task",
+          "passed": false
+        },
+        {
+          "name": "buyer_pays_condition",
+          "passed": false
+        },
+        {
+          "name": "uses_context_item",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0_for_second_turn",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "semantic_added_product_task_requires_item_resolution",
+      "group": "simulated_main_chain",
+      "query": "????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "service-1",
+          "type": "service",
+          "query": "????",
+          "query_target": null,
+          "execution_mode": "general_rag",
+          "normalized_question": null,
+          "knowledge_scope": null,
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": null,
+        "model_called": null,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "04cd0ea2305346cfa865817b9b9d7203",
+          "node": "service_node",
+          "task_id": "service-1",
+          "task_type": "service",
+          "execution_mode": "general_rag",
+          "query_target": null,
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.185,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "service-1",
+          "status": "answered",
+          "answer": "??????",
+          "reason": null
+        }
+      ],
+      "answer": "??????",
+      "response": {
+        "action": "reply",
+        "answer": "??????",
+        "can_answer": true,
+        "reason": null,
+        "route": "rag",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "model_called_once",
+          "passed": false
+        },
+        {
+          "name": "product_task_added",
+          "passed": false
+        },
+        {
+          "name": "missing_item_clarify",
+          "passed": false
+        },
+        {
+          "name": "prepared_by_graph",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "semantic_timeout_preserves_rule_tasks",
+      "group": "simulated_faults",
+      "query": "????????????????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "????????????????",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "????????????????",
+          "knowledge_scope": "seller_rule",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_model_timeout",
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "bf41556bf0964a55b38a5f51c04fb890",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.47,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "???????????????????????????????????????????????????????????",
+          "reason": null
+        }
+      ],
+      "answer": "???????????????????????????????????????????????????????????",
+      "response": {
+        "action": "reply",
+        "answer": "???????????????????????????????????????????????????????????",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "????????????????",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "????????????????",
+            "evidence": "[common] ????????????????\n?????????????????????????????????/???????????????????????????????????????????????????????????????????????????",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "model_called_once",
+          "passed": true
+        },
+        {
+          "name": "rules_preserved",
+          "passed": false
+        },
+        {
+          "name": "still_replies_known",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "semantic_illegal_output_fail_closed",
+      "group": "simulated_faults",
+      "query": "????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "service-1",
+          "type": "service",
+          "query": "????",
+          "query_target": null,
+          "execution_mode": "general_rag",
+          "normalized_question": null,
+          "knowledge_scope": null,
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": null,
+        "model_called": null,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "5bb36692381c4138ad4f588e98486bfd",
+          "node": "service_node",
+          "task_id": "service-1",
+          "task_type": "service",
+          "execution_mode": "general_rag",
+          "query_target": null,
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.152,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "service-1",
+          "status": "answered",
+          "answer": "??????",
+          "reason": null
+        }
+      ],
+      "answer": "??????",
+      "response": {
+        "action": "reply",
+        "answer": "??????",
+        "can_answer": true,
+        "reason": null,
+        "route": "rag",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "model_called_once",
+          "passed": false
+        },
+        {
+          "name": "no_tasks",
+          "passed": false
+        },
+        {
+          "name": "fail_closed_reply",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "partial_task_failure_keeps_successes",
+      "group": "simulated_faults",
+      "query": "?????????????????",
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "product",
+          "query": "?????????????????",
+          "query_target": "product.model_knowledge",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "?????????????????",
+          "knowledge_scope": "model_knowledge",
+          "intent": null,
+          "conditions": [],
+          "reply_required": null,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "error",
+        "model_called": false
+      },
+      "nodes": [
+        {
+          "run_id": "43cbf664d1ab4b60836548b283626b30",
+          "node": "product_node",
+          "task_id": "q1",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "product.model_knowledge",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.142,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "??????",
+          "reason": null
+        }
+      ],
+      "answer": "??????",
+      "response": {
+        "action": "reply",
+        "answer": "??????",
+        "can_answer": true,
+        "reason": null,
+        "route": "unified",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "service_failed",
+          "passed": false
+        },
+        {
+          "name": "successes_kept",
+          "passed": true
+        },
+        {
+          "name": "reply_not_handoff",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "channel_ignore_does_not_call_sender",
+      "group": "simulated_faults",
+      "query": "[??] ??????",
+      "tasks": [],
+      "task_count": 0,
+      "conditions": [],
+      "model_planning_call_count": 0,
+      "nodes": [],
+      "answer": "??????",
+      "response": {
+        "action": "reply",
+        "answer": "??????",
+        "can_answer": true,
+        "reason": null,
+        "route": "rag",
+        "item_id": null
+      },
+      "channel_decision": {
+        "action": "answer",
+        "text": "??????",
+        "reason": ""
+      },
+      "sender_calls": [
+        "??????"
+      ],
+      "checks": [
+        {
+          "name": "mapped_to_ignore",
+          "passed": false
+        },
+        {
+          "name": "sender_not_called",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "real_model_semantic_fallback_partial_message",
+      "group": "real_model",
+      "query": "??????????",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [],
+      "task_count": 0,
+      "conditions": [],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "当前消息仅包含无法识别的问号字符，无法提取有效买家需求",
+        "clarification_question": null
+      },
+      "nodes": [],
+      "task_results": [],
+      "answer": "暂时没能解析这条消息，请稍后再试或换个说法。",
+      "response": {
+        "action": "reply",
+        "answer": "暂时没能解析这条消息，请稍后再试或换个说法。",
+        "can_answer": false,
+        "reason": "当前消息仅包含无法识别的问号字符，无法提取有效买家需求",
+        "route": "unified",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "??????????",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "model_called_once",
+          "passed": true
+        },
+        {
+          "name": "tasks_non_empty",
+          "passed": false
+        },
+        {
+          "name": "no_handoff",
+          "passed": true
+        },
+        {
+          "name": "valid_targets",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    }
+  ],
+  "totals": {
+    "pass": 0,
+    "fail": 17,
+    "error": 0,
+    "not_run": 0
+  },
+  "t3_acceptance": "FAIL"
+}

@@ -32,7 +32,8 @@ class QuestionPlan(TypedDict):
 
 
 _PRICE_TERMS = (
-    "价格", "多少钱", "标价", "售价", "多少元", "什么价", "拍的话", "price", "cost",
+    "价格", "多少钱", "标价", "售价", "多少元", "什么价", "什么价格",
+    "价格多少", "怎么卖", "卖多少钱", "卖多少", "拍的话", "price", "cost",
 )
 _BARGAIN_TERMS = ("最低", "便宜", "少一点", "少点", "优惠", "小刀", "刀吗", "还价", "报价")
 _PRICE_CONFIRM_TERMS = ("就按", "刚才那个价", "刚才说的", "这个价")
@@ -318,6 +319,11 @@ def _validated_model_drafts(payload: object | None, query: str) -> list[_Draft]:
         normalized = raw.get("normalized_question", raw.get("question"))
         scope = raw.get("knowledge_scope", raw.get("scope"))
         target = raw.get("query_target")
+        if isinstance(fragment, str) and expert == "product" and _is_seller_inspection_question(fragment):
+            scope = "item_fact"
+            target = "function.inspection_record"
+            if not isinstance(normalized, str) or not normalized.strip() or normalized.strip() == "商品专项知识":
+                normalized = "实物检测记录"
         # ``product/model_knowledge`` has exactly one valid query target.  Older
         # planner responses did not emit it, so retain that evidence-bound task
         # instead of silently reducing a compound buyer turn to its other facts.
@@ -551,6 +557,8 @@ def _rule_query_target(
         return "history.repair_history"
     if normalized_question == "功能是否正常":
         return "function.shutter" if "快门" in lowered else "function.overall"
+    if normalized_question in {"测光对比记录", "实物检测记录"}:
+        return "function.inspection_record"
     if normalized_question == "商品瑕疵情况":
         if "划痕" in lowered:
             return "condition.scratches"
@@ -777,6 +785,13 @@ def _position(query: str, fragment: str) -> int:
     return found if found >= 0 else len(query)
 
 
+def _is_seller_inspection_question(query: str) -> bool:
+    lowered = str(query or "").casefold()
+    if not any(term in lowered for term in ("对比过", "和手机", "实测", "测试过", "测过", "检测过", "校准过", "记录")):
+        return False
+    return any(term in lowered for term in ("测光", "手机", "对比", "实测", "测试", "检测", "校准"))
+
+
 def _target_terms(target: str) -> Sequence[str]:
     """Source words that can verify and position one explicit target."""
 
@@ -787,6 +802,7 @@ def _target_terms(target: str) -> Sequence[str]:
         "history.drop_history": _HISTORY_TERMS,
         "function.shutter": ("快门",),
         "function.overall": ("功能",),
+        "function.inspection_record": ("测光", "对比", "检测", "测试", "校准", "记录"),
         "condition.summary": _CONDITION_TERMS,
         "condition.scratches": ("划痕",),
         "condition.dents": ("磕碰",),
@@ -833,10 +849,6 @@ def _in_query(fragment: str, query: str) -> bool:
 
 def is_seller_scoped_query(query: str) -> bool:
     return any(term in str(query or "").casefold() for term in _SELLER_SCOPE_TERMS)
-
-
-def common_knowledge_query(plan: QuestionPlan, fallback: str) -> str:
-    return "；".join(need["question"] for need in plan["knowledge_questions"] if need["scope"] == "common") or fallback
 
 
 def xianyu_context_updates(

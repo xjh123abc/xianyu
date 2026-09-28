@@ -24,7 +24,6 @@ from app.services.chat_contracts import (
 _EMPTY_STATE = {
     "order_id": None,
     "current_item_id": None,
-    "last_intent": None,
     "xianyu_context": {
         "item_id": None,
         "recent_price_topic": None,
@@ -89,6 +88,7 @@ class SessionManager:
         self.database_path = Path(database_path).resolve() if database_path else None
         self.sessions: dict[str, dict[str, Any]] = {}
         self._updated_at: dict[str, float] = {}
+        self._external_event_ids: set[tuple[str, str]] = set()
         self._memory_guard = threading.RLock()
         self._session_locks: dict[str, threading.Lock] = {}
         if self.database_path is not None:
@@ -207,7 +207,6 @@ class SessionManager:
         assistant_message: str,
         *,
         order_id: str | None = None,
-        last_intent: str | None = None,
     ) -> None:
         """Save one user/assistant turn and update known business state."""
         _, session = self.get_or_create(chat_id)
@@ -222,9 +221,78 @@ class SessionManager:
         state = session["state"]
         if order_id:
             state["order_id"] = order_id
-        if last_intent:
-            state["last_intent"] = last_intent
         self._save(chat_id, session)
+
+    def append_external_event(
+        self, chat_id: str, event_id: str, role: str, content: str, *, source: str
+    ) -> bool:
+        """Append one authenticated channel message to history exactly once."""
+        normalized_chat_id = chat_id.strip()
+        normalized_event_id = event_id.strip()
+        normalized_content = content.strip()
+        if not normalized_chat_id or not normalized_event_id or not normalized_content:
+            raise ValueError("chat_id, event_id, and content must not be empty")
+        if role not in {"user", "assistant"}:
+            raise ValueError("role must be user or assistant")
+        if source not in {"buyer_message", "seller_manual"}:
+            raise ValueError("source must be buyer_message or seller_manual")
+        if (role, source) not in {
+            ("user", "buyer_message"),
+            ("assistant", "seller_manual"),
+        }:
+            raise ValueError("event source does not match its conversation role")
+
+        now = self._clock()
+        if self.database_path is not None:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    "INSERT OR IGNORE INTO chat_session_events(chat_id, event_id, created_at) VALUES (?, ?, ?)",
+                    (normalized_chat_id, normalized_event_id, now),
+                )
+                if cursor.rowcount != 1:
+                    return False
+                row = connection.execute(
+                    "SELECT history_json, state_json FROM chat_sessions WHERE chat_id = ?",
+                    (normalized_chat_id,),
+                ).fetchone()
+                session = (
+                    {"history": json.loads(row[0]), "state": json.loads(row[1])}
+                    if row is not None
+                    else self._empty_session()
+                )
+                session["history"].append(
+                    {"role": role, "content": normalized_content, "source": source}
+                )
+                del session["history"][:-self.max_history]
+                connection.execute(
+                    """INSERT INTO chat_sessions(chat_id, history_json, state_json, updated_at)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(chat_id) DO UPDATE SET
+                           history_json=excluded.history_json,
+                           state_json=excluded.state_json,
+                           updated_at=excluded.updated_at""",
+                    (
+                        normalized_chat_id,
+                        json.dumps(session["history"], ensure_ascii=False),
+                        json.dumps(session["state"], ensure_ascii=False),
+                        now,
+                    ),
+                )
+            return True
+
+        _, session = self.get_or_create(normalized_chat_id)
+        with self._memory_guard:
+            event_key = (normalized_chat_id, normalized_event_id)
+            if event_key in self._external_event_ids:
+                return False
+            self._external_event_ids.add(event_key)
+        session["history"].append(
+            {"role": role, "content": normalized_content, "source": source}
+        )
+        del session["history"][:-self.max_history]
+        self._save(normalized_chat_id, session)
+        return True
 
     def save_turn(
         self,
@@ -235,15 +303,12 @@ class SessionManager:
         current_item_id: str | None | object = _UNSET,
         current_order_id: str | None = None,
         last_task_type: TaskType | None = None,
-        legacy_intent: str | None = None,
         xianyu_context_updates: Mapping[str, object] | None = None,
         negotiation: Mapping[str, object] | None = None,
     ) -> None:
         """Persist a completed turn through one caller-facing session entrypoint.
 
-        The pre-S2 methods remain the implementation and compatibility layer.
-        ``legacy_intent`` preserves current router behaviour until S3 replaces
-        it with planner task types.
+        The lower-level append and state-update methods remain the implementation.
         """
 
         if last_task_type is not None and last_task_type not in TASK_TYPES:
@@ -268,7 +333,6 @@ class SessionManager:
             user_message,
             assistant_message,
             order_id=current_order_id,
-            last_intent=legacy_intent,
         )
         if normalized_item_id is not _UNSET:
             assert isinstance(normalized_item_id, str)
@@ -548,7 +612,6 @@ class SessionManager:
         normalized = {
             "order_id": raw_state.get("order_id"),
             "current_item_id": raw_state.get("current_item_id"),
-            "last_intent": raw_state.get("last_intent"),
             "last_task_type": (
                 raw_state.get("last_task_type")
                 if raw_state.get("last_task_type") in TASK_TYPES
@@ -558,6 +621,8 @@ class SessionManager:
             "negotiation": cls._negotiation_from_state(raw_state),
         }
         for key, value in raw_state.items():
+            if key == "last_intent":
+                continue
             normalized.setdefault(key, value)
         return normalized
 
@@ -610,6 +675,12 @@ class SessionManager:
             self.sessions.pop(chat_id, None)
             self._updated_at.pop(chat_id, None)
             self._session_locks.pop(chat_id, None)
+        if expired:
+            expired_ids = set(expired)
+            self._external_event_ids = {
+                event_key for event_key in self._external_event_ids
+                if event_key[0] not in expired_ids
+            }
 
     def _evict_memory_over_capacity(self, *, exclude: str) -> None:
         while len(self.sessions) > self.max_sessions:
@@ -646,6 +717,14 @@ class SessionManager:
                        chat_id TEXT PRIMARY KEY,
                        owner TEXT NOT NULL,
                        expires_at REAL NOT NULL
+                )"""
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS chat_session_events (
+                       chat_id TEXT NOT NULL,
+                       event_id TEXT NOT NULL,
+                       created_at REAL NOT NULL,
+                       PRIMARY KEY (chat_id, event_id)
                    )"""
             )
 
@@ -674,6 +753,10 @@ class SessionManager:
                          SELECT 1 FROM chat_session_locks
                          WHERE chat_session_locks.chat_id = chat_sessions.chat_id
                      )""",
+                (now - self.ttl_seconds,),
+            )
+            connection.execute(
+                "DELETE FROM chat_session_events WHERE created_at <= ?",
                 (now - self.ttl_seconds,),
             )
             row = connection.execute(

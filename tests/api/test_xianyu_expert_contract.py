@@ -16,7 +16,7 @@ def test_unavailable_reason_survives_full_http_serialization(monkeypatch) -> Non
         return_value={
             "query": "测光和手机对比过吗？不包邮最低多少？",
             "chat_id": "s6_http_handoff",
-            "item_id": "CANON_FTB_001",
+            "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
             "route": "xianyu",
             "action": "reply",
             "answer": "该问题目前暂无足够信息确认。",
@@ -32,7 +32,7 @@ def test_unavailable_reason_survives_full_http_serialization(monkeypatch) -> Non
         json={
             "query": "测光和手机对比过吗？不包邮最低多少？",
             "chat_id": "s6_http_handoff",
-            "item_id": "CANON_FTB_001",
+            "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
         },
     )
 

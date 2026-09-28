@@ -145,9 +145,9 @@ class Planner:
         """Understand the whole buyer turn before creating executable tasks."""
 
         query = str(message or "").strip()
-        legacy_tasks = self.plan(query, context, item_id=item_id)
-        if _keeps_legacy_boundary(query, legacy_tasks):
-            return PlanOutcome(legacy_tasks)
+        state = self._build_state(query, context, item_id)
+        if _keeps_legacy_boundary(query, state):
+            return PlanOutcome(self._tasks_from_state(query, context, item_id, state))
 
         understanding = await self._intent_analyzer.analyze(
             query,
@@ -166,8 +166,11 @@ class Planner:
             response["reason"] = "intent_clarification_required"
             return PlanOutcome([], response, understanding)
         if understanding.status == "error":
-            if _can_use_legacy_semantic_fallback(query, legacy_tasks, understanding):
-                return PlanOutcome(legacy_tasks, understanding=understanding)
+            if _can_use_legacy_semantic_fallback(query, state, understanding):
+                return PlanOutcome(
+                    self._tasks_from_state(query, context, item_id, state),
+                    understanding=understanding,
+                )
             response = non_rag_response(
                 query,
                 "暂时没能解析这条消息，请稍后再试或换个说法。",
@@ -206,6 +209,17 @@ class Planner:
         """Classify one turn once and expose its work as ``Task`` values only."""
 
         query = str(message or "").strip()
+        state = self._build_state(query, context, item_id)
+        return self._tasks_from_state(query, context, item_id, state)
+
+    def _build_state(
+        self,
+        query: str,
+        context: SessionContext,
+        item_id: str | None,
+    ) -> PlannerState:
+        """Classify route and item needs without constructing executable tasks."""
+
         question_plan = build_question_plan(query)
         intent_match = self._intent_router.route(query, allow_ai=False)
         remembered_order_id = session_order_id(
@@ -238,9 +252,20 @@ class Planner:
                 or bool(_GREETING.fullmatch(query))
             ),
         )
+        return state
+
+    def _tasks_from_state(
+        self,
+        query: str,
+        context: SessionContext,
+        item_id: str | None,
+        state: PlannerState,
+    ) -> list[Task]:
+        """Materialize the compatibility task plan only when it will be used."""
+
         metadata = {_PLAN_STATE_KEY: _state_metadata(state)}
 
-        if route in {"order", "missing_order_id"}:
+        if state.route in {"order", "missing_order_id"}:
             return [
                 Task(
                     "order-1",
@@ -248,11 +273,13 @@ class Planner:
                     query,
                     metadata,
                     execution_mode=(
-                        "missing_order_id" if route == "missing_order_id" else "order"
+                        "missing_order_id"
+                        if state.route == "missing_order_id"
+                        else "order"
                     ),
                 )
             ]
-        if route == "rag_mcp":
+        if state.route == "rag_mcp":
             # The old combined route is classified only here.  Its execution
             # is two ordinary tasks, never OrderChatHandler.combined().
             return [
@@ -265,7 +292,7 @@ class Planner:
                     execution_mode="common_knowledge",
                 ),
             ]
-        if route == "unsupported_action":
+        if state.route == "unsupported_action":
             return [
                 Task(
                     "service-1",
@@ -388,17 +415,50 @@ class Planner:
         )
 
 
-def _keeps_legacy_boundary(query: str, tasks: Sequence[Task]) -> bool:
+def _uses_xianyu_expert_path(state: PlannerState) -> bool:
+    if state.route in {"order", "missing_order_id", "rag_mcp", "unsupported_action"}:
+        return False
+    if state.is_rule_followup:
+        return False
+    return state.needs_item or state.use_xianyu_without_item
+
+
+def _keeps_legacy_boundary(query: str, state: PlannerState) -> bool:
     """Leave non-Xianyu expert paths on the existing stable plan."""
 
     if query.strip("？?。!！ ") in {"那怎么办", "怎么办", "咋办", "那咋办"}:
         return False
-    return bool(tasks) and all(task.execution_mode != "xianyu_expert" for task in tasks)
+    if _requires_semantic_conversation_boundary(query):
+        return False
+    return not _uses_xianyu_expert_path(state)
+
+
+def _requires_semantic_conversation_boundary(query: str) -> bool:
+    """Let ordinary chat and no-reply turns bypass legacy general RAG."""
+
+    lowered = str(query or "").casefold()
+    cleaned = lowered.strip("，,。.!！?？、；;~ ")
+    if re.fullmatch(
+        r"(?:谢谢|谢了|感谢|多谢|辛苦了|thanks|thank\s+you|thx)[！!。？?~ ]*",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return True
+    if re.fullmatch(
+        r"(?:好|好的|好嘞|ok|okay|收到|明白|知道了|嗯|嗯嗯|不用了|先不用了|没事了|先这样)[！!。？?~ ]*",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return True
+    return any(
+        term in lowered
+        for term in ("已读", "已送达", "系统消息", "系统事件", "不用回复", "无需回复")
+    )
 
 
 def _can_use_legacy_semantic_fallback(
     query: str,
-    tasks: Sequence[Task],
+    state: PlannerState,
     understanding: UnderstandingResult,
 ) -> bool:
     """Keep legacy item fallbacks only when they cannot revive after-sale overreach."""
@@ -409,7 +469,7 @@ def _can_use_legacy_semantic_fallback(
         "intent_model_timeout",
     }:
         return False
-    if not tasks or all(task.execution_mode != "xianyu_expert" for task in tasks):
+    if not _uses_xianyu_expert_path(state):
         return False
     lowered = query.casefold()
     risky_terms = (
@@ -540,6 +600,8 @@ def _task_contract_for_need(
         return ("product", "availability.sale_status", "item_fact")
     if intent == "product.identity_model":
         return ("product", "identity.model", "item_fact")
+    if intent == "product.sale_reason":
+        return ("product", "product_info.sale_reason", "item_fact")
     if intent == "product.repair_history":
         return ("product", "history.repair_history", "item_fact")
     if intent == "product.condition_summary":
@@ -554,6 +616,8 @@ def _task_contract_for_need(
     if intent == "product.function":
         target = "function.shutter" if "快门" in need.original_question else "function.overall"
         return ("product", target, "item_fact")
+    if intent == "product.inspection_record":
+        return ("product", "function.inspection_record", "item_fact")
     if intent == "product.model_knowledge":
         return ("product", "product.model_knowledge", "model_knowledge")
 
@@ -595,6 +659,10 @@ def _task_contract_for_need(
         return ("service", "seller_rule.general", "seller_rule")
     if intent == "service.greeting":
         return ("service", "greeting", "greeting")
+    if intent == "service.thanks":
+        return ("service", "thanks", "greeting")
+    if intent == "service.no_reply":
+        return ("service", "no_reply", "no_reply")
     return None
 
 

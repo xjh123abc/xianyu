@@ -63,7 +63,7 @@ def test_xianyu_loader_marks_common_and_item_scopes() -> None:
     assert {chunk.item_id for chunk in chunks if chunk.scope == "item"} == {
         "DEMO_ITEM_001",
         "DEMO_ITEM_002",
-        "DEMO_ITEM_003",
+        "TEST_CORE_ALIGNMENT_CAMERA",
     }
 
 

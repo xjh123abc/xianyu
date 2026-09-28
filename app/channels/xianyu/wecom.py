@@ -2,15 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Protocol
 from urllib.parse import urlparse
 
 import httpx
-
-
-class HandoffNotifier(Protocol):
-    async def notify_handoff(self, *, chat_id: str, item_id: str | None, reason: str, question: str) -> None:
-        ...
 
 
 class WeComWebhookNotifier:
@@ -43,10 +37,3 @@ class WeComWebhookNotifier:
             data = response.json()
         if not isinstance(data, dict) or data.get("errcode") != 0:
             raise RuntimeError("Enterprise WeChat notification was rejected")
-
-
-class DisabledNotifier:
-    """Explicit local configuration failure; never claims the seller was notified."""
-
-    async def notify_handoff(self, *, chat_id: str, item_id: str | None, reason: str, question: str) -> None:
-        raise RuntimeError("Enterprise WeChat webhook is not configured")

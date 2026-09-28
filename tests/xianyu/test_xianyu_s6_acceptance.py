@@ -83,14 +83,14 @@ def test_fixed_batch_contains_60_unique_isolated_questions() -> None:
 
 def test_fixed_batch_records_tasks_reason_sources_and_elapsed_time() -> None:
     question = "还在吗有没有维修过不包邮最低多少"
-    tasks = _task_records(question, "CANON_FTB_001")
+    tasks = _task_records(question, "TEST_CORE_ALIGNMENT_CAMERA")
 
     record = _result_record(
         "T52",
         "复合问题",
         question,
         "qa_batch_chat_t52",
-        "CANON_FTB_001",
+        "TEST_CORE_ALIGNMENT_CAMERA",
         tasks,
         12.5,
         response={
@@ -99,7 +99,7 @@ def test_fixed_batch_records_tasks_reason_sources_and_elapsed_time() -> None:
             "can_answer": True,
             "route": "xianyu",
             "reason": None,
-            "sources": [{"source": "mcp:get_item_info", "index": "CANON_FTB_001"}],
+            "sources": [{"source": "mcp:get_item_info", "index": "TEST_CORE_ALIGNMENT_CAMERA"}],
         },
     )
 
@@ -160,7 +160,7 @@ def test_model_planner_cannot_turn_current_item_shipping_into_seller_rule_rag() 
     tasks = build_expert_plan(
         "今天能发吗？走顺丰吗？",
         planner=planner,
-        xianyu_context={"item_id": "CANON_FTB_001"},
+        xianyu_context={"item_id": "TEST_CORE_ALIGNMENT_CAMERA"},
     )
 
     assert [(task.normalized_question, task.knowledge_scope) for task in tasks] == [
@@ -188,7 +188,7 @@ def test_model_planner_cannot_invent_a_greeting_task() -> None:
     tasks = build_expert_plan(
         "还在吗有没有维修过不包邮最低多少",
         planner=planner,
-        xianyu_context={"item_id": "CANON_FTB_001"},
+        xianyu_context={"item_id": "TEST_CORE_ALIGNMENT_CAMERA"},
     )
 
     assert all(task.knowledge_scope != "greeting" for task in tasks)
