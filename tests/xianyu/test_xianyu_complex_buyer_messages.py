@@ -35,7 +35,7 @@ class ItemEvidenceRag:
         return None
 
     def prepare(self, *args: object, **kwargs: object) -> dict[str, object]:
-        source = {"source": "CANON_FTB_001.md", "index": 0}
+        source = {"source": "TEST_CORE_ALIGNMENT_CAMERA.md", "index": 0}
         return {
             "can_answer": True,
             "context": {
@@ -49,7 +49,7 @@ class ItemEvidenceRag:
 
 
 def _canon_item() -> dict[str, object]:
-    return ItemService().get_item_info("CANON_FTB_001")
+    return ItemService().get_item_info("TEST_CORE_ALIGNMENT_CAMERA")
 
 
 def _service(item: dict[str, object], rag: NoRag, generator: Mock) -> ChatService:
@@ -91,7 +91,7 @@ def test_complex_message_with_confirmed_facts_uses_full_message_and_replies(
     service = _service(_canon_item(), rag, generator)
 
     result = asyncio.run(
-        service.chat_async(query, f"complex_{query}", item_id="CANON_FTB_001")
+        service.chat_async(query, f"complex_{query}", item_id="TEST_CORE_ALIGNMENT_CAMERA")
     )
 
     assert result["action"] == "reply"
@@ -105,8 +105,14 @@ def test_complex_message_with_confirmed_facts_uses_full_message_and_replies(
 @pytest.mark.parametrize(
     ("query", "expected_answer"),
     [
-        ("不用包邮，能便宜吗？", "不包邮的话最低 ¥1470.00 可以拍。"),
-        ("我出邮费，价格能少一点吗？", "不包邮的话最低 ¥1470.00 可以拍。"),
+        (
+            "不用包邮，能便宜吗？",
+            "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。",
+        ),
+        (
+            "我出邮费，价格能少一点吗？",
+            "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。",
+        ),
     ],
 )
 def test_conditional_bargain_uses_the_automatic_discount_limit(
@@ -120,7 +126,7 @@ def test_conditional_bargain_uses_the_automatic_discount_limit(
     service = _service(_canon_item(), rag, generator)
 
     result = asyncio.run(
-        service.chat_async(query, f"bargain_{query}", item_id="CANON_FTB_001")
+        service.chat_async(query, f"bargain_{query}", item_id="TEST_CORE_ALIGNMENT_CAMERA")
     )
 
     assert result["action"] == "reply"
@@ -136,12 +142,12 @@ def test_unauthorised_pickup_condition_handoffs_instead_of_using_shipping_price(
         _service(_canon_item(), NoRag(), generator).chat_async(
             "自提的话能便宜吗？",
             "bargain_unsupported_pickup",
-            item_id="CANON_FTB_001",
+            item_id="TEST_CORE_ALIGNMENT_CAMERA",
         )
     )
 
     assert result["action"] != "handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["answer"] == ""
     assert result["reason"] == "unsupported_price_condition"
     generator.generate_xianyu.assert_not_called()
 
@@ -157,18 +163,18 @@ def test_shipping_policy_controls_the_no_shipping_minimum() -> None:
         service.chat_async(
             "不用包邮，能便宜吗？",
             "bargain_shipping_policy",
-            item_id="CANON_FTB_001",
+            item_id="TEST_CORE_ALIGNMENT_CAMERA",
         )
     )
 
     assert result["action"] == "reply"
     assert result["can_answer"] is True
-    assert result["answer"] == "不包邮的话最低 ¥1470.00 可以拍。"
+    assert result["answer"] == "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。"
     generator.generate_xianyu.assert_not_called()
 
 
-def test_conditional_bargain_without_a_known_policy_handoffs() -> None:
-    """A condition without an item policy cannot be priced safely."""
+def test_private_policy_is_independent_from_public_product_facts() -> None:
+    """Public facts cannot silently replace the server-private policy."""
 
     item = deepcopy(_canon_item())
     item["facts"] = {
@@ -187,13 +193,13 @@ def test_conditional_bargain_without_a_known_policy_handoffs() -> None:
         service.chat_async(
             "不用包邮，能便宜吗？",
             "bargain_unknown_policy",
-            item_id="CANON_FTB_001",
+            item_id="TEST_CORE_ALIGNMENT_CAMERA",
         )
     )
 
     assert result["action"] != "handoff"
-    assert result["can_answer"] is False
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["can_answer"] is True
+    assert result["answer"] == "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。"
     generator.generate_xianyu.assert_not_called()
 
 
@@ -204,7 +210,7 @@ def test_simple_shipping_question_keeps_fast_fact_reply() -> None:
     service = _service(_canon_item(), NoRag(), generator)
 
     result = asyncio.run(
-        service.chat_async("包邮吗？", "simple_shipping", item_id="CANON_FTB_001")
+        service.chat_async("包邮吗？", "simple_shipping", item_id="TEST_CORE_ALIGNMENT_CAMERA")
     )
 
     assert result["action"] == "reply"
@@ -260,7 +266,7 @@ def test_unified_task_path_preserves_the_grounded_generated_reply() -> None:
         service.chat_async(
             "这台支持外接闪光灯吗？",
             "generated_human_review_language",
-            item_id="CANON_FTB_001",
+            item_id="TEST_CORE_ALIGNMENT_CAMERA",
         )
     )
 

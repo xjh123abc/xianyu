@@ -12,7 +12,6 @@ from app.channels.xianyu.client import TextSender
 from app.channels.xianyu.conversation_guard import ConversationGuard
 from app.channels.xianyu.models import InboundMessage, SendReceipt
 from app.channels.xianyu.store import ChannelStore
-from app.channels.xianyu.wecom import HandoffNotifier
 
 
 HANDOFF_NOTICE = "客服服务暂时不可用，请稍后再试。"
@@ -27,13 +26,11 @@ class XianyuStage3Worker:
         *,
         account_id: str,
         chat_client: ChatClient,
-        notifier: HandoffNotifier,
         diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
     ) -> None:
         self.store = store
         self.account_id = account_id
         self.chat_client = chat_client
-        self.notifier = notifier
         self.conversation_guard = ConversationGuard(
             store,
             account_id=account_id,
@@ -52,11 +49,55 @@ class XianyuStage3Worker:
     def release(self, chat_id: str, buyer_id: str) -> int:
         return self.store.set_session_mode(self.account_id, chat_id, buyer_id, "AUTO")
 
-    async def process(self, message: InboundMessage, sender: TextSender) -> dict[str, Any]:
+    async def mark_delivery_unconfirmed(self, message_id: str) -> None:
+        """Record that a local send had no matching seller echo before timeout."""
+        self.store.mark_delivery(
+            self.account_id, message_id, "UNKNOWN", error="seller_echo_timeout"
+        )
+        await self._report_delivery(message_id)
+
+    async def process(
+        self,
+        message: InboundMessage,
+        sender: TextSender,
+        *,
+        already_recorded: bool = False,
+    ) -> dict[str, Any]:
         if message.account_id != self.account_id:
             return {"action": "ignored", "reason": "wrong_account"}
-        if not self.store.record_inbound(message):
+        await self._retry_delivery_reports()
+        if already_recorded:
+            existing = self.store.message(self.account_id, message.platform_message_id)
+            if existing is None:
+                return {"action": "ignored", "reason": "recorded_message_missing"}
+            if existing.get("status") == "CONTEXT_PENDING":
+                return await self._record_human_context(message)
+            if existing.get("status") != "RECEIVED":
+                return {"action": "duplicate", "message_id": message.platform_message_id}
+        elif not self.store.record_inbound(message):
+            existing = self.store.message(self.account_id, message.platform_message_id)
+            if existing is not None and existing.get("status") == "CONTEXT_PENDING":
+                return await self._record_human_context(message)
             return {"action": "duplicate", "message_id": message.platform_message_id}
+
+        if message.sender_is_seller:
+            confirmed_message_id = self.store.confirm_delivery_echo(
+                self.account_id, message.chat_id, message.text
+            )
+            if confirmed_message_id is not None:
+                self.store.mark_ignored(
+                    self.account_id, message.platform_message_id, "seller_delivery_echo"
+                )
+                await self._report_delivery(confirmed_message_id)
+                return {
+                    "action": "delivery_confirmation",
+                    "delivery": "confirmed",
+                    "message_id": confirmed_message_id,
+                }
+
+        session = self.store.get_session_state(self.account_id, message.chat_id)
+        if session is not None and session.get("mode") == "HUMAN":
+            return await self._record_human_context(message)
 
         guard = self.conversation_guard.check(message)
         if guard.action == "IGNORE":
@@ -82,6 +123,7 @@ class XianyuStage3Worker:
         try:
             chat_message = to_chat_message(message, item_id=item_id)
             response = await self.chat_client.ask(chat_message)
+            self._record_delivery_reference(message.platform_message_id, response)
             decision = map_chat_response(response)
         except (TimeoutError, ConnectionError, OSError):
             return await self._auto_error(message, sender, claim, "客服服务暂时不可用")
@@ -109,6 +151,45 @@ class XianyuStage3Worker:
         if delivery is None:
             return {"action": "blocked", "reason": "account_paused_or_human_before_send"}
         return await self._send(message.platform_message_id, delivery, sender, decision.action)
+
+    async def recover_after_restart(self, sender: TextSender) -> None:
+        """Retry receipts and only resume candidates that were never claimed for send."""
+
+        await self._retry_delivery_reports()
+        for pending in self.store.pending_ready_deliveries(self.account_id):
+            message_id = str(pending["platform_message_id"])
+            delivery = self.store.claim_ready_delivery(self.account_id, message_id)
+            if delivery is not None:
+                await self._send(message_id, delivery, sender, str(delivery["action"]))
+
+    async def _record_human_context(self, message: InboundMessage) -> dict[str, Any]:
+        """Store buyer/seller text during takeover, without calling /chat generation."""
+        if message.is_system_event or message.message_type != "text" or not message.text.strip():
+            self.store.mark_ignored(self.account_id, message.platform_message_id, "human_non_text_event")
+            return {"action": "ignored", "reason": "human_non_text_event"}
+        if message.sender_is_seller and self.store.is_delivery_echo(
+            self.account_id, message.chat_id, message.text
+        ):
+            self.store.mark_ignored(self.account_id, message.platform_message_id, "seller_delivery_echo")
+            return {"action": "ignored", "reason": "seller_delivery_echo"}
+
+        self.store.mark_human_context_pending(self.account_id, message.platform_message_id)
+        try:
+            recorder = getattr(self.chat_client, "record_conversation_event", None)
+            if not callable(recorder):
+                raise RuntimeError("chat client does not support conversation events")
+            result = await recorder(
+                account_id=self.account_id,
+                chat_id=message.chat_id,
+                event_id=message.platform_message_id,
+                role="assistant" if message.sender_is_seller else "user",
+                source="seller_manual" if message.sender_is_seller else "buyer_message",
+                content=message.text,
+            )
+        except Exception as error:
+            return {"action": "context_record_failed", "reason": type(error).__name__}
+        self.store.mark_ignored(self.account_id, message.platform_message_id, "human_context_recorded")
+        return {"action": "context_recorded", "appended": bool(result.get("appended"))}
 
     async def _auto_error(
         self,
@@ -148,16 +229,71 @@ class XianyuStage3Worker:
             )
         except TimeoutError:
             self.store.mark_delivery(self.account_id, message_id, "UNKNOWN", error="send_timeout")
+            await self._report_delivery(message_id)
             return {"action": action, "delivery": "unknown", "request_id": delivery["request_id"]}
         except (ConnectionError, OSError):
             self.store.mark_delivery(self.account_id, message_id, "FAILED", error="send_connection_failed")
+            await self._report_delivery(message_id)
             return {"action": action, "delivery": "failed", "request_id": delivery["request_id"]}
         except Exception:
             self.store.mark_delivery(self.account_id, message_id, "FAILED", error="send_failed")
+            await self._report_delivery(message_id)
             return {"action": action, "delivery": "failed", "request_id": delivery["request_id"]}
         if not isinstance(receipt, SendReceipt) or not receipt.local_submitted:
             self.store.mark_delivery(self.account_id, message_id, "FAILED", error="sender_did_not_submit")
+            await self._report_delivery(message_id)
             return {"action": action, "delivery": "failed", "request_id": delivery["request_id"]}
         state = "CONFIRMED" if receipt.platform_confirmed else "LOCAL_SUBMITTED"
         self.store.mark_delivery(self.account_id, message_id, state)
+        await self._report_delivery(message_id)
         return {"action": action, "delivery": state.lower(), "request_id": delivery["request_id"]}
+
+    def _record_delivery_reference(
+        self, message_id: str, response: Mapping[str, Any]
+    ) -> None:
+        turn_id = response.get("turn_id")
+        proposal_id = response.get("proposal_id")
+        if isinstance(turn_id, str) and turn_id.strip() and isinstance(proposal_id, str) and proposal_id.strip():
+            self.store.record_delivery_reference(
+                self.account_id,
+                message_id,
+                turn_id=turn_id,
+                proposal_id=proposal_id,
+            )
+
+    async def _retry_delivery_reports(self) -> None:
+        for delivery in self.store.pending_delivery_reports(self.account_id):
+            await self._report_delivery(str(delivery["platform_message_id"]))
+
+    async def _report_delivery(self, message_id: str) -> None:
+        """Retry a state receipt only; this method never sends buyer text."""
+
+        reporter = getattr(self.chat_client, "report_delivery", None)
+        if not callable(reporter):
+            return
+        pending = [
+            row
+            for row in self.store.pending_delivery_reports(self.account_id)
+            if row["platform_message_id"] == message_id
+        ]
+        if not pending:
+            return
+        receipt = pending[0]
+        try:
+            result = await reporter(
+                chat_id=str(receipt["chat_id"]),
+                turn_id=str(receipt["turn_id"]),
+                proposal_id=str(receipt["proposal_id"]),
+                delivery_state=str(receipt["delivery_state"]),
+            )
+        except Exception:
+            self.store.mark_delivery_report(
+                self.account_id, message_id, "RETRY", error="delivery_receipt_failed"
+            )
+            return
+        if isinstance(result, Mapping) and result.get("accepted") is True:
+            self.store.mark_delivery_report(self.account_id, message_id, "SENT")
+        else:
+            self.store.mark_delivery_report(
+                self.account_id, message_id, "REJECTED", error="delivery_receipt_rejected"
+            )

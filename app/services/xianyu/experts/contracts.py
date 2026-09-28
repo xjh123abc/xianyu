@@ -15,6 +15,7 @@ ExpertKnowledgeScope = Literal[
     "model_knowledge",
     "seller_rule",
     "greeting",
+    "no_reply",
 ]
 ExpertResultStatus = Literal["answered", "handoff"]
 QueryTarget = Literal[
@@ -24,6 +25,7 @@ QueryTarget = Literal[
     "history.drop_history",
     "function.shutter",
     "function.overall",
+    "function.inspection_record",
     "condition.summary",
     "condition.scratches",
     "condition.dents",
@@ -43,6 +45,7 @@ QueryTarget = Literal[
     "price.minimum",
     "price.offer",
     "price.additional_discount",
+    "price.confirm",
     "shipping.dispatch_time",
     "shipping.ship_from",
     "shipping.carrier",
@@ -54,6 +57,8 @@ QueryTarget = Literal[
     "seller_rule.general",
     "product.model_knowledge",
     "greeting",
+    "thanks",
+    "no_reply",
 ]
 VALID_QUERY_TARGETS = frozenset(get_args(QueryTarget))
 
@@ -77,6 +82,7 @@ class ExpertTask:
     transaction_conditions: Mapping[str, object] = field(default_factory=dict)
     depends_on_task_ids: tuple[str, ...] = ()
     original_question: str = ""
+    intent_context: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Expose the complete source question in both old and new contracts."""
@@ -84,6 +90,9 @@ class ExpertTask:
         original = self.original_question.strip() or self.question_fragment
         object.__setattr__(self, "original_question", original)
         object.__setattr__(self, "question_fragment", original)
+        if not isinstance(self.intent_context, Mapping):
+            raise ValueError("intent_context must be a mapping")
+        object.__setattr__(self, "intent_context", dict(self.intent_context))
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +103,10 @@ class ExpertContext:
     item: Mapping[str, object] | None
     history: Sequence[Mapping[str, object]] = ()
     xianyu_context: Mapping[str, object] = field(default_factory=dict)
+    # Private transaction state.  It never enters an evidence prompt or a
+    # buyer-facing item response.
+    negotiation: Mapping[str, object] = field(default_factory=dict)
+    turn_id: str | None = None
     # Owned by the orchestrator and never persisted as buyer/session state.
     deadline: float | None = None
 
@@ -113,6 +126,7 @@ class ExpertResult:
     # output with the evidence supplied to it and the final answer.
     evidence: str | None = None
     raw_answer: str | None = None
+    state_proposal: Mapping[str, object] | None = None
 
     @classmethod
     def answered(
@@ -123,6 +137,7 @@ class ExpertResult:
         sources: Sequence[Mapping[str, object]] = (),
         evidence: str | None = None,
         raw_answer: str | None = None,
+        state_proposal: Mapping[str, object] | None = None,
     ) -> "ExpertResult":
         return cls(
             task_id=task.task_id,
@@ -132,6 +147,7 @@ class ExpertResult:
             sources=tuple(sources),
             evidence=evidence,
             raw_answer=raw_answer,
+            state_proposal=dict(state_proposal) if state_proposal is not None else None,
         )
 
     @classmethod
@@ -165,6 +181,7 @@ class PriceDecision:
     minimum_price_cents: int | None = None
     shipping_condition: ShippingCondition | None = None
     buyer_offer_cents: int | None = None
+    state_proposal: Mapping[str, object] | None = None
 
     @classmethod
     def answered(
@@ -176,6 +193,7 @@ class PriceDecision:
         minimum_price_cents: int | None = None,
         shipping_condition: ShippingCondition | None = None,
         buyer_offer_cents: int | None = None,
+        state_proposal: Mapping[str, object] | None = None,
     ) -> "PriceDecision":
         return cls(
             "answered",
@@ -185,6 +203,7 @@ class PriceDecision:
             minimum_price_cents=minimum_price_cents,
             shipping_condition=shipping_condition,
             buyer_offer_cents=buyer_offer_cents,
+            state_proposal=dict(state_proposal) if state_proposal is not None else None,
         )
 
     @classmethod
@@ -197,6 +216,7 @@ class PriceDecision:
         minimum_price_cents: int | None = None,
         shipping_condition: ShippingCondition | None = None,
         buyer_offer_cents: int | None = None,
+        state_proposal: Mapping[str, object] | None = None,
     ) -> "PriceDecision":
         return cls(
             "handoff",
@@ -206,4 +226,5 @@ class PriceDecision:
             minimum_price_cents=minimum_price_cents,
             shipping_condition=shipping_condition,
             buyer_offer_cents=buyer_offer_cents,
+            state_proposal=dict(state_proposal) if state_proposal is not None else None,
         )

@@ -15,7 +15,7 @@ from app.services.xianyu.item_fact_responder import ItemFactResponder
 
 
 def _canon_item() -> dict[str, object]:
-    return ItemService().get_item_info("CANON_FTB_001")
+    return ItemService().get_item_info("TEST_CORE_ALIGNMENT_CAMERA")
 
 
 def _decision(query: str, item: dict[str, object] | None = None) -> PriceDecision:
@@ -25,23 +25,33 @@ def _decision(query: str, item: dict[str, object] | None = None) -> PriceDecisio
 @pytest.mark.parametrize(
     ("query", "answer", "shipping_condition", "minimum_price_cents"),
     [
-        ("包邮最低多少？", "最低 ¥1490.00 可以拍。", "seller_pays", 149000),
-        ("不包邮最低多少？", "不包邮的话最低 ¥1470.00 可以拍。", "buyer_pays", 147000),
+        (
+            "包邮最低多少？",
+            "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+            "seller_pays",
+            140000,
+        ),
+        (
+            "不包邮最低多少？",
+            "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。",
+            "buyer_pays",
+            138000,
+        ),
         (
             "包邮最低多少？不包邮呢？",
-            "包邮最低 ¥1490.00；不包邮的话最低 ¥1470.00。",
+            "包邮可以比标价少10元；不包邮可以比标价少30元。整套机带镜头一起出，性价比已经挺高了。",
             None,
-            147000,
+            None,
         ),
-        ("包邮1495可以吗？", "可以，¥1495.00 可以拍。", "seller_pays", 149000),
-        ("不包邮我出1470元可以吗？", "可以，¥1470.00 可以拍。", "buyer_pays", 147000),
+        ("包邮1495可以吗？", "可以，¥1495.00包邮可以拍。", "seller_pays", 140000),
+        ("不包邮我出1470元可以吗？", "可以，¥1470.00（不包邮）可以拍。", "buyer_pays", 138000),
     ],
 )
 def test_price_agent_calculates_the_single_authorised_policy(
     query: str,
     answer: str,
     shipping_condition: str | None,
-    minimum_price_cents: int,
+    minimum_price_cents: int | None,
 ) -> None:
     decision = _decision(query)
 
@@ -54,14 +64,9 @@ def test_price_agent_calculates_the_single_authorised_policy(
 
 @pytest.mark.parametrize(
     ("query", "reason"),
-    [
-        ("1470包邮可以吗？", "buyer_offer_below_authorised_minimum"),
-        ("不包邮，我出1450元可以吗？", "buyer_offer_below_authorised_minimum"),
-        ("自提的话能便宜吗？", "unsupported_price_condition"),
-        ("不要镜头能便宜吗？", "unsupported_price_condition"),
-    ],
+    [("自提的话能便宜吗？", "unsupported_price_condition"), ("不要镜头能便宜吗？", "unsupported_price_condition")],
 )
-def test_price_agent_handoffs_for_unauthorised_or_ambiguous_terms(
+def test_price_agent_handoffs_for_unauthorised_conditions(
     query: str,
     reason: str,
 ) -> None:
@@ -73,7 +78,7 @@ def test_price_agent_handoffs_for_unauthorised_or_ambiguous_terms(
     assert reason in decision.reason
 
 
-def test_price_agent_rejects_reference_price_text_as_a_discount_policy() -> None:
+def test_private_policy_is_not_overridden_by_public_reference_price_text() -> None:
     item = deepcopy(_canon_item())
     item["facts"] = {
         **item["facts"],
@@ -85,11 +90,11 @@ def test_price_agent_rejects_reference_price_text_as_a_discount_policy() -> None
 
     decision = _decision("最低多少？", item)
 
-    assert decision.status == "handoff"
-    assert decision.reason == "minor_discount_policy_unavailable"
+    assert decision.status == "answered"
+    assert decision.answer == "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。"
 
 
-def test_price_agent_handoffs_when_policy_conflicts_or_exceeds_original_price() -> None:
+def test_price_agent_handoffs_on_fact_conflicts_but_ignores_public_policy_tampering() -> None:
     conflict = deepcopy(_canon_item())
     conflict["facts"] = {**conflict["facts"], "fact_conflicts": ["shipping"]}
     excessive = deepcopy(_canon_item())
@@ -106,8 +111,30 @@ def test_price_agent_handoffs_when_policy_conflicts_or_exceeds_original_price() 
 
     assert conflict_decision.status == "handoff"
     assert conflict_decision.reason == "price_fact_conflict:shipping"
-    assert excessive_decision.status == "handoff"
-    assert excessive_decision.reason == "minor_discount_exceeds_listed_price"
+    assert excessive_decision.status == "answered"
+    assert excessive_decision.answer == "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。"
+
+
+def test_generic_discount_question_asks_for_buyer_budget_first() -> None:
+    decision = _decision("能便宜点吗？")
+
+    assert decision.status == "answered"
+    assert decision.answer == "你想多少收？整套机带镜头一起出，性价比已经挺高了。"
+    assert decision.state_proposal is None
+    assert decision.effective_price_cents is None
+
+
+@pytest.mark.parametrize("query", ["这个相机最低多少1450可以吗", "1450可以吗？"])
+def test_buyer_offer_below_current_tier_is_not_accepted(query: str) -> None:
+    decision = _decision(query)
+
+    assert decision.status == "answered"
+    assert decision.answer == (
+        "¥1450.00 暂时不行，最多先比标价少10元包邮。"
+        "整套机带镜头一起出，性价比已经挺高了。"
+    )
+    assert decision.buyer_offer_cents == 145000
+    assert decision.effective_price_cents == 149000
 
 
 def test_price_agent_does_not_accept_a_sold_item() -> None:
@@ -121,12 +148,22 @@ def test_price_agent_does_not_accept_a_sold_item() -> None:
     assert decision.minimum_price_cents is None
 
 
+def test_listing_price_is_answered_when_platform_sale_status_is_unknown() -> None:
+    item = deepcopy(_canon_item())
+    item["sale_status"] = "unknown"
+
+    decision = _decision("这台相机怎么卖的？", item)
+
+    assert decision.status == "answered"
+    assert decision.answer == "这件标价是 ¥1500.00。"
+
+
 def test_price_agent_recalculates_from_the_original_price_on_every_turn() -> None:
     first = _decision("不包邮最低多少？")
     second = _decision("不包邮最低多少？")
 
-    assert first.minimum_price_cents == 147000
-    assert second.minimum_price_cents == 147000
+    assert first.minimum_price_cents == 138000
+    assert second.minimum_price_cents == 138000
     assert first.answer == second.answer
 
 

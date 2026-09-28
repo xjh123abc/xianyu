@@ -32,11 +32,6 @@ class _Chat:
         return self.response
 
 
-class _Notifier:
-    async def notify_handoff(self, **kwargs: object) -> None:
-        del kwargs
-
-
 def _message(message_id: str) -> InboundMessage:
     return InboundMessage(
         account_id="seller",
@@ -69,12 +64,11 @@ def test_automatic_failure_keeps_channel_session_auto(
         store,
         account_id="seller",
         chat_client=_Chat(payload),  # type: ignore[arg-type]
-        notifier=_Notifier(),  # type: ignore[arg-type]
     )
 
     result = asyncio.run(worker.process(_message("m-" + str(type(payload).__name__)), _Sender()))
 
-    assert result["action"] in {"answer", "clarify", "error"}
+    assert result["action"] in {"answer", "clarify", "error", "ignored"}
     assert store.session_state("seller", "chat-1", "buyer-1")["mode"] == "AUTO"
 
 

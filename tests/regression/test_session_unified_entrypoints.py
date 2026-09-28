@@ -13,7 +13,6 @@ def test_load_maps_existing_session_state_to_the_unified_context() -> None:
         "查 TEST1001",
         "已找到",
         order_id="TEST1001",
-        last_intent="order_query",
     )
     manager.set_current_item_id("chat-1", "item-001")
     manager.update_xianyu_context("chat-1", recent_price_topic="minimum")
@@ -45,7 +44,6 @@ def test_save_turn_persists_unified_context_through_sqlite(tmp_path) -> None:
         current_item_id="ITEM-001",
         current_order_id="TEST1001",
         last_task_type="price",
-        legacy_intent="bargain",
         xianyu_context_updates={"recent_price_topic": "minimum"},
         negotiation={
             "round": 1,
@@ -65,6 +63,7 @@ def test_save_turn_persists_unified_context_through_sqlite(tmp_path) -> None:
     assert restored.last_task_type == "price"
     assert restored.platform_context["xianyu"]["recent_price_topic"] == "minimum"
     assert restored.negotiation == {
+        **default_negotiation_state(),
         "item_id": "ITEM-001",
         "round": 1,
         "last_ai_offer": 149000,

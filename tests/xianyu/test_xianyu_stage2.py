@@ -63,7 +63,7 @@ def test_xianyu_loader_marks_common_and_item_scopes() -> None:
     assert {chunk.item_id for chunk in chunks if chunk.scope == "item"} == {
         "DEMO_ITEM_001",
         "DEMO_ITEM_002",
-        "DEMO_ITEM_003",
+        "TEST_CORE_ALIGNMENT_CAMERA",
     }
 
 
@@ -153,7 +153,7 @@ def test_combined_price_and_unsupported_detail_keeps_fact_and_handoffs() -> None
 
     assert result["action"] != "handoff"
     assert result["can_answer"] is False
-    assert "该问题目前暂无足够信息确认" in result["answer"]
+    assert result["answer"] == "这件标价是 ¥1280.00。"
     assert rag.item_ids == []
 
 
@@ -315,7 +315,7 @@ def test_known_item_with_missing_fact_handoffs_without_internal_id() -> None:
     assert result["action"] != "handoff"
     assert result["item_id"] == "DEMO_ITEM_001"
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["answer"] == ""
     assert "商品编号" not in str(result["answer"])
     assert "DEMO_ITEM_001" not in str(result["answer"])
 
@@ -331,7 +331,7 @@ def test_vague_question_about_known_item_handoffs() -> None:
 
     assert result["action"] != "handoff"
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["answer"] == ""
 
 
 def test_chat_api_restores_current_item_for_same_chat(monkeypatch) -> None:

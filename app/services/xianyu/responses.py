@@ -27,14 +27,24 @@ def valid_knowledge_sources(
     raw_sources = prepared.get("sources")
     if not isinstance(raw_sources, list):
         return []
-    return [
-        source
-        for source in raw_sources
-        if isinstance(source, Mapping)
-        and isinstance(source.get("source"), str)
-        and bool(str(source.get("source")).strip())
-        and source.get("index") is not None
-    ]
+    valid_sources: list[Mapping[str, object]] = []
+    for source in raw_sources:
+        if (
+            not isinstance(source, Mapping)
+            or not isinstance(source.get("source"), str)
+            or not str(source.get("source")).strip()
+            or source.get("index") is None
+        ):
+            continue
+        if source.get("source_kind") == "web_model_knowledge" and not (
+            isinstance(source.get("fetched_at"), str)
+            and str(source.get("fetched_at")).strip()
+            and isinstance(source.get("product_model"), str)
+            and str(source.get("product_model")).strip()
+        ):
+            continue
+        valid_sources.append(source)
+    return valid_sources
 
 
 def join_answers(parts: Sequence[str], tail: str | None = None) -> str:

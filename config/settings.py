@@ -42,13 +42,20 @@ try:
         knowledge_corpus_id: str = "ecommerce"
         xianyu_corpus_id: str = "xianyu"
         xianyu_items_path: str = "data/xianyu/items.json"
+        xianyu_negotiation_policy_path: str = "data/xianyu/negotiation_policies.json"
+        xianyu_item_sync_interval_seconds: int = 900
         xianyu_knowledge_base_path: str = "data/xianyu/knowledge"
         xianyu_qdrant_collection: str = "xianyu_documents"
         xianyu_ingestion_manifest_path: str = ".xianyu_ingestion_manifest.json"
         xianyu_chat_api_base_url: str = "http://127.0.0.1:8000"
         xianyu_chat_api_timeout_seconds: float = 30.0
+        xianyu_delivery_token: str = ""
         xianyu_expert_budget_seconds: float = 25.0
-        wecom_webhook_url: str = ""
+        tech_search_enabled: bool = False
+        tavily_api_key: str = ""
+        tech_search_allowed_domains: str = ""
+        tech_search_timeout_seconds: float = 6.0
+        tech_search_cache_ttl_seconds: int = 86400
 
 
 

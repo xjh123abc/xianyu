@@ -1,0 +1,1 @@
+{"requested_device": "cuda", "resolved_device": "cuda", "embedding_dimensions": 1024, "reranker_score_count": 1, "gpu_memory": {"allocated_mb": 2280.9, "reserved_mb": 2314.0, "peak_allocated_mb": 2296.0}}

@@ -50,6 +50,11 @@ def test_to_expert_task_preserves_explicit_identity_target_and_dependencies() ->
             "normalized_question": "最低价",
             "knowledge_scope": "item_fact",
             "transaction_conditions": {"request_kind": "minimum"},
+            "intent_context": {
+                "need_id": "n2",
+                "intent": "price.minimum",
+                "reply_required": True,
+            },
         },
         query_target="price.minimum",
         depends_on_task_ids=("product-1",),
@@ -64,6 +69,37 @@ def test_to_expert_task_preserves_explicit_identity_target_and_dependencies() ->
     assert expert_task.query_target == task.query_target
     assert expert_task.depends_on_task_ids == task.depends_on_task_ids
     assert expert_task.transaction_conditions == {"request_kind": "minimum"}
+    assert expert_task.intent_context == {
+        "need_id": "n2",
+        "intent": "price.minimum",
+        "reply_required": True,
+    }
+
+
+def test_to_expert_task_accepts_no_reply_service_contract() -> None:
+    task = Task(
+        "service-no-reply",
+        "service",
+        "好的",
+        {
+            "normalized_question": "无需回复",
+            "knowledge_scope": "no_reply",
+            "transaction_conditions": {},
+            "intent_context": {
+                "need_id": "n1",
+                "intent": "service.no_reply",
+                "reply_required": False,
+            },
+        },
+        query_target="no_reply",
+        execution_mode="xianyu_expert",
+    )
+
+    expert_task = to_expert_task(task)
+
+    assert expert_task.knowledge_scope == "no_reply"
+    assert expert_task.query_target == "no_reply"
+    assert expert_task.intent_context["reply_required"] is False
 
 
 class _RecordingHandler:
@@ -166,6 +202,73 @@ def test_xianyu_expert_handler_adapts_existing_expert_response_to_task_result() 
     )
 
 
+def test_xianyu_expert_handler_keeps_no_reply_empty_answer_as_answered() -> None:
+    class _ExpertOrchestrator:
+        async def execute_tasks(self, tasks, context):
+            del context
+            return [ExpertResult.answered(tasks[0], "")]
+
+    async def _load_item(item_id: str) -> dict[str, object]:
+        raise AssertionError(f"no_reply service task should not load item {item_id}")
+
+    task = _expert_task(
+        "service-no-reply",
+        "service",
+        "好的",
+        query_target="no_reply",
+        knowledge_scope="no_reply",
+    )
+
+    result = asyncio.run(
+        XianyuExpertTaskHandler(
+            expert_orchestrator=_ExpertOrchestrator(),  # type: ignore[arg-type]
+            item_loader=_load_item,
+        ).handle(task, _message(), SessionContext())
+    )
+
+    assert result.status == "answered"
+    assert result.answer == ""
+    assert result.metadata["response"]["action"] == "ignore"
+
+
+def test_unavailable_price_expert_returns_known_listing_price_to_buyer() -> None:
+    class _ExpertOrchestrator:
+        async def execute_tasks(self, tasks, context):
+            del context
+            return [ExpertResult.handoff(tasks[0], "negotiation_policy_unavailable")]
+
+    async def _load_item(item_id: str) -> dict[str, object]:
+        return {
+            "found": True,
+            "item_id": item_id,
+            "title": "家用半自动咖啡机",
+            "listed_price_cents": 98000,
+            "sale_status": "unknown",
+            "data_source": "seller_snapshot+xianyu_platform",
+            "facts": {"fact_conflicts": []},
+        }
+
+    result = asyncio.run(
+        XianyuExpertTaskHandler(
+            expert_orchestrator=_ExpertOrchestrator(),  # type: ignore[arg-type]
+            item_loader=_load_item,
+        ).handle(
+            _expert_task(
+                "price-1",
+                "price",
+                "咖啡机怎么卖的",
+                query_target="price.listed_price",
+            ),
+            _message(item_id="XIANYU_COFFEE_MD03_001"),
+            SessionContext(),
+        )
+    )
+
+    assert result.status == "answered"
+    assert result.answer == "这件标价是 ¥980.00。"
+    assert result.metadata["response"]["action"] == "reply"
+
+
 def test_xianyu_expert_handler_uses_each_task_query_without_reusing_combined_answer() -> None:
     class _ExpertOrchestrator:
         def __init__(self) -> None:
@@ -198,12 +301,12 @@ def test_xianyu_expert_handler_uses_each_task_query_without_reusing_combined_ans
     assert [result.answer for result in results] == [
         "没有维修过。",
         "最低 ¥1490.00 可以拍。",
-        "目前只能确认付款后48小时内发出，周日是否能送达暂时无法确认。",
+        "我目前没有可靠的物流时效信息，不能确定周日能否送达。",
     ]
     assert results[-1].status == "unavailable"
 
 
-def test_unavailable_delivery_task_replaces_legacy_handoff_wording() -> None:
+def test_unavailable_delivery_task_keeps_no_legacy_handoff_text() -> None:
     class _ExpertOrchestrator:
         async def execute_tasks(self, tasks, context):
             del context
@@ -219,7 +322,7 @@ def test_unavailable_delivery_task_replaces_legacy_handoff_wording() -> None:
     ))
 
     assert result.status == "unavailable"
-    assert result.answer == "目前只能确认付款后48小时内发出，周日是否能送达暂时无法确认。"
+    assert result.answer == "我目前没有可靠的物流时效信息，不能确定周日能否送达。"
 
 
 def test_order_handler_uses_the_standalone_order_route_for_combined_plan() -> None:

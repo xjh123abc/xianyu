@@ -31,6 +31,7 @@ def to_chat_message(
         buyer_id=message.buyer_id,
         item_id=item_id,
         text=message.text,
+        turn_id=f"{message.account_id}:{message.platform_message_id}",
     )
 
 

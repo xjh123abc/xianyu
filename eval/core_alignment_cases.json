@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "fixture_item_id": "TEST_CORE_ALIGNMENT_CAMERA",
+  "cases": [
+    {
+      "id": "K01",
+      "execution": "chat",
+      "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
+      "turns": [
+        {"query": "这台相机多少钱？"},
+        {"query": "便宜一点可以吗？"},
+        {"query": "再便宜10元呢？"},
+        {"query": "可以，就按你刚才报的价格。"}
+      ],
+      "review": "核对同一商品内的多轮报价状态、最低价和运费；报价确认不能冒充平台改价或下单。"
+    },
+    {
+      "id": "K02",
+      "execution": "chat",
+      "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
+      "turns": [
+        {"query": "我出500元，可以卖吗？"}
+      ],
+      "review": "确认明显低于 TEST 底价的出价被拒绝，不能突破授权底线。"
+    },
+    {
+      "id": "K03",
+      "execution": "manual",
+      "turns": [],
+      "review": "需要渠道测试验证换商品、买家隔离、数据库重启恢复及重复平台消息去重。"
+    },
+    {
+      "id": "K04",
+      "execution": "manual",
+      "turns": [],
+      "review": "需要发送器故障注入验证失败/未知发送状态与延迟、重复回执；不能盲目重发买家文本。"
+    },
+    {
+      "id": "K05",
+      "execution": "chat",
+      "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
+      "turns": [
+        {"query": "TEST-35 的规格资料是什么？"},
+        {"query": "真实相机资料呢？"},
+        {"query": "TEST-999 的资料呢？"},
+        {"query": "请搜索相机说明书，测试联网搜索是否可用。"}
+      ],
+      "review": "分别核对本地资料命中、在线搜索来源、型号不匹配和搜索不可用/超时的处理；不能把一次联网成功当成恒定保证。"
+    },
+    {
+      "id": "K06",
+      "execution": "chat",
+      "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
+      "turns": [
+        {"query": "网上说这款相机很耐用，能保证这台实物没有维修或进水吗？"}
+      ],
+      "review": "公开网页不能证明这台实物无维修或进水；未知项目应保留未知。"
+    },
+    {
+      "id": "K07",
+      "execution": "chat",
+      "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
+      "turns": [
+        {"query": "这台相机的快门工作吗？另外请讲得口语一点。"},
+        {"query": "随便确认一个商品事实，并测试模型规划异常时是否有安全兜底。"}
+      ],
+      "review": "检查口语改写保持事实，以及规划失败的固定兜底；当前请求脚本只记录响应，故障注入由自动化测试覆盖。"
+    },
+    {
+      "id": "K08",
+      "execution": "chat",
+      "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
+      "turns": [
+        {"query": "你好，谢谢；顺便问一下，这个相机带蓝色收纳袋吗？"}
+      ],
+      "review": "混合问候和商品问题不能整体忽略；只有纯问候/感谢才按规则处理。"
+    },
+    {
+      "id": "K09",
+      "execution": "chat",
+      "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
+      "turns": [
+        {"query": "成色怎么样？相机多少钱？运费谁出？售后怎么处理？"}
+      ],
+      "review": "核对已知成色、标价、运费和售后；未知事实不得抹掉已确认事实。"
+    },
+    {
+      "id": "K10",
+      "execution": "manual",
+      "turns": [],
+      "review": "需要通过已绑定平台商品验证介绍同步、价格冲突、售出状态和未绑定商品保护。"
+    },
+    {
+      "id": "K11",
+      "execution": "manual",
+      "turns": [],
+      "review": "需要在闲鱼会话验证人工接管、人工交流、恢复 AUTO、控制词和机器人回显去重。"
+    },
+    {
+      "id": "K12",
+      "execution": "manual",
+      "turns": [],
+      "review": "需要故障注入验证慢模型期间持续接收、心跳确认及断线重连。"
+    },
+    {
+      "id": "K13",
+      "execution": "manual",
+      "turns": [],
+      "review": "需要在隔离测试账号验证登录/验证失效后暂停和告警，且不覆盖 HUMAN/AUTO 控制。"
+    },
+    {
+      "id": "K14",
+      "execution": "manual",
+      "turns": [],
+      "review": "需要真实买家端确认消息可见，并核对平台状态、回执及本地发送记录。"
+    }
+  ]
+}

@@ -14,7 +14,7 @@ from app.services.xianyu.item_fact_responder import ItemFactResponder
 
 
 def _item() -> dict[str, object]:
-    return ItemService().get_item_info("CANON_FTB_001")
+    return ItemService().get_item_info("TEST_CORE_ALIGNMENT_CAMERA")
 
 
 def test_three_delimited_questions_keep_complete_source_and_distinct_targets() -> None:
@@ -115,7 +115,7 @@ def test_validated_model_question_replaces_only_the_rule_question_for_its_target
     tasks = build_expert_plan(
         "走什么快递多久能发货",
         planner=planner,
-        xianyu_context={"item_id": "CANON_FTB_001"},
+        xianyu_context={"item_id": "TEST_CORE_ALIGNMENT_CAMERA"},
     )
 
     carrier = next(task for task in tasks if task.query_target == "shipping.carrier")
@@ -145,7 +145,7 @@ def test_model_keyword_slice_cannot_replace_a_complete_rule_question() -> None:
     tasks = build_expert_plan(
         query,
         planner=planner,
-        xianyu_context={"item_id": "CANON_FTB_001"},
+        xianyu_context={"item_id": "TEST_CORE_ALIGNMENT_CAMERA"},
     )
 
     carrier = next(task for task in tasks if task.query_target == "shipping.carrier")

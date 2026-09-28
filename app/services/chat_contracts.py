@@ -53,13 +53,19 @@ def _text(value: object, field_name: str) -> str:
 
 
 def default_negotiation_state() -> dict[str, object]:
-    """Return fresh state reserved for the future price-negotiation flow."""
+    """Return fresh, item-scoped state for the price-negotiation flow."""
 
     return {
         "item_id": None,
         "round": 0,
         "last_ai_offer": None,
         "last_buyer_offer": None,
+        "shipping_condition": None,
+        "policy_version": None,
+        "offer_status": "none",
+        "pending_offer": None,
+        "last_committed_turn_id": None,
+        "last_proposal_id": None,
     }
 
 
@@ -73,6 +79,9 @@ class ChatMessage:
     buyer_id: str
     item_id: str | None
     text: str
+    # Channel adapters provide a stable value derived from the platform
+    # message identifier.  Direct /chat callers may leave it absent.
+    turn_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "platform", _required_text(self.platform, "platform"))
@@ -81,6 +90,7 @@ class ChatMessage:
         object.__setattr__(self, "buyer_id", _required_text(self.buyer_id, "buyer_id"))
         object.__setattr__(self, "item_id", _optional_text(self.item_id, "item_id"))
         object.__setattr__(self, "text", _required_text(self.text, "text"))
+        object.__setattr__(self, "turn_id", _optional_text(self.turn_id, "turn_id"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +103,7 @@ class SessionContext:
     last_task_type: TaskType | None = None
     negotiation: dict[str, object] = field(default_factory=default_negotiation_state)
     platform_context: dict[str, dict[str, object]] = field(default_factory=dict)
+    deadline: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.history, list) or any(
@@ -120,6 +131,35 @@ class SessionContext:
         if not isinstance(round_number, int) or isinstance(round_number, bool) or round_number < 0:
             raise ValueError("negotiation.round must be a non-negative integer")
         state["item_id"] = _optional_text(state["item_id"], "negotiation.item_id")
+        for field_name in ("last_ai_offer", "last_buyer_offer"):
+            amount = state[field_name]
+            if amount is not None and (
+                not isinstance(amount, int) or isinstance(amount, bool) or amount < 0
+            ):
+                raise ValueError(f"negotiation.{field_name} must be non-negative cents or None")
+        if state["shipping_condition"] not in {None, "seller_pays", "buyer_pays"}:
+            raise ValueError("negotiation.shipping_condition is invalid")
+        if state["policy_version"] is not None and (
+            not isinstance(state["policy_version"], int)
+            or isinstance(state["policy_version"], bool)
+            or state["policy_version"] < 0
+        ):
+            raise ValueError("negotiation.policy_version must be a non-negative integer or None")
+        if state["offer_status"] not in {
+            "none",
+            "generated",
+            "submitted",
+            "confirmed",
+            "failed",
+            "unknown",
+        }:
+            raise ValueError("negotiation.offer_status is invalid")
+        for field_name in ("last_committed_turn_id", "last_proposal_id"):
+            state[field_name] = _optional_text(state[field_name], f"negotiation.{field_name}")
+        if state["pending_offer"] is not None and not isinstance(state["pending_offer"], Mapping):
+            raise ValueError("negotiation.pending_offer must be a mapping or None")
+        if isinstance(state["pending_offer"], Mapping):
+            state["pending_offer"] = dict(state["pending_offer"])
         object.__setattr__(self, "negotiation", state)
         if not isinstance(self.platform_context, Mapping) or any(
             not isinstance(name, str) or not isinstance(value, Mapping)

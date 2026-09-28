@@ -131,7 +131,7 @@ def run_acceptance(post_chat: PostChat) -> list[dict[str, Any]]:
     a01_inputs = [
         {"query": "这个商品标价多少？", "chat_id": "qa_a01_001", "item_id": "DEMO_ITEM_001"},
         {"query": "这个商品还能买吗？", "chat_id": "qa_a01_002", "item_id": "DEMO_ITEM_002"},
-        {"query": "这个商品还在售吗？", "chat_id": "qa_a01_003", "item_id": "DEMO_ITEM_003"},
+        {"query": "这个商品还在售吗？", "chat_id": "qa_a01_003", "item_id": "TEST_UNKNOWN_STATUS_CAMERA"},
     ]
     a01 = _request_many(post_chat, a01_inputs)
     records.append(

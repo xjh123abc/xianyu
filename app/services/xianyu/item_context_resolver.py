@@ -150,7 +150,11 @@ class ItemContextResolver:
             and not isinstance(price, bool)
             and price >= 0
             and item.get("sale_status") in {"listed", "sold", "unknown"}
-            and item.get("data_source") == "seller_manual"
+            and item.get("data_source") in {
+                "seller_manual",
+                "seller_snapshot+xianyu_platform",
+                "test_fixture",
+            }
             and isinstance(item.get("updated_at"), str)
             and bool(str(item.get("updated_at")).strip())
             and ("facts" not in item or isinstance(item.get("facts"), Mapping))

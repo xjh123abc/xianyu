@@ -1,0 +1,2003 @@
+{
+  "generated_at": "2026-09-24T20:18:12",
+  "workspace": "D:\\rag demo智能客服\\ecommerce-ai-customer-service",
+  "safety": {
+    "real_buyer_send": false,
+    "real_item_authorization_mutation": false,
+    "mcp": "FakeMcp returning local ItemService snapshot only",
+    "sender": "FakeSender; only channel mapper branch simulated"
+  },
+  "commands": [
+    "python -m pytest tests\\regression\\test_semantic_intent_planner.py tests\\regression\\test_result_merger.py tests\\regression\\test_task_executor.py tests\\regression\\test_expert_workflow.py tests\\regression\\test_unified_planner.py tests\\api\\test_xianyu_expert_contract.py tests\\xianyu\\test_xianyu_expert_agents.py tests\\xianyu\\test_xianyu_expert_orchestrator.py tests\\xianyu\\test_xianyu_price_agent.py tests\\xianyu\\test_t1_continuous_negotiation.py -q",
+    "python -m pytest tests\\xianyu\\test_xianyu_stage3_worker.py -q",
+    "python eval\\t3_r04_acceptance_runner.py"
+  ],
+  "pytest": {
+    "t3_related_matrix": "112 passed in 18.79s",
+    "channel_worker_ignore_matrix": "25 passed in 19.26s"
+  },
+  "records": [
+    {
+      "id": "natural_greeting",
+      "group": "simulated_main_chain",
+      "query": "你好",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "你好",
+          "query_target": "greeting",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "普通招呼",
+          "knowledge_scope": "greeting",
+          "intent": "service.greeting",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "378a5418d5fe4996bd806459580f7576",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "greeting",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.167,
+          "sources": [],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "你好，有什么想了解的？",
+          "reason": null
+        }
+      ],
+      "answer": "你好，有什么想了解的？",
+      "response": {
+        "action": "reply",
+        "answer": "你好，有什么想了解的？",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "one_greeting_task",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        },
+        {
+          "name": "no_expert_model",
+          "passed": true
+        },
+        {
+          "name": "reply",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "natural_thanks",
+      "group": "simulated_main_chain",
+      "query": "谢谢",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "谢谢",
+          "query_target": "thanks",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "普通感谢",
+          "knowledge_scope": "greeting",
+          "intent": "service.thanks",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "f8ef094ba93c4996ba3196d7b3599e15",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "thanks",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.192,
+          "sources": [],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "不客气，有需要随时说。",
+          "reason": null
+        }
+      ],
+      "answer": "不客气，有需要随时说。",
+      "response": {
+        "action": "reply",
+        "answer": "不客气，有需要随时说。",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "one_thanks_task",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        },
+        {
+          "name": "reply",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "pure_system_event_ignore",
+      "group": "simulated_main_chain",
+      "query": "[系统] 买家已读消息",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "[系统] 买家已读消息",
+          "query_target": "no_reply",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "无需回复",
+          "knowledge_scope": "no_reply",
+          "intent": "service.no_reply",
+          "conditions": [],
+          "reply_required": false,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "2faf2fb992794bb7a675642a408d22a2",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "no_reply",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.118,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "",
+          "reason": null
+        }
+      ],
+      "answer": "",
+      "response": {
+        "action": "ignore",
+        "answer": "",
+        "can_answer": true,
+        "reason": "no_reply_required",
+        "route": "xianyu",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "no_reply_task",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        },
+        {
+          "name": "action_ignore",
+          "passed": true
+        },
+        {
+          "name": "service_node",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "colloquial_availability",
+      "group": "simulated_main_chain",
+      "query": "还有吗",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "product",
+          "query": "还有吗",
+          "query_target": "availability.sale_status",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "确认当前商品是否还在售",
+          "knowledge_scope": "item_fact",
+          "intent": "product.availability",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "6306e0c5c59545c7a3cc78563704de00",
+          "node": "product_node",
+          "task_id": "q1",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "availability.sale_status",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.148,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "还在的，这台目前还没出。",
+          "reason": null
+        }
+      ],
+      "answer": "还在的，这台目前还没出。",
+      "response": {
+        "action": "reply",
+        "answer": "还在的，这台目前还没出。",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "availability_task",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        },
+        {
+          "name": "answered",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "colloquial_function",
+      "group": "simulated_main_chain",
+      "query": "能用不",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "product",
+          "query": "能用不",
+          "query_target": "function.overall",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品功能是否正常",
+          "knowledge_scope": "item_fact",
+          "intent": "product.function",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "2fd3433ee6ea4cef91bae1cad6e74124",
+          "node": "product_node",
+          "task_id": "q1",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "function.overall",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.241,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "目前记录的功能状态正常，可以使用。",
+          "reason": null
+        }
+      ],
+      "answer": "目前记录的功能状态正常，可以使用。",
+      "response": {
+        "action": "reply",
+        "answer": "目前记录的功能状态正常，可以使用。",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "function_task",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        },
+        {
+          "name": "answered",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "return_shipping_fee_with_damage_background",
+      "group": "simulated_main_chain",
+      "query": "镜头开裂，退回去运费谁出",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "退回去运费谁出",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "买家反馈当前镜头裂了，在未核实前咨询退回商品时运费由谁承担",
+          "knowledge_scope": "seller_rule",
+          "intent": "after_sale.return_shipping_fee",
+          "conditions": [
+            {
+              "type": "scenario",
+              "event": "镜头裂了",
+              "timing": "unspecified",
+              "modality": "reported_unverified"
+            }
+          ],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        [
+          {
+            "type": "scenario",
+            "event": "镜头裂了",
+            "timing": "unspecified",
+            "modality": "reported_unverified"
+          }
+        ]
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "e3ca38d011ac4a9195a041dfcdd97b0f",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.94,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "退回运费要先看退货原因和责任归属，未核实前不能直接承诺由卖家承担；经核实属于卖家责任时，再按平台规则处理合理必要费用。",
+          "reason": null
+        }
+      ],
+      "answer": "退回运费要先看退货原因和责任归属，未核实前不能直接承诺由卖家承担；经核实属于卖家责任时，再按平台规则处理合理必要费用。",
+      "response": {
+        "action": "reply",
+        "answer": "退回运费要先看退货原因和责任归属，未核实前不能直接承诺由卖家承担；经核实属于卖家责任时，再按平台规则处理合理必要费用。",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "退回去运费谁出",
+            "evidence": "本轮售后处理约束：当前商品 after_sale.return_policy=manual_review。买家关于损坏、开裂、到货异常的说法只能视为待核实反馈或假设，不能自动认定为已确认商品事实或卖家责任。未核实、未获平台/卖家批准前，不得承诺同意退货退款、仅退款、换货、赔付或由卖家/我承担退回运费。只能说明需保留包装、面单、商品现状、照片/视频等证据，并在平台售后流程中按订单、商品资料、证据和责任归属核实；经核实属于卖家责任时，合理必要费用再按法律和平台规则处理。\n\n[common] 买家反馈当前镜头裂了，在未核实前咨询退回商品时运费由谁承担\n店铺售后规则：买家反馈到货损坏或商品问题时，需先在平台售后提交照片/视频、包装、面单等证据。未核实前不能承诺退货退款或运费由卖家承担；经核实属于卖家责任时，合理必要费用按平台规则处理。保修问题按平台售后和商品说明核实。",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "one_fee_task",
+          "passed": true
+        },
+        {
+          "name": "intent_fee",
+          "passed": true
+        },
+        {
+          "name": "condition_kept",
+          "passed": true
+        },
+        {
+          "name": "not_over_split",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "return_policy_and_shipping_fee_two_needs",
+      "group": "simulated_main_chain",
+      "query": "可以退吗？退回去运费谁出",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "可以退吗",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "针对商品有问题这一未核实情形，咨询是否支持退货或售后处理",
+          "knowledge_scope": "seller_rule",
+          "intent": "after_sale.consult",
+          "conditions": [
+            {
+              "type": "scenario",
+              "event": "商品有问题",
+              "timing": "unspecified",
+              "modality": "unspecified"
+            }
+          ],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        },
+        {
+          "task_id": "q2",
+          "type": "service",
+          "query": "退回去运费谁出",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "咨询退回商品时运费由谁承担",
+          "knowledge_scope": "seller_rule",
+          "intent": "after_sale.return_shipping_fee",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 2,
+      "conditions": [
+        [
+          {
+            "type": "scenario",
+            "event": "商品有问题",
+            "timing": "unspecified",
+            "modality": "unspecified"
+          }
+        ],
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "678d417d0c454582ba820b6ed7a86b5d",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.59,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        },
+        {
+          "run_id": "678d417d0c454582ba820b6ed7a86b5d",
+          "node": "service_node",
+          "task_id": "q2",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.967,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "需要先按平台售后流程提交证据核实，核实后再按平台规则处理。",
+          "reason": null
+        },
+        {
+          "task_id": "q2",
+          "status": "answered",
+          "answer": "退回运费要先看退货原因和责任归属，未核实前不能直接承诺由卖家承担；经核实属于卖家责任时，再按平台规则处理合理必要费用。",
+          "reason": null
+        }
+      ],
+      "answer": "需要先按平台售后流程提交证据核实，核实后再按平台规则处理。\n退回运费要先看退货原因和责任归属，未核实前不能直接承诺由卖家承担；经核实属于卖家责任时，再按平台规则处理合理必要费用。",
+      "response": {
+        "action": "reply",
+        "answer": "需要先按平台售后流程提交证据核实，核实后再按平台规则处理。\n退回运费要先看退货原因和责任归属，未核实前不能直接承诺由卖家承担；经核实属于卖家责任时，再按平台规则处理合理必要费用。",
+        "can_answer": true,
+        "reason": null,
+        "route": "unified",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "可以退吗",
+            "evidence": "本轮售后处理约束：当前商品 after_sale.return_policy=manual_review。买家关于损坏、开裂、到货异常的说法只能视为待核实反馈或假设，不能自动认定为已确认商品事实或卖家责任。未核实、未获平台/卖家批准前，不得承诺同意退货退款、仅退款、换货、赔付或由卖家/我承担退回运费。只能说明需保留包装、面单、商品现状、照片/视频等证据，并在平台售后流程中按订单、商品资料、证据和责任归属核实；经核实属于卖家责任时，合理必要费用再按法律和平台规则处理。\n\n[common] 针对商品有问题这一未核实情形，咨询是否支持退货或售后处理\n店铺售后规则：买家反馈到货损坏或商品问题时，需先在平台售后提交照片/视频、包装、面单等证据。未核实前不能承诺退货退款或运费由卖家承担；经核实属于卖家责任时，合理必要费用按平台规则处理。保修问题按平台售后和商品说明核实。",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          },
+          {
+            "expert": "service",
+            "question": "退回去运费谁出",
+            "evidence": "本轮售后处理约束：当前商品 after_sale.return_policy=manual_review。买家关于损坏、开裂、到货异常的说法只能视为待核实反馈或假设，不能自动认定为已确认商品事实或卖家责任。未核实、未获平台/卖家批准前，不得承诺同意退货退款、仅退款、换货、赔付或由卖家/我承担退回运费。只能说明需保留包装、面单、商品现状、照片/视频等证据，并在平台售后流程中按订单、商品资料、证据和责任归属核实；经核实属于卖家责任时，合理必要费用再按法律和平台规则处理。\n\n[common] 咨询退回商品时运费由谁承担\n店铺售后规则：买家反馈到货损坏或商品问题时，需先在平台售后提交照片/视频、包装、面单等证据。未核实前不能承诺退货退款或运费由卖家承担；经核实属于卖家责任时，合理必要费用按平台规则处理。保修问题按平台售后和商品说明核实。",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "two_service_needs",
+          "passed": true
+        },
+        {
+          "name": "not_merged_by_expert",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "thanks_min_price_not_ignored",
+      "group": "simulated_main_chain",
+      "query": "谢谢，最低多少",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "price",
+          "query": "最低多少",
+          "query_target": "price.minimum",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品最低可成交价格",
+          "knowledge_scope": "item_fact",
+          "intent": "price.minimum",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {
+            "request_kind": "minimum"
+          }
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "09dc19e30629442b9d411e414c115605",
+          "node": "price_node",
+          "task_id": "q1",
+          "task_type": "price",
+          "execution_mode": "xianyu_expert",
+          "query_target": "price.minimum",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 2.118,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+          "reason": null
+        }
+      ],
+      "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+      "response": {
+        "action": "reply",
+        "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "price_only",
+          "passed": true
+        },
+        {
+          "name": "not_ignore",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "multi_question_four_needs",
+      "group": "simulated_main_chain",
+      "query": "这台修过没？成色怎么样？最低多少？今天能发吗？",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "product",
+          "query": "这台修过没",
+          "query_target": "history.repair_history",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品是否有维修或拆修记录",
+          "knowledge_scope": "item_fact",
+          "intent": "product.repair_history",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        },
+        {
+          "task_id": "q2",
+          "type": "product",
+          "query": "成色怎么样",
+          "query_target": "condition.summary",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品成色和外观情况",
+          "knowledge_scope": "item_fact",
+          "intent": "product.condition_summary",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        },
+        {
+          "task_id": "q3",
+          "type": "price",
+          "query": "最低多少",
+          "query_target": "price.minimum",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品最低可成交价格",
+          "knowledge_scope": "item_fact",
+          "intent": "price.minimum",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {
+            "request_kind": "minimum"
+          }
+        },
+        {
+          "task_id": "q4",
+          "type": "service",
+          "query": "今天能发吗",
+          "query_target": "shipping.dispatch_time",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "确认当前商品什么时候可以发货",
+          "knowledge_scope": "item_fact",
+          "intent": "shipping.dispatch_time",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 4,
+      "conditions": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "eb251de7d1504dab927eb0a6a5596550",
+          "node": "product_node",
+          "task_id": "q1",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "history.repair_history",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.151,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        },
+        {
+          "run_id": "eb251de7d1504dab927eb0a6a5596550",
+          "node": "product_node",
+          "task_id": "q2",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "condition.summary",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.113,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        },
+        {
+          "run_id": "eb251de7d1504dab927eb0a6a5596550",
+          "node": "price_node",
+          "task_id": "q3",
+          "task_type": "price",
+          "execution_mode": "xianyu_expert",
+          "query_target": "price.minimum",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.641,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        },
+        {
+          "run_id": "eb251de7d1504dab927eb0a6a5596550",
+          "node": "service_node",
+          "task_id": "q4",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "shipping.dispatch_time",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.147,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "没有维修过。",
+          "reason": null
+        },
+        {
+          "task_id": "q2",
+          "status": "answered",
+          "answer": "机身九成新，有轻微使用痕迹。",
+          "reason": null
+        },
+        {
+          "task_id": "q3",
+          "status": "answered",
+          "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+          "reason": null
+        },
+        {
+          "task_id": "q4",
+          "status": "answered",
+          "answer": "付款后 48 小时内发出。",
+          "reason": null
+        }
+      ],
+      "answer": "没有维修过。\n机身九成新，有轻微使用痕迹。\n可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。\n付款后 48 小时内发出。",
+      "response": {
+        "action": "reply",
+        "answer": "没有维修过。\n机身九成新，有轻微使用痕迹。\n可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。\n付款后 48 小时内发出。",
+        "can_answer": true,
+        "reason": null,
+        "route": "unified",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "four_tasks",
+          "passed": true
+        },
+        {
+          "name": "nodes_all",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "partial_unknown_keeps_known_answers",
+      "group": "simulated_main_chain",
+      "query": "测光和手机对比过吗？最低多少？今天能发吗？",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "product",
+          "query": "测光和手机对比过吗？最低多少？今天能发吗",
+          "query_target": "product.model_knowledge",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "测光和手机对比过吗？最低多少？今天能发吗",
+          "knowledge_scope": "model_knowledge",
+          "intent": "product.model_knowledge",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        },
+        {
+          "task_id": "q2",
+          "type": "price",
+          "query": "最低多少",
+          "query_target": "price.minimum",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品最低可成交价格",
+          "knowledge_scope": "item_fact",
+          "intent": "price.minimum",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {
+            "request_kind": "minimum"
+          }
+        },
+        {
+          "task_id": "q3",
+          "type": "service",
+          "query": "今天能发吗",
+          "query_target": "shipping.dispatch_time",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "确认当前商品什么时候可以发货",
+          "knowledge_scope": "item_fact",
+          "intent": "shipping.dispatch_time",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 3,
+      "conditions": [
+        [],
+        [],
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "786ec131af484cb58cafa5e9ba131438",
+          "node": "product_node",
+          "task_id": "q1",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "product.model_knowledge",
+          "status": "unavailable",
+          "reason": "knowledge_evidence_unavailable",
+          "duration_ms": 0.34,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": false
+        },
+        {
+          "run_id": "786ec131af484cb58cafa5e9ba131438",
+          "node": "price_node",
+          "task_id": "q2",
+          "task_type": "price",
+          "execution_mode": "xianyu_expert",
+          "query_target": "price.minimum",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.592,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        },
+        {
+          "run_id": "786ec131af484cb58cafa5e9ba131438",
+          "node": "service_node",
+          "task_id": "q3",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "shipping.dispatch_time",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.115,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "unavailable",
+          "answer": "",
+          "reason": "knowledge_evidence_unavailable"
+        },
+        {
+          "task_id": "q2",
+          "status": "answered",
+          "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+          "reason": null
+        },
+        {
+          "task_id": "q3",
+          "status": "answered",
+          "answer": "付款后 48 小时内发出。",
+          "reason": null
+        }
+      ],
+      "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。\n付款后 48 小时内发出。",
+      "response": {
+        "action": "reply",
+        "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。\n付款后 48 小时内发出。",
+        "can_answer": false,
+        "reason": "knowledge_evidence_unavailable",
+        "route": "unified",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "three_tasks",
+          "passed": true
+        },
+        {
+          "name": "partial_failure_retained",
+          "passed": false
+        },
+        {
+          "name": "no_handoff",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "continuous_followup_shipping_condition",
+      "group": "simulated_main_chain",
+      "query": "那不包邮呢？",
+      "history_turns": [
+        {
+          "query": "包邮最低多少？",
+          "item_id": "CANON_FTB_001",
+          "turn_id": "followup-1"
+        }
+      ],
+      "prior_outputs": [
+        {
+          "action": "reply",
+          "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+          "can_answer": true,
+          "reason": null,
+          "route": "xianyu",
+          "item_id": "CANON_FTB_001"
+        }
+      ],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "price",
+          "query": "那不包邮呢",
+          "query_target": "price.minimum",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "结合上一轮价格话题，查询不包邮条件下最低价格",
+          "knowledge_scope": "item_fact",
+          "intent": "price.minimum",
+          "conditions": [
+            {
+              "type": "shipping",
+              "value": "buyer_pays"
+            }
+          ],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {
+            "request_kind": "minimum",
+            "shipping": "buyer_pays"
+          }
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        [
+          {
+            "type": "shipping",
+            "value": "buyer_pays"
+          }
+        ]
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "1f2ab2a6a2b545e5b8eee2062528d192",
+          "node": "price_node",
+          "task_id": "q1",
+          "task_type": "price",
+          "execution_mode": "xianyu_expert",
+          "query_target": "price.minimum",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.267,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。",
+          "reason": null
+        }
+      ],
+      "answer": "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。",
+      "response": {
+        "action": "reply",
+        "answer": "可以先比标价少30元不包邮。整套机带镜头一起出，性价比已经挺高了。",
+        "can_answer": true,
+        "reason": null,
+        "route": "xianyu",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "price_followup_task",
+          "passed": true
+        },
+        {
+          "name": "buyer_pays_condition",
+          "passed": true
+        },
+        {
+          "name": "uses_context_item",
+          "passed": true
+        },
+        {
+          "name": "model_calls_0_for_second_turn",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "semantic_added_product_task_requires_item_resolution",
+      "group": "simulated_main_chain",
+      "query": "这个商品保修多久",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "product",
+          "query": "这个商品保修多久",
+          "query_target": "identity.model",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品型号",
+          "knowledge_scope": "item_fact",
+          "intent": "product.identity_model",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 1,
+      "conditions": [
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "ready",
+        "model_called": true,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "db98a567b2e549f098b7c2fdc79b1565",
+          "node": "prepare_ready_tasks",
+          "task_id": "q1",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "identity.model",
+          "status": "clarify",
+          "reason": "buyer_question_requires_clarification",
+          "duration_ms": 0.0,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "clarify",
+          "answer": "请补充商品编号或具体商品信息。",
+          "reason": "buyer_question_requires_clarification"
+        }
+      ],
+      "answer": "请补充商品编号或具体商品信息。",
+      "response": {
+        "action": "clarify",
+        "answer": "请补充商品编号或具体商品信息。",
+        "can_answer": false,
+        "reason": "buyer_question_requires_clarification",
+        "route": "xianyu",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "这个商品保修多久",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "model_called_once",
+          "passed": true
+        },
+        {
+          "name": "product_task_added",
+          "passed": true
+        },
+        {
+          "name": "missing_item_clarify",
+          "passed": false
+        },
+        {
+          "name": "prepared_by_graph",
+          "passed": true
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "semantic_timeout_preserves_rule_tasks",
+      "group": "simulated_faults",
+      "query": "这台修过吗？保修多久？最低多少？",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "product",
+          "query": "这台修过吗",
+          "query_target": "history.repair_history",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品是否有维修或拆修记录",
+          "knowledge_scope": "item_fact",
+          "intent": "product.repair_history",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        },
+        {
+          "task_id": "q2",
+          "type": "price",
+          "query": "最低多少",
+          "query_target": "price.minimum",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品最低可成交价格",
+          "knowledge_scope": "item_fact",
+          "intent": "price.minimum",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {
+            "request_kind": "minimum"
+          }
+        }
+      ],
+      "task_count": 2,
+      "conditions": [
+        [],
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "ready",
+        "model_called": true,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "45c58f8b906a4f49a6fff33c2b1016e6",
+          "node": "product_node",
+          "task_id": "q1",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "history.repair_history",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.163,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        },
+        {
+          "run_id": "45c58f8b906a4f49a6fff33c2b1016e6",
+          "node": "price_node",
+          "task_id": "q2",
+          "task_type": "price",
+          "execution_mode": "xianyu_expert",
+          "query_target": "price.minimum",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.655,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "没有维修过。",
+          "reason": null
+        },
+        {
+          "task_id": "q2",
+          "status": "answered",
+          "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+          "reason": null
+        }
+      ],
+      "answer": "没有维修过。\n可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+      "response": {
+        "action": "reply",
+        "answer": "没有维修过。\n可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+        "can_answer": true,
+        "reason": null,
+        "route": "unified",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "这台修过吗？保修多久？最低多少？",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "model_called_once",
+          "passed": true
+        },
+        {
+          "name": "rules_preserved",
+          "passed": true
+        },
+        {
+          "name": "still_replies_known",
+          "passed": false
+        }
+      ],
+      "conclusion": "FAIL"
+    },
+    {
+      "id": "semantic_illegal_output_fail_closed",
+      "group": "simulated_faults",
+      "query": "这个商品保修多久",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [],
+      "task_count": 0,
+      "conditions": [],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "error",
+        "model_called": true,
+        "error_reason": "intent_parse_failed",
+        "clarification_question": null
+      },
+      "nodes": [],
+      "task_results": [],
+      "answer": "暂时没能解析这条消息，请稍后再试或换个说法。",
+      "response": {
+        "action": "reply",
+        "answer": "暂时没能解析这条消息，请稍后再试或换个说法。",
+        "can_answer": false,
+        "reason": "intent_parse_failed",
+        "route": "unified",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "这个商品保修多久",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "model_called_once",
+          "passed": true
+        },
+        {
+          "name": "no_tasks",
+          "passed": true
+        },
+        {
+          "name": "fail_closed_reply",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "partial_task_failure_keeps_successes",
+      "group": "simulated_faults",
+      "query": "这台修过没？最低多少？今天能发吗？",
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "product",
+          "query": "这台修过没",
+          "query_target": "history.repair_history",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品是否有维修或拆修记录",
+          "knowledge_scope": "item_fact",
+          "intent": "product.repair_history",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        },
+        {
+          "task_id": "q2",
+          "type": "price",
+          "query": "最低多少",
+          "query_target": "price.minimum",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品最低可成交价格",
+          "knowledge_scope": "item_fact",
+          "intent": "price.minimum",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {
+            "request_kind": "minimum"
+          }
+        },
+        {
+          "task_id": "q3",
+          "type": "service",
+          "query": "今天能发吗",
+          "query_target": "shipping.dispatch_time",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "确认当前商品什么时候可以发货",
+          "knowledge_scope": "item_fact",
+          "intent": "shipping.dispatch_time",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        }
+      ],
+      "task_count": 3,
+      "conditions": [
+        [],
+        [],
+        []
+      ],
+      "model_planning_call_count": 0,
+      "understanding": {
+        "status": "ready",
+        "model_called": false
+      },
+      "nodes": [
+        {
+          "run_id": "914a6edf2eee473093dd4e60311437d8",
+          "node": "product_node",
+          "task_id": "q1",
+          "task_type": "product",
+          "execution_mode": "xianyu_expert",
+          "query_target": "history.repair_history",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.028,
+          "sources": [],
+          "raw_output_recorded": false
+        },
+        {
+          "run_id": "914a6edf2eee473093dd4e60311437d8",
+          "node": "price_node",
+          "task_id": "q2",
+          "task_type": "price",
+          "execution_mode": "xianyu_expert",
+          "query_target": "price.minimum",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.016,
+          "sources": [],
+          "raw_output_recorded": false
+        },
+        {
+          "run_id": "914a6edf2eee473093dd4e60311437d8",
+          "node": "service_node",
+          "task_id": "q3",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "shipping.dispatch_time",
+          "status": "unavailable",
+          "reason": "task_execution_failed",
+          "duration_ms": 2.443,
+          "sources": [],
+          "raw_output_recorded": false
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "没有维修过。",
+          "reason": null
+        },
+        {
+          "task_id": "q2",
+          "status": "answered",
+          "answer": "最低 ¥1490.00 可以拍。",
+          "reason": null
+        },
+        {
+          "task_id": "q3",
+          "status": "unavailable",
+          "answer": "",
+          "reason": "task_execution_failed"
+        }
+      ],
+      "answer": "没有维修过。\n最低 ¥1490.00 可以拍。",
+      "response": {
+        "action": "reply",
+        "answer": "没有维修过。\n最低 ¥1490.00 可以拍。",
+        "can_answer": false,
+        "reason": "task_execution_failed",
+        "route": "unified",
+        "item_id": null
+      },
+      "generator_calls": {
+        "semantic": [],
+        "expert": [],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "service_failed",
+          "passed": true
+        },
+        {
+          "name": "successes_kept",
+          "passed": true
+        },
+        {
+          "name": "reply_not_handoff",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "channel_ignore_does_not_call_sender",
+      "group": "simulated_faults",
+      "query": "[系统] 买家已读消息",
+      "tasks": [],
+      "task_count": 0,
+      "conditions": [],
+      "model_planning_call_count": 0,
+      "nodes": [],
+      "answer": "",
+      "response": {
+        "action": "ignore",
+        "answer": "",
+        "can_answer": true,
+        "reason": "no_reply_required",
+        "route": "xianyu",
+        "item_id": null
+      },
+      "channel_decision": {
+        "action": "ignore",
+        "text": "",
+        "reason": "api_requested_ignore"
+      },
+      "sender_calls": [],
+      "checks": [
+        {
+          "name": "mapped_to_ignore",
+          "passed": true
+        },
+        {
+          "name": "sender_not_called",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    },
+    {
+      "id": "real_model_semantic_fallback_partial_message",
+      "group": "real_model",
+      "query": "这个商品保修多久？最低多少？",
+      "history_turns": [],
+      "prior_outputs": [],
+      "tasks": [
+        {
+          "task_id": "q1",
+          "type": "service",
+          "query": "这个商品保修多久？",
+          "query_target": "seller_rule.general",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "这个商品的保修期是多久？",
+          "knowledge_scope": "seller_rule",
+          "intent": "after_sale.consult",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {}
+        },
+        {
+          "task_id": "q2",
+          "type": "price",
+          "query": "最低多少",
+          "query_target": "price.minimum",
+          "execution_mode": "xianyu_expert",
+          "normalized_question": "查询当前商品最低可成交价格",
+          "knowledge_scope": "item_fact",
+          "intent": "price.minimum",
+          "conditions": [],
+          "reply_required": true,
+          "depends_on_task_ids": [],
+          "transaction_conditions": {
+            "request_kind": "minimum"
+          }
+        }
+      ],
+      "task_count": 2,
+      "conditions": [
+        [],
+        []
+      ],
+      "model_planning_call_count": 1,
+      "understanding": {
+        "status": "ready",
+        "model_called": true,
+        "error_reason": null,
+        "clarification_question": null
+      },
+      "nodes": [
+        {
+          "run_id": "9775fcf9666447fa90b60cd3f4b90378",
+          "node": "service_node",
+          "task_id": "q1",
+          "task_type": "service",
+          "execution_mode": "xianyu_expert",
+          "query_target": "seller_rule.general",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 1.189,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            },
+            {
+              "source": "seller_rules.md",
+              "index": 0
+            }
+          ],
+          "raw_output_recorded": true
+        },
+        {
+          "run_id": "9775fcf9666447fa90b60cd3f4b90378",
+          "node": "price_node",
+          "task_id": "q2",
+          "task_type": "price",
+          "execution_mode": "xianyu_expert",
+          "query_target": "price.minimum",
+          "status": "answered",
+          "reason": null,
+          "duration_ms": 0.63,
+          "sources": [
+            {
+              "source": "mcp:get_item_info",
+              "index": "CANON_FTB_001"
+            }
+          ],
+          "raw_output_recorded": true
+        }
+      ],
+      "task_results": [
+        {
+          "task_id": "q1",
+          "status": "answered",
+          "answer": "保修和售后需要按商品说明、订单情况和平台流程核实，目前不能直接承诺处理结果。",
+          "reason": null
+        },
+        {
+          "task_id": "q2",
+          "status": "answered",
+          "answer": "可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+          "reason": null
+        }
+      ],
+      "answer": "保修和售后需要按商品说明、订单情况和平台流程核实，目前不能直接承诺处理结果。\n可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+      "response": {
+        "action": "reply",
+        "answer": "保修和售后需要按商品说明、订单情况和平台流程核实，目前不能直接承诺处理结果。\n可以先比标价少10元包邮。整套机带镜头一起出，性价比已经挺高了。",
+        "can_answer": true,
+        "reason": null,
+        "route": "unified",
+        "item_id": "CANON_FTB_001"
+      },
+      "generator_calls": {
+        "semantic": [
+          {
+            "query": "这个商品保修多久？最低多少？",
+            "history_count": 0,
+            "timeout_seconds": 8.0
+          }
+        ],
+        "expert": [
+          {
+            "expert": "service",
+            "question": "这个商品保修多久？",
+            "evidence": "本轮售后处理约束：当前商品 after_sale.return_policy=manual_review。买家关于损坏、开裂、到货异常的说法只能视为待核实反馈或假设，不能自动认定为已确认商品事实或卖家责任。未核实、未获平台/卖家批准前，不得承诺同意退货退款、仅退款、换货、赔付或由卖家/我承担退回运费。只能说明需保留包装、面单、商品现状、照片/视频等证据，并在平台售后流程中按订单、商品资料、证据和责任归属核实；经核实属于卖家责任时，合理必要费用再按法律和平台规则处理。\n\n[common] 这个商品的保修期是多久？\n店铺售后规则：买家反馈到货损坏或商品问题时，需先在平台售后提交照片/视频、包装、面单等证据。未核实前不能承诺退货退款或运费由卖家承担；经核实属于卖家责任时，合理必要费用按平台规则处理。保修问题按平台售后和商品说明核实。",
+            "kwargs": {
+              "history": [],
+              "timeout_seconds": 25.0
+            }
+          }
+        ],
+        "legacy_generate": []
+      },
+      "checks": [
+        {
+          "name": "model_called_once",
+          "passed": true
+        },
+        {
+          "name": "tasks_non_empty",
+          "passed": true
+        },
+        {
+          "name": "no_handoff",
+          "passed": true
+        },
+        {
+          "name": "valid_targets",
+          "passed": true
+        }
+      ],
+      "conclusion": "PASS"
+    }
+  ],
+  "totals": {
+    "pass": 14,
+    "fail": 3,
+    "error": 0,
+    "not_run": 0
+  },
+  "t3_acceptance": "FAIL"
+}

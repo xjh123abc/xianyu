@@ -41,7 +41,7 @@ def _fake_chat(payload: dict[str, str]) -> dict[str, object]:
     if "还能买" in query or "在售" in query:
         if remembered == "DEMO_ITEM_002":
             answer += "这件已经出掉了。"
-        elif remembered == "DEMO_ITEM_003":
+        elif remembered == "TEST_UNKNOWN_STATUS_CAMERA":
             return {
                 "action": "reply",
                 "answer": "该问题目前暂无足够信息确认。",

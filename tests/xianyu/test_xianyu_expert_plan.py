@@ -98,7 +98,7 @@ def test_generic_bargain_is_planned_as_a_minimum_price_request(
     query: str,
     expected_conditions: dict[str, object],
 ) -> None:
-    tasks = build_expert_plan(query, xianyu_context={"item_id": "CANON_FTB_001"})
+    tasks = build_expert_plan(query, xianyu_context={"item_id": "TEST_CORE_ALIGNMENT_CAMERA"})
 
     price_task = next(task for task in tasks if task.expert == "price")
 
@@ -109,7 +109,7 @@ def test_generic_bargain_is_planned_as_a_minimum_price_request(
 def test_compact_multi_question_keeps_shipping_answer_in_buyer_order() -> None:
     tasks = build_expert_plan(
         "还在吗有没有维修过包邮吗",
-        xianyu_context={"item_id": "CANON_FTB_001"},
+        xianyu_context={"item_id": "TEST_CORE_ALIGNMENT_CAMERA"},
     )
 
     assert [task.query_target for task in tasks] == [
@@ -119,7 +119,7 @@ def test_compact_multi_question_keeps_shipping_answer_in_buyer_order() -> None:
     ]
 
 
-def test_model_knowledge_task_without_target_uses_its_only_valid_target() -> None:
+def test_seller_measurement_task_without_target_uses_item_fact_record_target() -> None:
     planner = PlannerSpy(
         {
             "tasks": [
@@ -139,10 +139,10 @@ def test_model_knowledge_task_without_target_uses_its_only_valid_target() -> Non
     tasks = build_expert_plan(
         "测光对比过吗？顺便还在吗？",
         planner=planner,
-        xianyu_context={"item_id": "CANON_FTB_001"},
+        xianyu_context={"item_id": "TEST_CORE_ALIGNMENT_CAMERA"},
     )
 
-    assert ("product", "model_knowledge", "product.model_knowledge") in [
+    assert ("product", "item_fact", "function.inspection_record") in [
         (task.expert, task.knowledge_scope, task.query_target) for task in tasks
     ]
 
@@ -276,7 +276,7 @@ def test_session_context_defaults_and_isolation_preserve_existing_order_state() 
     manager.append_turn("first", "查 TEST1001", "已找到", order_id="TEST1001")
     manager.update_xianyu_context(
         "first",
-        item_id="canon_ftb_001",
+        item_id="TEST_CORE_ALIGNMENT_CAMERA",
         recent_price_topic="minimum",
         shipping_condition="buyer_pays",
     )
@@ -287,7 +287,7 @@ def test_session_context_defaults_and_isolation_preserve_existing_order_state() 
     assert first_history
     assert first_state["order_id"] == "TEST1001"
     assert first_state["xianyu_context"] == {
-        "item_id": "CANON_FTB_001",
+        "item_id": "TEST_CORE_ALIGNMENT_CAMERA",
         "recent_price_topic": "minimum",
         "shipping_condition": "buyer_pays",
     }
@@ -305,7 +305,7 @@ def test_old_session_state_gets_xianyu_defaults_without_changing_order_fields() 
             "history": [{"role": "user", "content": "查 TEST1001"}],
             "state": {
                 "order_id": "TEST1001",
-                "current_item_id": "CANON_FTB_001",
+                "current_item_id": "TEST_CORE_ALIGNMENT_CAMERA",
                 "last_intent": "order_query",
             },
         }
@@ -313,8 +313,8 @@ def test_old_session_state_gets_xianyu_defaults_without_changing_order_fields() 
 
     assert history == [{"role": "user", "content": "查 TEST1001"}]
     assert state["order_id"] == "TEST1001"
-    assert state["current_item_id"] == "CANON_FTB_001"
-    assert state["last_intent"] == "order_query"
+    assert state["current_item_id"] == "TEST_CORE_ALIGNMENT_CAMERA"
+    assert "last_intent" not in state
     assert state["xianyu_context"] == {
         "item_id": None,
         "recent_price_topic": None,

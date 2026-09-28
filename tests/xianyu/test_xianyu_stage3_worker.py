@@ -82,17 +82,6 @@ class InProcessHttpChat:
         return response.json()
 
 
-class FakeNotifier:
-    def __init__(self, error: BaseException | None = None) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.error = error
-
-    async def notify_handoff(self, **kwargs: Any) -> None:
-        self.calls.append(kwargs)
-        if self.error:
-            raise self.error
-
-
 def message(message_id: str = "m1", **changes: object) -> InboundMessage:
     data: dict[str, object] = {
         "account_id": "seller",
@@ -106,11 +95,11 @@ def message(message_id: str = "m1", **changes: object) -> InboundMessage:
     return InboundMessage(**data)
 
 
-def worker(tmp_path: Path, chat: FakeChat, notifier: FakeNotifier | None = None) -> tuple[XianyuStage3Worker, ChannelStore]:
+def worker(tmp_path: Path, chat: FakeChat) -> tuple[XianyuStage3Worker, ChannelStore]:
     store = ChannelStore(tmp_path / "channel.sqlite3")
     store.bind_item("seller", "listing-a", "ITEM_A")
     instance = XianyuStage3Worker(
-        store, account_id="seller", chat_client=chat, notifier=notifier or FakeNotifier()
+        store, account_id="seller", chat_client=chat
     )
     instance.enable_account()
     return instance, store
@@ -138,32 +127,30 @@ def test_answer_is_mapped_sent_and_recorded_with_trusted_item(tmp_path: Path) ->
 
 
 def test_unresolved_clarification_keeps_the_session_in_auto(tmp_path: Path) -> None:
-    notifier = FakeNotifier()
     chat = FakeChat({"can_answer": False, "next_step": "clarify", "answer": "请问您说的是哪一件商品？"})
-    instance, store = worker(tmp_path, chat, notifier)
+    instance, store = worker(tmp_path, chat)
     sender = FakeSender()
 
     result = asyncio.run(instance.process(message("m2"), sender))
 
     assert result["action"] == "clarify"
     assert sender.calls[0][2] == "请问您说的是哪一件商品？"
-    assert notifier.calls == []
     assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
 
 
 def test_unanswerable_question_keeps_auto_and_allows_future_ai(tmp_path: Path) -> None:
-    notifier = FakeNotifier()
-    instance, store = worker(tmp_path, FakeChat({"action": "handoff", "reason": "refund_amount_unknown"}), notifier)
+    chat = FakeChat({"action": "handoff", "reason": "refund_amount_unknown"})
+    instance, store = worker(tmp_path, chat)
     sender = FakeSender()
 
     result = asyncio.run(instance.process(message("m3", text="能补偿多少？"), sender))
+    chat.response = {"action": "reply", "answer": "付款后 48 小时内发出。"}
     later = asyncio.run(instance.process(message("m4", text="那什么时候发货？"), sender))
 
-    assert result["action"] == "answer"
-    assert notifier.calls == []
+    assert result == {"action": "ignored", "reason": "refund_amount_unknown"}
     assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
     assert later["action"] == "answer"
-    assert len(sender.calls) == 2
+    assert len(sender.calls) == 1
 
 
 def test_resume_auto_endpoint_restores_one_human_conversation_to_buyer_processing(
@@ -203,16 +190,15 @@ def test_resume_auto_endpoint_restores_one_human_conversation_to_buyer_processin
     assert chat.calls[-1]["query"] == "包邮吗？"
 
 
-def test_api_error_handoffs_without_exposing_internal_error(tmp_path: Path) -> None:
-    notifier = FakeNotifier(error=ConnectionError("notifier offline"))
-    instance, store = worker(tmp_path, FakeChat(RuntimeError("model secret stack")), notifier)
+def test_api_error_sends_safe_notice_without_exposing_internal_error(tmp_path: Path) -> None:
+    instance, store = worker(tmp_path, FakeChat(RuntimeError("model secret stack")))
     sender = FakeSender()
 
     result = asyncio.run(instance.process(message("m5"), sender))
 
     assert result["action"] == "error"
     row = store.message("seller", "m5")
-    assert row and row["notification_state"] == "NONE"
+    assert row is not None
     assert "secret" not in sender.calls[0][2]
     assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
 
@@ -236,7 +222,7 @@ def test_automatic_failure_modes_never_take_over_a_session(
 
     result = asyncio.run(instance.process(message(), FakeSender()))
 
-    assert result["action"] in {"answer", "clarify", "error"}
+    assert result["action"] in {"ignored", "clarify", "error"}
     assert store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")["mode"] == "AUTO"
 
 
@@ -278,7 +264,7 @@ def test_seller_takeover_during_generation_supersedes_old_answer(tmp_path: Path)
     assert store.message("seller", "seller-takeover")["status"] == "SUPERSEDED"
 
 
-def test_http_handoff_remains_auto_and_sends_one_safe_reply(
+def test_legacy_http_handoff_is_ignored_and_keeps_session_auto(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -296,8 +282,7 @@ def test_http_handoff_remains_auto_and_sends_one_safe_reply(
         }
     )
     monkeypatch.setattr(chat_api, "chat_service", service)
-    notifier = FakeNotifier()
-    instance, store = worker(tmp_path, InProcessHttpChat(), notifier)  # type: ignore[arg-type]
+    instance, store = worker(tmp_path, InProcessHttpChat())  # type: ignore[arg-type]
     sender = FakeSender()
     inbound = message(
         "http-s3-handoff",
@@ -307,10 +292,9 @@ def test_http_handoff_remains_auto_and_sends_one_safe_reply(
     first = asyncio.run(instance.process(inbound, sender))
     duplicate = asyncio.run(instance.process(inbound, sender))
 
-    assert first["action"] == "answer"
+    assert first == {"action": "ignored", "reason": reason}
     assert duplicate == {"action": "duplicate", "message_id": "http-s3-handoff"}
-    assert [call[2] for call in sender.calls] == [HANDOFF_NOTICE]
-    assert notifier.calls == []
+    assert sender.calls == []
     state = store.session_state("seller", "xianyu:seller:chat-1", "buyer-1")
     assert state["mode"] == "AUTO"
     assert state["takeover_reason"] is None
@@ -339,10 +323,9 @@ def test_unbound_listing_is_ignored_without_calling_chat(tmp_path: Path) -> None
     assert store.message("seller", "m8")["error"] == "item_not_bound_to_seller"
 
 
-def test_buyer_side_conversation_is_ignored_before_chat_send_or_handoff(tmp_path: Path) -> None:
+def test_buyer_side_conversation_is_ignored_before_chat_or_send(tmp_path: Path) -> None:
     chat = FakeChat({"action": "handoff", "reason": "should not run"})
-    notifier = FakeNotifier()
-    instance, store = worker(tmp_path, chat, notifier)
+    instance, store = worker(tmp_path, chat)
     sender = FakeSender()
 
     results = [
@@ -358,7 +341,6 @@ def test_buyer_side_conversation_is_ignored_before_chat_send_or_handoff(tmp_path
     assert results == [{"action": "ignored", "reason": "item_not_bound_to_seller"}] * 10
     assert chat.calls == []
     assert sender.calls == []
-    assert notifier.calls == []
     assert store.message("seller", "buyer-side-0")["status"] == "IGNORED"
 
 

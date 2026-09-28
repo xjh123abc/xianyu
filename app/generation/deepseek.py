@@ -17,6 +17,7 @@ from app.generation.xianyu_expert_prompt import (
     build_xianyu_expert_plan_messages,
     build_xianyu_product_expert_messages,
     build_xianyu_service_expert_messages,
+    build_xianyu_semantic_intent_messages,
 )
 from config.settings import settings
 
@@ -69,6 +70,20 @@ class DeepSeekGenerator:
 
         return self._generate_messages(
             build_xianyu_expert_plan_messages(query, history),
+            timeout_seconds=timeout_seconds,
+        )
+
+    def analyze_xianyu_intent(
+        self,
+        query: str,
+        *,
+        history: Sequence[Mapping[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
+    ) -> str:
+        """Return the S2.5A semantic intent payload."""
+
+        return self._generate_messages(
+            build_xianyu_semantic_intent_messages(query, history),
             timeout_seconds=timeout_seconds,
         )
 

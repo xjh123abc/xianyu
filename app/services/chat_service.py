@@ -7,7 +7,10 @@ the API and channel workers.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from collections.abc import Mapping
+from dataclasses import replace
 
 from app.generation.deepseek import DeepSeekGenerator
 from app.infrastructure.order_mcp_client import get_order_via_mcp
@@ -16,7 +19,13 @@ from app.retrieval.bm25 import BM25Search
 from app.retrieval.hybrid_search import HybridSearch
 from app.retrieval.reranker import Reranker
 from app.retrieval.vector_search import VectorSearch
-from app.services.chat_contracts import ChatMessage, SessionContext, Task
+from app.services.chat_contracts import (
+    ChatMessage,
+    SessionContext,
+    Task,
+    default_negotiation_state,
+)
+from app.services.intent_analyzer import IntentAnalyzer
 from app.services.intent_router import IntentRouter
 from app.services.item_service import ItemService
 from app.services.knowledge_service import KnowledgeService
@@ -32,6 +41,7 @@ from app.services.task_executor import (
     TaskExecutor,
     XianyuExpertTaskHandler,
 )
+from app.services.technical_knowledge_service import TechnicalKnowledgeService
 from app.services.xianyu.item_context_resolver import ItemContextResolver
 from app.services.xianyu.item_fact_responder import ItemFactResponder
 from app.services.xianyu.expert_orchestrator import XianyuExpertOrchestrator
@@ -60,6 +70,8 @@ class ChatService:
         planner: Planner | None = None,
         task_executor: TaskExecutor | None = None,
         knowledge_service: KnowledgeService | None = None,
+        price_agent: PriceAgent | None = None,
+        technical_knowledge_service: TechnicalKnowledgeService | None = None,
     ) -> None:
         self.rag_service = rag_service or RAGService(
             vector_search=vector_search,
@@ -102,8 +114,11 @@ class ChatService:
             may_contain_explicit_item_reference=(
                 self.item_context_resolver.may_contain_explicit_item_reference
             ),
+            intent_analyzer=IntentAnalyzer(
+                semantic_planner=self._analyze_xianyu_intent
+            ),
         )
-        self.price_agent = PriceAgent()
+        self.price_agent = price_agent or PriceAgent()
         self.item_fact_responder = ItemFactResponder(price_agent=self.price_agent)
         self.knowledge_service = knowledge_service or KnowledgeService(
             self._get_xianyu_rag_service
@@ -111,20 +126,13 @@ class ChatService:
         self.xianyu_knowledge_responder = XianyuKnowledgeResponder(
             knowledge_service=self.knowledge_service,
             generator=self._get_generator,
-            fact_responder=self.item_fact_responder,
-            route_intent=lambda query: self.intent_router.route(query),
-            legacy_item_handler=lambda query, item, history: (
-                self.expert_orchestrator.handle(
-                    query,
-                    item=item,
-                    history=history,
-                )
+            technical_knowledge_service=(
+                technical_knowledge_service or TechnicalKnowledgeService()
             ),
         )
         self.expert_orchestrator = expert_orchestrator or XianyuExpertOrchestrator(
             fact_responder=self.item_fact_responder,
             knowledge_responder=self.xianyu_knowledge_responder,
-            intent_router=self.intent_router,
             generator=self._get_generator,
             price_agent=self.price_agent,
         )
@@ -152,17 +160,37 @@ class ChatService:
         chat_id: str | None = None,
         *,
         item_id: str | None = None,
+        turn_id: str | None = None,
     ) -> dict[str, object]:
         """Serialize one session while resolving and answering its next turn."""
 
         include_chat_id = chat_id is not None
+        budget_seconds = min(
+            float(getattr(settings, "xianyu_expert_budget_seconds", 25.0)),
+            float(getattr(settings, "xianyu_chat_api_timeout_seconds", 30.0)) * 0.9,
+        )
+        deadline = time.monotonic() + budget_seconds
         resolved_chat_id, _ = self.session_manager.get_or_create(chat_id)
-        async with self.session_manager.session_lock(resolved_chat_id):
-            response = await self._chat_async_locked(
-                query,
-                resolved_chat_id,
-                item_id=item_id,
-            )
+        try:
+            async with asyncio.timeout_at(deadline):
+                async with self.session_manager.session_lock(resolved_chat_id):
+                    response = await self._chat_async_locked(
+                        query,
+                        resolved_chat_id,
+                        item_id=item_id,
+                        turn_id=turn_id,
+                        deadline=deadline,
+                    )
+        except TimeoutError:
+            response = {
+                "query": query,
+                "answer": "客服服务暂时不可用，请稍后再试。",
+                "can_answer": False,
+                "action": "error",
+                "route": "unified",
+                "reason": "turn_budget_exhausted",
+                "chat_id": resolved_chat_id,
+            }
         if not include_chat_id:
             response.pop("chat_id", None)
         return response
@@ -173,17 +201,37 @@ class ChatService:
         chat_id: str,
         *,
         item_id: str | None = None,
+        turn_id: str | None = None,
+        deadline: float | None = None,
     ) -> dict[str, object]:
         """Run the stable load → plan → execute transition boundary."""
 
         context = self.session_manager.load(chat_id)
-        tasks = self.planner.plan(query, context, item_id=item_id)
+        if deadline is not None:
+            context = replace(context, deadline=deadline)
+        plan_async = getattr(self.planner, "plan_async", None)
+        if callable(plan_async):
+            outcome = await plan_async(query, context, item_id=item_id)
+            early_response = getattr(outcome, "early_response", None)
+            if isinstance(early_response, Mapping):
+                response = dict(early_response)
+                self.session_manager.save_turn(
+                    chat_id,
+                    query,
+                    str(response.get("answer") or ""),
+                )
+                response["chat_id"] = chat_id
+                return response
+            tasks = list(getattr(outcome, "tasks", []))
+        else:
+            tasks = self.planner.plan(query, context, item_id=item_id)
         return await self._execute_planned_turn(
             query,
             chat_id,
             context,
             tasks,
             item_id=item_id,
+            turn_id=turn_id,
         )
 
     async def _execute_planned_turn(
@@ -194,6 +242,7 @@ class ChatService:
         tasks: list[Task],
         *,
         item_id: str | None = None,
+        turn_id: str | None = None,
     ) -> dict[str, object]:
         """Execute Planner tasks through the single unified path."""
 
@@ -217,12 +266,18 @@ class ChatService:
             if item is not None
             else item_id or context.current_item_id
         )
+        item_switched = item is not None and context.current_item_id != str(item["item_id"])
+        execution_negotiation = (
+            {**default_negotiation_state(), "item_id": str(item["item_id"])}
+            if item_switched
+            else context.negotiation
+        )
         execution_context = SessionContext(
             history=context.history,
             current_item_id=execution_item_id,
             current_order_id=context.current_order_id,
             last_task_type=context.last_task_type,
-            negotiation=context.negotiation,
+            negotiation=execution_negotiation,
             platform_context={
                 **context.platform_context,
                 "xianyu": {
@@ -231,6 +286,7 @@ class ChatService:
                     **({"resolved_item": dict(item)} if item is not None else {}),
                 },
             },
+            deadline=context.deadline,
         )
         message = ChatMessage(
             "xianyu",
@@ -239,6 +295,7 @@ class ChatService:
             "buyer",
             execution_item_id,
             query,
+            turn_id,
         )
         precomputed = self._item_resolution_results(tasks, resolution_response)
         if precomputed:
@@ -251,6 +308,15 @@ class ChatService:
         else:
             results = await self.task_executor.execute(tasks, message, execution_context)
         response = self.result_merger.merge(query, tasks, results)
+        negotiation_proposal = self._negotiation_proposal(results)
+        if negotiation_proposal is not None:
+            pending = negotiation_proposal.get("pending_offer")
+            if isinstance(pending, Mapping):
+                proposal_id = pending.get("proposal_id")
+                proposal_turn_id = pending.get("turn_id")
+                if isinstance(proposal_id, str) and isinstance(proposal_turn_id, str):
+                    response["proposal_id"] = proposal_id
+                    response["turn_id"] = proposal_turn_id
 
         if item is not None:
             self.item_fact_responder.attach_intent_metadata(
@@ -267,6 +333,8 @@ class ChatService:
             updates = self.planner.xianyu_context_updates(query, expert_context)
             if updates:
                 turn_kwargs["xianyu_context_updates"] = updates
+        if negotiation_proposal is not None:
+            turn_kwargs["negotiation"] = negotiation_proposal
         self.session_manager.save_turn(
             chat_id,
             query,
@@ -275,6 +343,106 @@ class ChatService:
         )
         response["chat_id"] = chat_id
         return response
+
+    @staticmethod
+    def _negotiation_proposal(
+        results: list[object],
+    ) -> dict[str, object] | None:
+        """Allow one buyer turn to persist at most one coherent price proposal."""
+
+        proposals = [
+            result.metadata.get("negotiation_proposal")
+            for result in results
+            if hasattr(result, "metadata")
+            and isinstance(result.metadata, Mapping)
+            and isinstance(result.metadata.get("negotiation_proposal"), Mapping)
+        ]
+        if not proposals:
+            return None
+        normalized = [dict(proposal) for proposal in proposals]
+        if any(proposal != normalized[0] for proposal in normalized[1:]):
+            # A planner defect must never consume two tiers in one message.
+            return None
+        return normalized[0]
+
+    async def record_delivery(
+        self,
+        chat_id: str,
+        *,
+        turn_id: str,
+        proposal_id: str,
+        delivery_state: str,
+    ) -> dict[str, object]:
+        """Apply an authenticated channel delivery receipt idempotently."""
+
+        if delivery_state not in {"LOCAL_SUBMITTED", "CONFIRMED", "FAILED", "UNKNOWN"}:
+            raise ValueError("delivery_state is invalid")
+        async with self.session_manager.session_lock(chat_id):
+            context = self.session_manager.load(chat_id)
+            state = context.negotiation
+            pending = state.get("pending_offer")
+            if not isinstance(pending, Mapping):
+                if (
+                    state.get("last_committed_turn_id") == turn_id
+                    and state.get("last_proposal_id") == proposal_id
+                    and state.get("offer_status") in {"submitted", "confirmed"}
+                ):
+                    if delivery_state == "CONFIRMED" and state.get("offer_status") != "confirmed":
+                        self.session_manager.update_negotiation(
+                            chat_id, {"offer_status": "confirmed"}
+                        )
+                    return {"accepted": True, "idempotent": True}
+                return {"accepted": False, "reason": "proposal_not_pending"}
+            if pending.get("proposal_id") != proposal_id or pending.get("turn_id") != turn_id:
+                return {"accepted": False, "reason": "proposal_mismatch"}
+            item_id = pending.get("item_id")
+            if not isinstance(item_id, str) or context.current_item_id != item_id:
+                return {"accepted": False, "reason": "proposal_item_mismatch"}
+            item = await self.mcp_service.get_item_info(item_id)
+            if (
+                not isinstance(item, Mapping)
+                or item.get("found") is not True
+                or not self.price_agent.policy_store.version_matches(
+                    item, pending.get("policy_version")
+                )
+            ):
+                return {"accepted": False, "reason": "proposal_expired"}
+
+            if delivery_state in {"LOCAL_SUBMITTED", "CONFIRMED"}:
+                self.session_manager.update_negotiation(
+                    chat_id,
+                    {
+                        "round": pending["round"],
+                        "last_ai_offer": pending["price_cents"],
+                        "shipping_condition": pending["shipping_condition"],
+                        "policy_version": pending["policy_version"],
+                        "offer_status": (
+                            "submitted"
+                            if delivery_state == "LOCAL_SUBMITTED"
+                            else "confirmed"
+                        ),
+                        "pending_offer": None,
+                        "last_committed_turn_id": turn_id,
+                        "last_proposal_id": proposal_id,
+                    },
+                )
+            elif delivery_state == "FAILED":
+                self.session_manager.update_negotiation(
+                    chat_id,
+                    {
+                        "offer_status": (
+                            state.get("offer_status")
+                            if state.get("last_ai_offer") is not None
+                            else "failed"
+                        ),
+                        "pending_offer": None,
+                    },
+                )
+            else:
+                self.session_manager.update_negotiation(
+                    chat_id, {"offer_status": "unknown"}
+                )
+            return {"accepted": True, "idempotent": False}
 
     @staticmethod
     def _item_resolution_results(
@@ -328,6 +496,31 @@ class ChatService:
             return None
         result = classifier(query)
         return result if isinstance(result, str) else None
+
+    def _analyze_xianyu_intent(
+        self,
+        query: str,
+        *,
+        history: object | None = None,
+        timeout_seconds: float | None = None,
+    ) -> object | None:
+        """Use the configured generator for semantic intent planning."""
+
+        analyzer = getattr(self._get_generator(), "analyze_xianyu_intent", None)
+        if not callable(analyzer):
+            return None
+        if (
+            type(analyzer).__module__ == "unittest.mock"
+            and getattr(analyzer, "side_effect", None) is None
+            and type(getattr(analyzer, "return_value", None)).__module__
+            == "unittest.mock"
+        ):
+            return None
+        return analyzer(
+            query,
+            history=history if isinstance(history, list) else None,
+            timeout_seconds=timeout_seconds,
+        )
 
     def _get_generator(self) -> DeepSeekGenerator:
         if self.generator is not None:

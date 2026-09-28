@@ -16,6 +16,7 @@ from typing import Protocol, cast
 from app.services.chat_contracts import ChatMessage, SessionContext, Task, TaskResult
 from app.services.chat_response import non_rag_response
 from app.services.order_chat_handler import OrderChatHandler
+from app.services.workflows import ExpertTaskWorkflow
 from app.services.xianyu.expert_orchestrator import XianyuExpertOrchestrator
 from app.services.xianyu.experts.contracts import (
     VALID_QUERY_TARGETS,
@@ -48,10 +49,11 @@ class TaskHandler(Protocol):
 
 
 class TaskExecutor:
-    """Dispatch planner tasks without taking ownership of business rules."""
+    """Compatibility facade over the LangGraph expert workflow."""
 
     def __init__(self, handlers: Mapping[str, TaskHandler]) -> None:
         self._handlers = dict(handlers)
+        self._workflow = ExpertTaskWorkflow(self._handlers)
 
     async def execute(
         self,
@@ -61,89 +63,14 @@ class TaskExecutor:
         *,
         precomputed_responses: Mapping[str, Mapping[str, object]] | None = None,
     ) -> list[TaskResult]:
-        """Execute every task and convert an isolated failure to TaskResult."""
+        """Run one ready Task DAG through the graph workflow."""
 
-        results: list[TaskResult] = []
-        for task in tasks:
-            completed = {result.task_id: result for result in results}
-            try:
-                dependencies = _task_dependencies(task)
-            except ValueError:
-                results.append(
-                    TaskResult(
-                        task.task_id,
-                        "unavailable",
-                        "",
-                        reason="task_dependency_contract_invalid",
-                    )
-                )
-                continue
-            unresolved = [
-                dependency
-                for dependency in dependencies
-                if dependency not in completed
-                or completed[dependency].status != "answered"
-            ]
-            if unresolved:
-                results.append(
-                    TaskResult(
-                        task.task_id,
-                        "unavailable",
-                        "",
-                        reason="dependency_unresolved:" + ",".join(unresolved),
-                    )
-                )
-                continue
-            precomputed = (precomputed_responses or {}).get(task.task_id)
-            if precomputed is not None:
-                results.append(
-                    _response_result(
-                        task,
-                        precomputed,
-                        unavailable_reason="item_context_unavailable",
-                    )
-                )
-                continue
-            handler = self._handlers.get(task.task_type)
-            if handler is None:
-                results.append(
-                    TaskResult(
-                        task.task_id,
-                        "unavailable",
-                        "",
-                        reason="task_handler_unavailable",
-                    )
-                )
-                continue
-            try:
-                result = await handler.handle(task, message, context)
-            except Exception:
-                logger.exception(
-                    "Task execution failed for task_id=%s type=%s",
-                    task.task_id,
-                    task.task_type,
-                )
-                results.append(
-                    TaskResult(
-                        task.task_id,
-                        "unavailable",
-                        "",
-                        reason="task_execution_failed",
-                    )
-                )
-                continue
-            if result.task_id != task.task_id:
-                results.append(
-                    TaskResult(
-                        task.task_id,
-                        "unavailable",
-                        "",
-                        reason="task_result_contract_invalid",
-                    )
-                )
-            else:
-                results.append(result)
-        return results
+        return await self._workflow.run(
+            tasks,
+            message,
+            context,
+            precomputed_responses=precomputed_responses,
+        )
 
 
 class XianyuExpertTaskHandler:
@@ -203,6 +130,9 @@ class XianyuExpertTaskHandler:
             item=item,
             history=context.history,
             xianyu_context=context.platform_context.get("xianyu", {}),
+            negotiation=context.negotiation,
+            turn_id=message.turn_id,
+            deadline=context.deadline,
         )
         results = await self._expert_orchestrator.execute_tasks(
             [expert_task],
@@ -274,15 +204,18 @@ def to_expert_task(task: Task) -> ExpertTask:
     knowledge_scope = _optional_text(task.metadata.get("knowledge_scope"))
     query_target = task.query_target
     transaction_conditions = task.metadata.get("transaction_conditions", {})
+    intent_context = task.metadata.get("intent_context", {})
     dependencies = _task_dependencies(task)
     if normalized_question is None:
         raise ValueError("expert task is missing normalized_question")
-    if knowledge_scope not in {"item_fact", "model_knowledge", "seller_rule", "greeting"}:
+    if knowledge_scope not in {"item_fact", "model_knowledge", "seller_rule", "greeting", "no_reply"}:
         raise ValueError("expert task contains an invalid knowledge_scope")
     if query_target not in VALID_QUERY_TARGETS:
         raise ValueError("expert task contains an invalid query_target")
     if not isinstance(transaction_conditions, Mapping):
         raise ValueError("expert task transaction_conditions must be a mapping")
+    if not isinstance(intent_context, Mapping):
+        raise ValueError("expert task intent_context must be a mapping")
     return ExpertTask(
         task_id=task.task_id,
         expert=cast(ExpertName, task.task_type),
@@ -293,6 +226,7 @@ def to_expert_task(task: Task) -> ExpertTask:
         transaction_conditions=dict(transaction_conditions),
         depends_on_task_ids=dependencies,
         original_question=task.query,
+        intent_context=dict(intent_context),
     )
 
 
@@ -312,6 +246,26 @@ def _expert_result(
         item_evidence = item_source(item)
         if item_evidence not in sources:
             sources.insert(0, item_evidence)
+    if result.status == "answered" and _is_no_reply_task(task):
+        response: dict[str, object] = {
+            "query": task.query,
+            "route": "xianyu",
+            "action": "ignore",
+            "answer": "",
+            "sources": sources,
+            "results": [],
+            "reliability": None,
+            "next_step": None,
+            "can_answer": True,
+            "reason": "no_reply_required",
+        }
+        return TaskResult(
+            task.task_id,
+            "answered",
+            "",
+            sources,
+            metadata={"response": response},
+        )
     if result.status == "answered" and isinstance(result.answer, str) and result.answer.strip():
         # Do not normalize or replace model text after a successful response.
         answer = result.answer
@@ -330,15 +284,52 @@ def _expert_result(
         }
         if item is not None:
             response.update({"item_id": item["item_id"], "item_info": dict(item)})
+        metadata: dict[str, object] = {"response": response}
+        if result.state_proposal is not None:
+            metadata["negotiation_proposal"] = dict(result.state_proposal)
+            pending = result.state_proposal.get("pending_offer")
+            if isinstance(pending, Mapping):
+                proposal_id = pending.get("proposal_id")
+                turn_id = pending.get("turn_id")
+                if isinstance(proposal_id, str) and isinstance(turn_id, str):
+                    response["proposal_id"] = proposal_id
+                    response["turn_id"] = turn_id
         return TaskResult(
             task.task_id,
             "answered",
             answer,
             sources,
+            metadata=metadata,
+        )
+    recovered_price = _recover_listed_price(task, item)
+    if recovered_price is not None:
+        response = {
+            "query": task.query,
+            "route": "xianyu",
+            "action": "reply",
+            "answer": recovered_price,
+            "sources": sources,
+            "results": [],
+            "reliability": None,
+            "next_step": None,
+            "can_answer": True,
+            "reason": "listed_price_recovered_from_item_facts",
+        }
+        if item is not None:
+            response.update({"item_id": item["item_id"], "item_info": dict(item)})
+        return TaskResult(
+            task.task_id,
+            "answered",
+            recovered_price,
+            sources,
             metadata={"response": response},
         )
     reason = result.reason or "expert_answer_unavailable"
-    answer = result.answer if isinstance(result.answer, str) else ""
+    answer = (
+        result.answer.strip()
+        if isinstance(result.answer, str) and result.answer.strip()
+        else _unavailable_answer(task, item)
+    )
     response = {
         "query": task.query,
         "route": "xianyu",
@@ -360,6 +351,106 @@ def _expert_result(
         sources,
         reason,
         metadata={"response": response},
+    )
+
+
+def _recover_listed_price(
+    task: Task,
+    item: Mapping[str, object] | None,
+) -> str | None:
+    """Use the validated public price if the pricing expert could not answer."""
+
+    if (
+        task.task_type != "price"
+        or task.query_target != "price.listed_price"
+        or item is None
+        or item.get("sale_status") == "sold"
+    ):
+        return None
+    price = item.get("listed_price_cents")
+    if not isinstance(price, int) or isinstance(price, bool) or price < 0:
+        return None
+    facts = item.get("facts")
+    conflicts = facts.get("fact_conflicts") if isinstance(facts, Mapping) else None
+    if (
+        isinstance(conflicts, list)
+        and "listed_price_cents" in conflicts
+        and item.get("data_source") != "seller_snapshot+xianyu_platform"
+    ):
+        return None
+    return f"这件标价是 ¥{price // 100}.{price % 100:02d}。"
+
+
+def _unavailable_answer(
+    task: Task,
+    item: Mapping[str, object] | None,
+) -> str:
+    """Give the buyer confirmed partial facts when an expert lacks one field."""
+
+    if task.query_target == "shipping.dispatch_time" and "周日" in task.query:
+        return "我目前没有可靠的物流时效信息，不能确定周日能否送达。"
+
+    if item is None:
+        return "我还没找到对应的商品资料。发一下商品链接或商品名称，我就能结合商品信息回答。"
+
+    target_labels = {
+        "availability.sale_status": "最新在售状态",
+        "condition.summary": "成色和外观细节",
+        "condition.scratches": "划痕情况",
+        "condition.dents": "磕碰情况",
+        "condition.known_issues": "已知瑕疵",
+        "function.overall": "功能状态",
+        "function.shutter": "快门状态",
+        "function.inspection_record": "实测记录",
+        "history.repair_history": "维修记录",
+        "history.drop_history": "摔碰记录",
+        "history.disassembly_history": "拆修记录",
+        "accessories.items": "具体配件清单",
+        "accessories.completeness": "配件是否齐全",
+        "product_info.sale_reason": "出售原因",
+        "price.listed_price": "当前标价",
+        "price.minimum": "最低可成交价",
+        "price.offer": "这个报价是否可以接受",
+        "price.additional_discount": "还能优惠多少",
+        "shipping.fee": "运费信息",
+        "shipping.dispatch_time": "发货时间",
+        "shipping.carrier": "快递信息",
+        "after_sale.return_policy": "售后规则",
+    }
+    label = target_labels.get(task.query_target, "这项具体信息")
+    facts = item.get("facts")
+    conflicts = facts.get("fact_conflicts") if isinstance(facts, Mapping) else None
+    price = item.get("listed_price_cents")
+    price_is_known = (
+        isinstance(price, int)
+        and not isinstance(price, bool)
+        and price >= 0
+        and (
+            not isinstance(conflicts, list)
+            or "listed_price_cents" not in conflicts
+            or item.get("data_source") == "seller_snapshot+xianyu_platform"
+        )
+    )
+    if task.task_type == "price" and price_is_known:
+        price_text = f"¥{price // 100}.{price % 100:02d}"
+        if task.query_target == "price.listed_price":
+            return f"目前能确认的商品标价是 {price_text}。"
+        return f"目前能确认的商品标价是 {price_text}；{label}暂时没有确认记录。"
+    if task.query_target == "availability.sale_status" and price_is_known:
+        price_text = f"¥{price // 100}.{price % 100:02d}"
+        return f"商品标价是 {price_text}，但闲鱼最新在售状态还没同步，我暂时不能确认是否还能拍。"
+    return f"商品资料里暂时没有{label}的可靠信息。"
+
+
+def _is_no_reply_task(task: Task) -> bool:
+    intent_context = task.metadata.get("intent_context")
+    return (
+        task.query_target == "no_reply"
+        or task.metadata.get("knowledge_scope") == "no_reply"
+        or (
+            isinstance(intent_context, Mapping)
+            and intent_context.get("intent") == "service.no_reply"
+        )
     )
 
 

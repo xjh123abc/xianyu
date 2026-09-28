@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -31,15 +32,16 @@ def map_chat_response(payload: Mapping[str, Any]) -> MappedAction:
     action = _text(payload.get("action")).lower()
     next_step = _text(payload.get("next_step")).lower()
     answer = _text(payload.get("answer"))
-    reason = _text(payload.get("reason")) or _text(payload.get("error")) or "chat_handoff"
+    source_reason = _text(payload.get("reason")) or _text(payload.get("error"))
+    reason = source_reason or "chat_handoff"
 
     if action in {"ignore"}:
         return MappedAction("ignore", reason="api_requested_ignore")
     if action in {"handoff", "human_handoff"} or next_step in {"handoff", "human_handoff"}:
-        # Old API payloads may still use handoff.  Treat them as an
-        # unavailable automatic answer; only an explicit seller takeover may
-        # move the channel session to HUMAN.
-        return MappedAction("answer", text=answer, reason=reason) if answer else MappedAction("error", reason=reason)
+        # Old API payloads may still use handoff.  The channel no longer
+        # replies or takes over for that legacy action; explicit seller
+        # controls remain the only path into HUMAN mode.
+        return MappedAction("ignore", reason=reason)
     if action in {"clarify", "clarification"} or next_step in {"clarify", "clarification"}:
         return MappedAction(
             "clarify",
@@ -49,7 +51,12 @@ def map_chat_response(payload: Mapping[str, Any]) -> MappedAction:
     if action in {"reply", "answer"}:
         if answer:
             return MappedAction("answer", text=answer)
-        return MappedAction("error", reason="empty_answer")
+        # Keep a stable upstream failure code in channel logs so an empty
+        # response can be traced to the expert that produced it.
+        reason_code = source_reason.split(":", 1)[0] if source_reason else "empty_answer"
+        if not re.fullmatch(r"[a-zA-Z0-9_.-]{1,80}", reason_code):
+            reason_code = "empty_answer"
+        return MappedAction("error", reason=reason_code)
 
     # A legacy response may omit action but still carry a model answer.  Never
     # substitute a fixed unavailable reply for that text.

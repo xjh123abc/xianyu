@@ -24,7 +24,6 @@ from app.services.chat_contracts import (
 _EMPTY_STATE = {
     "order_id": None,
     "current_item_id": None,
-    "last_intent": None,
     "xianyu_context": {
         "item_id": None,
         "recent_price_topic": None,
@@ -35,7 +34,23 @@ _EMPTY_STATE = {
 }
 _UNSET = object()
 _SHIPPING_CONDITIONS = {"seller_pays", "buyer_pays"}
-_NEGOTIATION_KEYS = frozenset({"item_id", "round", "last_ai_offer", "last_buyer_offer"})
+_OFFER_STATUSES = frozenset(
+    {"none", "generated", "submitted", "confirmed", "failed", "unknown"}
+)
+_NEGOTIATION_KEYS = frozenset(
+    {
+        "item_id",
+        "round",
+        "last_ai_offer",
+        "last_buyer_offer",
+        "shipping_condition",
+        "policy_version",
+        "offer_status",
+        "pending_offer",
+        "last_committed_turn_id",
+        "last_proposal_id",
+    }
+)
 
 
 class SessionManager:
@@ -73,6 +88,7 @@ class SessionManager:
         self.database_path = Path(database_path).resolve() if database_path else None
         self.sessions: dict[str, dict[str, Any]] = {}
         self._updated_at: dict[str, float] = {}
+        self._external_event_ids: set[tuple[str, str]] = set()
         self._memory_guard = threading.RLock()
         self._session_locks: dict[str, threading.Lock] = {}
         if self.database_path is not None:
@@ -191,7 +207,6 @@ class SessionManager:
         assistant_message: str,
         *,
         order_id: str | None = None,
-        last_intent: str | None = None,
     ) -> None:
         """Save one user/assistant turn and update known business state."""
         _, session = self.get_or_create(chat_id)
@@ -206,9 +221,78 @@ class SessionManager:
         state = session["state"]
         if order_id:
             state["order_id"] = order_id
-        if last_intent:
-            state["last_intent"] = last_intent
         self._save(chat_id, session)
+
+    def append_external_event(
+        self, chat_id: str, event_id: str, role: str, content: str, *, source: str
+    ) -> bool:
+        """Append one authenticated channel message to history exactly once."""
+        normalized_chat_id = chat_id.strip()
+        normalized_event_id = event_id.strip()
+        normalized_content = content.strip()
+        if not normalized_chat_id or not normalized_event_id or not normalized_content:
+            raise ValueError("chat_id, event_id, and content must not be empty")
+        if role not in {"user", "assistant"}:
+            raise ValueError("role must be user or assistant")
+        if source not in {"buyer_message", "seller_manual"}:
+            raise ValueError("source must be buyer_message or seller_manual")
+        if (role, source) not in {
+            ("user", "buyer_message"),
+            ("assistant", "seller_manual"),
+        }:
+            raise ValueError("event source does not match its conversation role")
+
+        now = self._clock()
+        if self.database_path is not None:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    "INSERT OR IGNORE INTO chat_session_events(chat_id, event_id, created_at) VALUES (?, ?, ?)",
+                    (normalized_chat_id, normalized_event_id, now),
+                )
+                if cursor.rowcount != 1:
+                    return False
+                row = connection.execute(
+                    "SELECT history_json, state_json FROM chat_sessions WHERE chat_id = ?",
+                    (normalized_chat_id,),
+                ).fetchone()
+                session = (
+                    {"history": json.loads(row[0]), "state": json.loads(row[1])}
+                    if row is not None
+                    else self._empty_session()
+                )
+                session["history"].append(
+                    {"role": role, "content": normalized_content, "source": source}
+                )
+                del session["history"][:-self.max_history]
+                connection.execute(
+                    """INSERT INTO chat_sessions(chat_id, history_json, state_json, updated_at)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(chat_id) DO UPDATE SET
+                           history_json=excluded.history_json,
+                           state_json=excluded.state_json,
+                           updated_at=excluded.updated_at""",
+                    (
+                        normalized_chat_id,
+                        json.dumps(session["history"], ensure_ascii=False),
+                        json.dumps(session["state"], ensure_ascii=False),
+                        now,
+                    ),
+                )
+            return True
+
+        _, session = self.get_or_create(normalized_chat_id)
+        with self._memory_guard:
+            event_key = (normalized_chat_id, normalized_event_id)
+            if event_key in self._external_event_ids:
+                return False
+            self._external_event_ids.add(event_key)
+        session["history"].append(
+            {"role": role, "content": normalized_content, "source": source}
+        )
+        del session["history"][:-self.max_history]
+        self._save(normalized_chat_id, session)
+        return True
 
     def save_turn(
         self,
@@ -219,15 +303,12 @@ class SessionManager:
         current_item_id: str | None | object = _UNSET,
         current_order_id: str | None = None,
         last_task_type: TaskType | None = None,
-        legacy_intent: str | None = None,
         xianyu_context_updates: Mapping[str, object] | None = None,
         negotiation: Mapping[str, object] | None = None,
     ) -> None:
         """Persist a completed turn through one caller-facing session entrypoint.
 
-        The pre-S2 methods remain the implementation and compatibility layer.
-        ``legacy_intent`` preserves current router behaviour until S3 replaces
-        it with planner task types.
+        The lower-level append and state-update methods remain the implementation.
         """
 
         if last_task_type is not None and last_task_type not in TASK_TYPES:
@@ -252,7 +333,6 @@ class SessionManager:
             user_message,
             assistant_message,
             order_id=current_order_id,
-            last_intent=legacy_intent,
         )
         if normalized_item_id is not _UNSET:
             assert isinstance(normalized_item_id, str)
@@ -269,6 +349,18 @@ class SessionManager:
             if negotiation is not None:
                 state["negotiation"] = self._updated_negotiation_state(state, negotiation)
             self._save(chat_id, session)
+
+    def update_negotiation(self, chat_id: str, updates: Mapping[str, object]) -> dict[str, object]:
+        """Persist a validated private negotiation transition without a chat turn."""
+
+        if not isinstance(updates, Mapping):
+            raise ValueError("negotiation updates must be a mapping")
+        _, session = self.get_or_create(chat_id)
+        state = session["state"]
+        negotiation = self._updated_negotiation_state(state, updates)
+        state["negotiation"] = negotiation
+        self._save(chat_id, session)
+        return dict(negotiation)
 
     @asynccontextmanager
     async def session_lock(self, chat_id: str) -> AsyncIterator[None]:
@@ -363,7 +455,32 @@ class SessionManager:
         if isinstance(raw_round, int) and not isinstance(raw_round, bool) and raw_round >= 0:
             negotiation["round"] = raw_round
         for key in ("last_ai_offer", "last_buyer_offer"):
-            negotiation[key] = raw_negotiation.get(key)
+            value = raw_negotiation.get(key)
+            if _is_cents(value):
+                negotiation[key] = value
+        shipping = raw_negotiation.get("shipping_condition")
+        if shipping in _SHIPPING_CONDITIONS:
+            negotiation["shipping_condition"] = shipping
+        version = raw_negotiation.get("policy_version")
+        if _is_non_negative_int(version):
+            negotiation["policy_version"] = version
+        status = raw_negotiation.get("offer_status")
+        if status in _OFFER_STATUSES:
+            negotiation["offer_status"] = status
+        pending = raw_negotiation.get("pending_offer")
+        if isinstance(pending, Mapping):
+            try:
+                negotiation["pending_offer"] = cls._normalise_pending_offer(pending)
+            except ValueError:
+                # Older or malformed persisted data must never be guessed as a
+                # live quote.  Keep the valid committed state, if any.
+                negotiation["pending_offer"] = None
+                if negotiation["offer_status"] == "generated":
+                    negotiation["offer_status"] = "none"
+        for key in ("last_committed_turn_id", "last_proposal_id"):
+            value = raw_negotiation.get(key)
+            if isinstance(value, str) and value.strip():
+                negotiation[key] = value.strip()
         return negotiation
 
     @classmethod
@@ -389,8 +506,78 @@ class SessionManager:
             negotiation["round"] = round_number
         for key in ("last_ai_offer", "last_buyer_offer"):
             if key in updates:
-                negotiation[key] = updates[key]
+                value = updates[key]
+                if value is not None and not _is_cents(value):
+                    raise ValueError(f"negotiation.{key} must be non-negative cents or None")
+                negotiation[key] = value
+        if "shipping_condition" in updates:
+            value = updates["shipping_condition"]
+            if value is not None and value not in _SHIPPING_CONDITIONS:
+                raise ValueError("negotiation.shipping_condition is invalid")
+            negotiation["shipping_condition"] = value
+        if "policy_version" in updates:
+            value = updates["policy_version"]
+            if value is not None and not _is_non_negative_int(value):
+                raise ValueError("negotiation.policy_version must be a non-negative integer or None")
+            negotiation["policy_version"] = value
+        if "offer_status" in updates:
+            value = updates["offer_status"]
+            if value not in _OFFER_STATUSES:
+                raise ValueError("negotiation.offer_status is invalid")
+            negotiation["offer_status"] = value
+        if "pending_offer" in updates:
+            value = updates["pending_offer"]
+            negotiation["pending_offer"] = (
+                None if value is None else cls._normalise_pending_offer(value)
+            )
+        for key in ("last_committed_turn_id", "last_proposal_id"):
+            if key in updates:
+                value = updates[key]
+                if value is not None and (not isinstance(value, str) or not value.strip()):
+                    raise ValueError(f"negotiation.{key} must be a non-empty string or None")
+                negotiation[key] = value.strip() if isinstance(value, str) else None
         return negotiation
+
+    @staticmethod
+    def _normalise_pending_offer(value: object) -> dict[str, object]:
+        if not isinstance(value, Mapping):
+            raise ValueError("negotiation.pending_offer must be a mapping")
+        required = {
+            "proposal_id",
+            "turn_id",
+            "item_id",
+            "policy_version",
+            "price_cents",
+            "shipping_condition",
+            "round",
+        }
+        if set(value) != required:
+            raise ValueError("negotiation.pending_offer has an invalid contract")
+        proposal_id = value["proposal_id"]
+        turn_id = value["turn_id"]
+        item_id = value["item_id"]
+        version = value["policy_version"]
+        price = value["price_cents"]
+        shipping = value["shipping_condition"]
+        round_number = value["round"]
+        if any(
+            not isinstance(text, str) or not text.strip()
+            for text in (proposal_id, turn_id, item_id)
+        ):
+            raise ValueError("negotiation.pending_offer identifiers are invalid")
+        if not _is_non_negative_int(version) or not _is_cents(price):
+            raise ValueError("negotiation.pending_offer amount or version is invalid")
+        if shipping not in _SHIPPING_CONDITIONS or not _is_non_negative_int(round_number):
+            raise ValueError("negotiation.pending_offer condition is invalid")
+        return {
+            "proposal_id": proposal_id.strip(),
+            "turn_id": turn_id.strip(),
+            "item_id": item_id.strip().upper(),
+            "policy_version": version,
+            "price_cents": price,
+            "shipping_condition": shipping,
+            "round": round_number,
+        }
 
     @classmethod
     def _validated_xianyu_context_updates(
@@ -425,7 +612,6 @@ class SessionManager:
         normalized = {
             "order_id": raw_state.get("order_id"),
             "current_item_id": raw_state.get("current_item_id"),
-            "last_intent": raw_state.get("last_intent"),
             "last_task_type": (
                 raw_state.get("last_task_type")
                 if raw_state.get("last_task_type") in TASK_TYPES
@@ -435,6 +621,8 @@ class SessionManager:
             "negotiation": cls._negotiation_from_state(raw_state),
         }
         for key, value in raw_state.items():
+            if key == "last_intent":
+                continue
             normalized.setdefault(key, value)
         return normalized
 
@@ -487,6 +675,12 @@ class SessionManager:
             self.sessions.pop(chat_id, None)
             self._updated_at.pop(chat_id, None)
             self._session_locks.pop(chat_id, None)
+        if expired:
+            expired_ids = set(expired)
+            self._external_event_ids = {
+                event_key for event_key in self._external_event_ids
+                if event_key[0] not in expired_ids
+            }
 
     def _evict_memory_over_capacity(self, *, exclude: str) -> None:
         while len(self.sessions) > self.max_sessions:
@@ -523,6 +717,14 @@ class SessionManager:
                        chat_id TEXT PRIMARY KEY,
                        owner TEXT NOT NULL,
                        expires_at REAL NOT NULL
+                )"""
+            )
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS chat_session_events (
+                       chat_id TEXT NOT NULL,
+                       event_id TEXT NOT NULL,
+                       created_at REAL NOT NULL,
+                       PRIMARY KEY (chat_id, event_id)
                    )"""
             )
 
@@ -551,6 +753,10 @@ class SessionManager:
                          SELECT 1 FROM chat_session_locks
                          WHERE chat_session_locks.chat_id = chat_sessions.chat_id
                      )""",
+                (now - self.ttl_seconds,),
+            )
+            connection.execute(
+                "DELETE FROM chat_session_events WHERE created_at <= ?",
                 (now - self.ttl_seconds,),
             )
             row = connection.execute(
@@ -615,3 +821,11 @@ class SessionManager:
                 "DELETE FROM chat_session_locks WHERE chat_id = ? AND owner = ?",
                 (chat_id, owner),
             )
+
+
+def _is_non_negative_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _is_cents(value: object) -> bool:
+    return _is_non_negative_int(value)

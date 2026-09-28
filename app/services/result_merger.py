@@ -32,19 +32,39 @@ class ResultMerger:
 
         sources: list[dict[str, object]] = []
         task_by_id = {task.task_id: task for task in tasks}
+        if results and all(
+            _is_no_reply_task(task_by_id.get(result.task_id))
+            for result in results
+        ):
+            response = non_rag_response(
+                query,
+                "",
+                can_answer=True,
+                route="unified",
+                action="ignore",
+            )
+            response["reason"] = "no_reply_required"
+            return response
+
         answer_parts: list[str] = []
         has_answered = False
-        all_clarify = bool(results)
+        visible_results: list[TaskResult] = []
+        all_clarify = False
         for result in results:
             for source in result.sources:
                 if source not in sources:
                     sources.append(source)
             task = task_by_id.get(result.task_id)
+            if _is_no_reply_task(task):
+                continue
+            visible_results.append(result)
             answer = self._result_text(result, task)
             if answer and answer not in answer_parts:
                 answer_parts.append(answer)
             has_answered = has_answered or result.status == "answered"
-            all_clarify = all_clarify and result.status == "clarify"
+        all_clarify = bool(visible_results) and all(
+            result.status == "clarify" for result in visible_results
+        )
 
         if not has_answered and all_clarify:
             response = non_rag_response(
@@ -69,14 +89,15 @@ class ResultMerger:
             "results": [],
             "reliability": None,
             "next_step": None,
-            "can_answer": all(result.status == "answered" for result in results),
+            "can_answer": bool(visible_results)
+            and all(result.status == "answered" for result in visible_results),
             "task_types": [task.task_type for task in tasks],
             "evidence": _debug_values(raw_responses, "evidence"),
             "raw_answer": _debug_values(raw_responses, "raw_answer"),
         })
         if not response["can_answer"]:
             response["reason"] = next(
-                (result.reason for result in results if result.reason),
+                (result.reason for result in visible_results if result.reason),
                 "task_answer_unavailable",
             )
         return response
@@ -85,7 +106,13 @@ class ResultMerger:
     def _result_text(result: TaskResult, task: Task | None) -> str:
         """Render every executor outcome without leaking an internal reason."""
 
-        del task
+        if task is not None:
+            intent_context = task.metadata.get("intent_context")
+            if (
+                isinstance(intent_context, Mapping)
+                and intent_context.get("reply_required") is False
+            ) or task.metadata.get("reply_required") is False:
+                return ""
         return result.answer if isinstance(result.answer, str) else ""
 
 
@@ -102,3 +129,21 @@ def _debug_values(
     if not values:
         return None
     return values[0] if len(values) == 1 else values
+
+
+def _is_no_reply_task(task: Task | None) -> bool:
+    if task is None:
+        return False
+    intent_context = task.metadata.get("intent_context")
+    return (
+        task.query_target == "no_reply"
+        or task.metadata.get("knowledge_scope") == "no_reply"
+        or task.metadata.get("reply_required") is False
+        or (
+            isinstance(intent_context, Mapping)
+            and (
+                intent_context.get("intent") == "service.no_reply"
+                or intent_context.get("reply_required") is False
+            )
+        )
+    )

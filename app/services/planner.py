@@ -8,10 +8,13 @@ existing executors while it consumes one public ``Task`` list.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from app.services.chat_contracts import SessionContext, Task
+from app.services.chat_response import non_rag_response
+from app.services.intent_analyzer import IntentAnalyzer
+from app.services.intent_contracts import UnderstandingResult, UserNeed
 from app.services.intent_router import IntentMatch, IntentRouter
 from app.services.order_router import (
     Route,
@@ -107,6 +110,15 @@ class PlannerState:
     use_xianyu_without_item: bool
 
 
+@dataclass(frozen=True, slots=True)
+class PlanOutcome:
+    """Planner result for the async semantic-planning boundary."""
+
+    tasks: list[Task]
+    early_response: dict[str, object] | None = None
+    understanding: UnderstandingResult | None = None
+
+
 class Planner:
     """Return unified tasks while reusing the proven rule-first classifiers."""
 
@@ -116,10 +128,76 @@ class Planner:
         intent_router: IntentRouter,
         requires_item_context: Callable[[str], bool],
         may_contain_explicit_item_reference: Callable[[str], bool],
+        intent_analyzer: IntentAnalyzer | None = None,
     ) -> None:
         self._intent_router = intent_router
         self._requires_item_context = requires_item_context
         self._may_contain_explicit_item_reference = may_contain_explicit_item_reference
+        self._intent_analyzer = intent_analyzer or IntentAnalyzer()
+
+    async def plan_async(
+        self,
+        message: str,
+        context: SessionContext,
+        *,
+        item_id: str | None = None,
+    ) -> PlanOutcome:
+        """Understand the whole buyer turn before creating executable tasks."""
+
+        query = str(message or "").strip()
+        state = self._build_state(query, context, item_id)
+        if _keeps_legacy_boundary(query, state):
+            return PlanOutcome(self._tasks_from_state(query, context, item_id, state))
+
+        understanding = await self._intent_analyzer.analyze(
+            query,
+            context,
+            item_id=item_id,
+        )
+        if understanding.status == "clarify":
+            response = non_rag_response(
+                query,
+                understanding.clarification_question
+                or "请补充你想确认的具体问题。",
+                can_answer=False,
+                route="unified",
+                action="clarify",
+            )
+            response["reason"] = "intent_clarification_required"
+            return PlanOutcome([], response, understanding)
+        if understanding.status == "error":
+            if _can_use_legacy_semantic_fallback(query, state, understanding):
+                return PlanOutcome(
+                    self._tasks_from_state(query, context, item_id, state),
+                    understanding=understanding,
+                )
+            response = non_rag_response(
+                query,
+                "暂时没能解析这条消息，请稍后再试或换个说法。",
+                can_answer=False,
+                route="unified",
+                action="reply",
+            )
+            response["reason"] = understanding.error_reason or "intent_parse_failed"
+            return PlanOutcome([], response, understanding)
+
+        tasks = _tasks_from_understanding(
+            query,
+            context,
+            item_id,
+            understanding,
+        )
+        if not tasks:
+            response = non_rag_response(
+                query,
+                "暂时没能解析这条消息，请稍后再试或换个说法。",
+                can_answer=False,
+                route="unified",
+                action="reply",
+            )
+            response["reason"] = "intent_task_mapping_empty"
+            return PlanOutcome([], response, understanding)
+        return PlanOutcome(tasks, understanding=understanding)
 
     def plan(
         self,
@@ -131,6 +209,17 @@ class Planner:
         """Classify one turn once and expose its work as ``Task`` values only."""
 
         query = str(message or "").strip()
+        state = self._build_state(query, context, item_id)
+        return self._tasks_from_state(query, context, item_id, state)
+
+    def _build_state(
+        self,
+        query: str,
+        context: SessionContext,
+        item_id: str | None,
+    ) -> PlannerState:
+        """Classify route and item needs without constructing executable tasks."""
+
         question_plan = build_question_plan(query)
         intent_match = self._intent_router.route(query, allow_ai=False)
         remembered_order_id = session_order_id(
@@ -163,9 +252,20 @@ class Planner:
                 or bool(_GREETING.fullmatch(query))
             ),
         )
+        return state
+
+    def _tasks_from_state(
+        self,
+        query: str,
+        context: SessionContext,
+        item_id: str | None,
+        state: PlannerState,
+    ) -> list[Task]:
+        """Materialize the compatibility task plan only when it will be used."""
+
         metadata = {_PLAN_STATE_KEY: _state_metadata(state)}
 
-        if route in {"order", "missing_order_id"}:
+        if state.route in {"order", "missing_order_id"}:
             return [
                 Task(
                     "order-1",
@@ -173,11 +273,13 @@ class Planner:
                     query,
                     metadata,
                     execution_mode=(
-                        "missing_order_id" if route == "missing_order_id" else "order"
+                        "missing_order_id"
+                        if state.route == "missing_order_id"
+                        else "order"
                     ),
                 )
             ]
-        if route == "rag_mcp":
+        if state.route == "rag_mcp":
             # The old combined route is classified only here.  Its execution
             # is two ordinary tasks, never OrderChatHandler.combined().
             return [
@@ -190,7 +292,7 @@ class Planner:
                     execution_mode="common_knowledge",
                 ),
             ]
-        if route == "unsupported_action":
+        if state.route == "unsupported_action":
             return [
                 Task(
                     "service-1",
@@ -252,20 +354,23 @@ class Planner:
                 question["scope"] == "item"
                 for question in clause_question_plan["knowledge_questions"]
             )
+            product_scoped_fallback = clause_needs_item or (
+                effective_item_id is not None
+                and not is_seller_scoped_query(clause)
+                and _looks_like_model_knowledge(clause)
+            )
             planned_expert_tasks.append(
                 ExpertTask(
                     task_id=f"fallback-{index}",
-                    expert="product" if clause_needs_item else "service",
+                    expert="product" if product_scoped_fallback else "service",
                     question_fragment=clause,
-                    normalized_question=(
-                        "商品专项知识" if clause_needs_item else "卖家通用规则"
-                    ),
+                    normalized_question=clause,
                     knowledge_scope=(
-                        "model_knowledge" if clause_needs_item else "seller_rule"
+                        "model_knowledge" if product_scoped_fallback else "seller_rule"
                     ),
                     query_target=(
                         "product.model_knowledge"
-                        if clause_needs_item
+                        if product_scoped_fallback
                         else "seller_rule.general"
                     ),
                     original_question=clause,
@@ -308,6 +413,299 @@ class Planner:
             )
             or self._may_contain_explicit_item_reference(query)
         )
+
+
+def _uses_xianyu_expert_path(state: PlannerState) -> bool:
+    if state.route in {"order", "missing_order_id", "rag_mcp", "unsupported_action"}:
+        return False
+    if state.is_rule_followup:
+        return False
+    return state.needs_item or state.use_xianyu_without_item
+
+
+def _keeps_legacy_boundary(query: str, state: PlannerState) -> bool:
+    """Leave non-Xianyu expert paths on the existing stable plan."""
+
+    if query.strip("？?。!！ ") in {"那怎么办", "怎么办", "咋办", "那咋办"}:
+        return False
+    if _requires_semantic_conversation_boundary(query):
+        return False
+    return not _uses_xianyu_expert_path(state)
+
+
+def _requires_semantic_conversation_boundary(query: str) -> bool:
+    """Let ordinary chat and no-reply turns bypass legacy general RAG."""
+
+    lowered = str(query or "").casefold()
+    cleaned = lowered.strip("，,。.!！?？、；;~ ")
+    if re.fullmatch(
+        r"(?:谢谢|谢了|感谢|多谢|辛苦了|thanks|thank\s+you|thx)[！!。？?~ ]*",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return True
+    if re.fullmatch(
+        r"(?:好|好的|好嘞|ok|okay|收到|明白|知道了|嗯|嗯嗯|不用了|先不用了|没事了|先这样)[！!。？?~ ]*",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return True
+    return any(
+        term in lowered
+        for term in ("已读", "已送达", "系统消息", "系统事件", "不用回复", "无需回复")
+    )
+
+
+def _can_use_legacy_semantic_fallback(
+    query: str,
+    state: PlannerState,
+    understanding: UnderstandingResult,
+) -> bool:
+    """Keep legacy item fallbacks only when they cannot revive after-sale overreach."""
+
+    if understanding.error_reason not in {
+        "intent_semantic_model_unavailable",
+        "intent_model_failed",
+        "intent_model_timeout",
+    }:
+        return False
+    if not _uses_xianyu_expert_path(state):
+        return False
+    lowered = query.casefold()
+    risky_terms = (
+        "退",
+        "退款",
+        "售后",
+        "裂",
+        "裂痕",
+        "质量问题",
+        "有问题",
+        "坏",
+        "怎么办",
+        "咋办",
+        "无理由",
+    )
+    return not any(term in lowered for term in risky_terms)
+
+
+def _tasks_from_understanding(
+    query: str,
+    context: SessionContext,
+    item_id: str | None,
+    understanding: UnderstandingResult,
+) -> list[Task]:
+    has_item_context = bool(item_id or context.current_item_id)
+    contracts = [
+        (need, _task_contract_for_need(need, has_item_context))
+        for need in understanding.needs
+    ]
+    executable = [
+        (need, contract)
+        for need, contract in contracts
+        if contract is not None
+    ]
+    if not executable:
+        return []
+
+    state = _semantic_state(query, context, item_id, understanding, executable)
+    metadata_base = {_PLAN_STATE_KEY: _state_metadata(state)}
+    task_ids = {
+        need.need_id: f"q{index}"
+        for index, (need, _contract) in enumerate(executable, start=1)
+    }
+
+    tasks: list[Task] = []
+    for need, contract in executable:
+        task_type, query_target, knowledge_scope = contract
+        intent_context = {
+            **need.intent_context(),
+            "original_question": need.original_question,
+            "normalized_question": need.normalized_question,
+        }
+        tasks.append(
+            Task(
+                task_ids[need.need_id],
+                task_type,  # type: ignore[arg-type]
+                need.original_question,
+                {
+                    **metadata_base,
+                    "normalized_question": need.normalized_question,
+                    "knowledge_scope": knowledge_scope,
+                    "transaction_conditions": _transaction_conditions(need),
+                    "intent_context": intent_context,
+                    "reply_required": need.reply_required,
+                },
+                query_target=query_target,
+                depends_on_task_ids=tuple(
+                    task_ids[dependency]
+                    for dependency in need.depends_on_need_ids
+                    if dependency in task_ids
+                ),
+                execution_mode="xianyu_expert",
+            )
+        )
+    return tasks
+
+
+def _semantic_state(
+    query: str,
+    context: SessionContext,
+    item_id: str | None,
+    understanding: UnderstandingResult,
+    executable: Sequence[tuple[UserNeed, tuple[str, str, str]]],
+) -> PlannerState:
+    remembered_order_id = session_order_id(
+        {"order_id": context.current_order_id}
+    ) or history_order_id(context.history)
+    route, order_id = route_query(
+        query,
+        context.history,
+        {"order_id": context.current_order_id},
+    )
+    has_item_context = bool(item_id or context.current_item_id)
+    needs_item = any(
+        _semantic_task_needs_item(need, contract, has_item_context)
+        for need, contract in executable
+    )
+    question_plan = build_question_plan(query)
+    return PlannerState(
+        intent_match=IntentMatch(
+            "SEMANTIC",
+            (),
+            "ai" if understanding.model_called else "rule",
+        ),
+        question_plan=question_plan,
+        route=route,
+        order_id=order_id,
+        needs_item=needs_item,
+        requires_item_resolution=needs_item and route == "rag",
+        defer_to_order_context=remembered_order_id is not None,
+        is_rule_followup=is_rule_followup(query, remembered_order_id),
+        use_xianyu_without_item=bool(
+            executable
+            or context.current_item_id
+            or item_id
+            or is_seller_scoped_query(query)
+            or _GREETING.fullmatch(query)
+        ),
+    )
+
+
+def _task_contract_for_need(
+    need: UserNeed,
+    has_item_context: bool,
+) -> tuple[str, str, str] | None:
+    intent = need.intent
+    if intent == "product.availability":
+        return ("product", "availability.sale_status", "item_fact")
+    if intent == "product.identity_model":
+        return ("product", "identity.model", "item_fact")
+    if intent == "product.sale_reason":
+        return ("product", "product_info.sale_reason", "item_fact")
+    if intent == "product.repair_history":
+        return ("product", "history.repair_history", "item_fact")
+    if intent == "product.condition_summary":
+        return ("product", "condition.summary", "item_fact")
+    if intent == "product.condition_issue":
+        target = "function.shutter" if need.subject == "快门" else "condition.known_issues"
+        return ("product", target, "item_fact")
+    if intent == "product.lens_details":
+        return ("product", "lens.details", "item_fact")
+    if intent == "product.accessories":
+        return ("product", "accessories.items", "item_fact")
+    if intent == "product.function":
+        target = "function.shutter" if "快门" in need.original_question else "function.overall"
+        return ("product", target, "item_fact")
+    if intent == "product.inspection_record":
+        return ("product", "function.inspection_record", "item_fact")
+    if intent == "product.model_knowledge":
+        return ("product", "product.model_knowledge", "model_knowledge")
+
+    if intent == "price.listed_price":
+        return ("price", "price.listed_price", "item_fact")
+    if intent == "price.minimum":
+        return ("price", "price.minimum", "item_fact")
+    if intent == "price.offer":
+        return ("price", "price.offer", "item_fact")
+    if intent == "price.additional_discount":
+        return ("price", "price.additional_discount", "item_fact")
+    if intent == "price.confirm":
+        return ("price", "price.confirm", "item_fact")
+
+    if intent == "shipping.dispatch_time":
+        return (
+            "service",
+            "shipping.dispatch_time" if has_item_context else "seller_rule.general",
+            "item_fact" if has_item_context else "seller_rule",
+        )
+    if intent == "shipping.carrier":
+        return (
+            "service",
+            "shipping.carrier" if has_item_context else "seller_rule.general",
+            "item_fact" if has_item_context else "seller_rule",
+        )
+    if intent == "shipping.fee":
+        return (
+            "service",
+            "shipping.fee" if has_item_context else "seller_rule.general",
+            "item_fact" if has_item_context else "seller_rule",
+        )
+
+    if intent in {
+        "after_sale.consult",
+        "after_sale.return_shipping_fee",
+        "after_sale.refund_timing",
+    }:
+        return ("service", "seller_rule.general", "seller_rule")
+    if intent == "service.greeting":
+        return ("service", "greeting", "greeting")
+    if intent == "service.thanks":
+        return ("service", "thanks", "greeting")
+    if intent == "service.no_reply":
+        return ("service", "no_reply", "no_reply")
+    return None
+
+
+def _semantic_task_needs_item(
+    need: UserNeed,
+    contract: tuple[str, str, str],
+    has_item_context: bool,
+) -> bool:
+    task_type, _query_target, knowledge_scope = contract
+    return (
+        task_type in {"product", "price"}
+        or knowledge_scope == "item_fact"
+        or (has_item_context and need.intent.startswith("after_sale."))
+    )
+
+
+def _transaction_conditions(need: UserNeed) -> dict[str, object]:
+    conditions: dict[str, object] = {}
+    request_kind = {
+        "price.listed_price": "listed_price",
+        "price.minimum": "minimum",
+        "price.offer": "offer",
+        "price.additional_discount": "additional_discount",
+        "price.confirm": "confirm",
+    }.get(need.intent)
+    if request_kind is not None:
+        conditions["request_kind"] = request_kind
+    preconditions: list[dict[str, object]] = []
+    for condition in need.conditions:
+        condition_type = condition.get("type")
+        if condition_type == "shipping":
+            shipping = condition.get("value")
+            if shipping in {"seller_pays", "buyer_pays"}:
+                conditions["shipping"] = shipping
+        elif condition_type == "amount":
+            offer_cents = condition.get("offer_cents")
+            if isinstance(offer_cents, int) and not isinstance(offer_cents, bool):
+                conditions["offer_cents"] = offer_cents
+        elif condition_type == "transaction_precondition":
+            preconditions.append(dict(condition))
+    if preconditions:
+        conditions["preconditions"] = preconditions
+    return conditions
 
 
 def planner_state(tasks: list[Task]) -> PlannerState:
@@ -400,3 +798,26 @@ def _optional_order_id(value: object) -> str | None:
     if not isinstance(value, str):
         raise ValueError("Planner tasks contain invalid order_id")
     return value
+
+
+def _looks_like_model_knowledge(query: str) -> bool:
+    """Identify unplanned public model/technical questions for product fallback."""
+
+    lowered = str(query or "").casefold()
+    if re.search(r"[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z0-9][A-Za-z0-9-]*)+", query):
+        return True
+    return any(
+        term in lowered
+        for term in (
+            "测光",
+            "电池",
+            "兼容",
+            "卡口",
+            "说明书",
+            "操作",
+            "使用方法",
+            "参数",
+            "规格",
+            "系统",
+        )
+    )

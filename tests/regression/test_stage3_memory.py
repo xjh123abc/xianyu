@@ -29,7 +29,6 @@ def test_context_aware_router_handles_the_three_documented_turns() -> None:
     state = {
         "order_id": "TEST1001",
         "current_item_id": None,
-        "last_intent": "order_query",
     }
     history = [
         {"role": "user", "content": "帮我查 TEST1001"},
@@ -51,17 +50,16 @@ def test_session_manager_isolates_chat_ids_and_limits_history() -> None:
         "查 TEST1001",
         "已找到",
         order_id="TEST1001",
-        last_intent="order_query",
     )
     manager.set_current_item_id("chat_001", "DEMO_ITEM_001")
-    manager.append_turn("chat_001", "那多久发货？", "通常 24 小时", last_intent="rag_query")
-    manager.append_turn("chat_002", "查 TEST1002", "已找到", order_id="TEST1002", last_intent="order_query")
+    manager.append_turn("chat_001", "那多久发货？", "通常 24 小时")
+    manager.append_turn("chat_002", "查 TEST1002", "已找到", order_id="TEST1002")
 
     _, first = manager.get_or_create("chat_001")
     _, second = manager.get_or_create("chat_002")
     assert first["state"]["order_id"] == "TEST1001"
     assert first["state"]["current_item_id"] == "DEMO_ITEM_001"
-    assert first["state"]["last_intent"] == "rag_query"
+    assert "last_intent" not in first["state"]
     assert len(first["history"]) == 4
     assert second["state"]["order_id"] == "TEST1002"
     assert second["state"]["current_item_id"] is None

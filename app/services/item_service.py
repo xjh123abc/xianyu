@@ -176,6 +176,13 @@ def _validate_structured_facts(raw_item: Mapping[str, object], index: int) -> di
             keys=("repair_history", "drop_history", "disassembly_history"),
             index=index,
         )
+    if "inspection_record" in raw_item:
+        facts["inspection_record"] = _validate_text_mapping(
+            raw_item.get("inspection_record"),
+            field="inspection_record",
+            keys=("general", "meter_phone_comparison"),
+            index=index,
+        )
     if "accessories" in raw_item:
         facts["accessories"] = _optional_text_list_or_unknown(
             raw_item.get("accessories"), field="accessories", index=index
@@ -229,7 +236,7 @@ def _validate_structured_facts(raw_item: Mapping[str, object], index: int) -> di
         )
         allowed_conflicts = {
             "identity", "lens", "condition", "included_items", "accessories",
-            "function", "history", "shipping", "product_info", "after_sale", "negotiation",
+            "function", "history", "inspection_record", "shipping", "product_info", "after_sale", "negotiation",
         }
         invalid = set(conflicts or []) - allowed_conflicts
         if invalid:
@@ -240,7 +247,7 @@ def _validate_structured_facts(raw_item: Mapping[str, object], index: int) -> di
         facts["fact_conflicts"] = conflicts or []
     return facts
 _ITEM_ID_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9_])DEMO_ITEM_[A-Za-z0-9_-]+(?![A-Za-z0-9_])",
+    r"(?<![A-Za-z0-9_])(?:DEMO_ITEM_[A-Za-z0-9_-]+|TEST_[A-Za-z0-9_-]+)(?![A-Za-z0-9_])",
     re.IGNORECASE,
 )
 _LABELED_ITEM_ID_PATTERN = re.compile(
@@ -267,6 +274,7 @@ class ItemService:
         self.items_path = (
             Path(items_path).resolve() if items_path is not None else configured_items_path()
         )
+        self.platform_items_path = self.items_path.parent / "platform_items.json"
 
     def list_items(self) -> list[dict[str, Any]]:
         """Return all validated public item records in file order."""
@@ -279,7 +287,88 @@ class ItemService:
             raise RuntimeError(f"Invalid Xianyu item snapshot: {self.items_path}") from error
         if not isinstance(raw_items, list):
             raise ValueError("Xianyu item snapshot must contain a JSON array")
-        return [self._validate_item(item, index) for index, item in enumerate(raw_items)]
+        items = [self._validate_item(item, index) for index, item in enumerate(raw_items)]
+        return self._merge_platform_snapshot(items)
+
+    def _merge_platform_snapshot(
+        self, items: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Overlay only public listing fields; retain seller policy and condition facts."""
+        if not self.platform_items_path.is_file():
+            return items
+        try:
+            payload = json.loads(self.platform_items_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError("Invalid Xianyu platform item snapshot") from error
+        entries = payload.get("items") if isinstance(payload, Mapping) else None
+        if not isinstance(entries, list):
+            raise ValueError("Xianyu platform item snapshot must contain an items array")
+        snapshots_by_item_id: dict[str, list[Mapping[str, object]]] = {}
+        for entry in entries:
+            if isinstance(entry, Mapping) and isinstance(entry.get("item_id"), str):
+                item_id = str(entry["item_id"]).strip().upper()
+                snapshots_by_item_id.setdefault(item_id, []).append(entry)
+
+        by_item_id: dict[str, Mapping[str, object]] = {}
+        for item_id, snapshots in snapshots_by_item_id.items():
+            # Multiple seller accounts can sync the same Xianyu listing. That
+            # is still one listing; snapshots for different platform IDs remain
+            # ambiguous and must not override the seller-maintained record.
+            platform_ids = {
+                str(snapshot.get("platform_item_id", "")).strip()
+                for snapshot in snapshots
+            }
+            if len(platform_ids) != 1:
+                continue
+            platform_id = next(iter(platform_ids))
+            if not platform_id:
+                continue
+            by_item_id[item_id] = max(
+                enumerate(snapshots),
+                key=lambda pair: (
+                    str(pair[1].get("synced_at", "")),
+                    pair[0],
+                ),
+            )[1]
+
+        for item in items:
+            snapshot = by_item_id.get(str(item["item_id"]).upper())
+            if snapshot is None:
+                continue
+            title = snapshot.get("title")
+            description = snapshot.get("listing_description")
+            if isinstance(title, str) and title.strip():
+                item["title"] = title.strip()
+            if isinstance(description, str):
+                item["facts"]["listing_description"] = description.strip() or None
+            status = snapshot.get("sale_status")
+            if isinstance(status, str) and status.strip().lower() in {"listed", "sold"}:
+                item["sale_status"] = status.strip().lower()
+            # A failed or unrecognized platform status refresh is not evidence
+            # that a seller-confirmed status changed. Keep the validated
+            # seller-maintained status (or its explicit "unknown" value).
+            platform_price = snapshot.get("listed_price_cents")
+            if (
+                isinstance(platform_price, int)
+                and not isinstance(platform_price, bool)
+                and platform_price >= 0
+            ):
+                if platform_price != item["listed_price_cents"]:
+                    conflicts = set(item["facts"].get("fact_conflicts", []))
+                    conflicts.add("listed_price_cents")
+                    item["facts"]["fact_conflicts"] = sorted(conflicts)
+                item["listed_price_cents"] = platform_price
+            synced_at = snapshot.get("synced_at")
+            if isinstance(synced_at, str) and synced_at.strip():
+                item["updated_at"] = synced_at
+            item["data_source"] = "seller_snapshot+xianyu_platform"
+            item["facts"]["platform_listing"] = {
+                "platform_item_id": snapshot.get("platform_item_id"),
+                "synced_at": synced_at,
+                "price_conflict": "listed_price_cents"
+                in item["facts"].get("fact_conflicts", []),
+            }
+        return items
 
     def get_item_info(self, item_id: str) -> dict[str, Any]:
         """Return one public item record, or a stable not-found response."""

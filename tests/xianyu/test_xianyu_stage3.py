@@ -45,6 +45,14 @@ class EvidenceRag:
         }
 
 
+class UnavailableCommonRulesRag(EvidenceRag):
+    def warm_up(self) -> None:
+        raise RuntimeError("common rule index unavailable")
+
+    def prepare(self, query: str, *, item_id: str | None = None) -> dict[str, object]:
+        raise AssertionError("local common-rule fallback should not call RAG prepare")
+
+
 def _service(rag: EvidenceRag, item_lookup: AsyncMock | None = None) -> ChatService:
     mcp = Mock()
     mcp.get_item_info = item_lookup or AsyncMock(
@@ -127,12 +135,12 @@ def test_unknown_status_handoff_keeps_mcp_source() -> None:
         service.chat_async(
             "这个商品还在售吗？",
             "stage3_unknown_status_source",
-            item_id="DEMO_ITEM_003",
+            item_id="TEST_CORE_ALIGNMENT_CAMERA",
         )
     )
 
     assert result["sources"] == [
-        {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"}
+        {"source": "mcp:get_item_info", "index": "TEST_CORE_ALIGNMENT_CAMERA"}
     ]
 
 
@@ -151,7 +159,7 @@ def test_mcp_failure_keeps_independent_common_knowledge_answer() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert "该问题目前暂无足够信息确认。" in result["answer"]
+    assert "商品信息暂时无法读取。" in result["answer"]
     assert "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。" in result["answer"]
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     item_lookup.assert_awaited_once_with("DEMO_ITEM_001")
@@ -180,21 +188,22 @@ def test_missing_item_keeps_common_answer_and_asks_for_item() -> None:
 
 def test_unknown_status_does_not_fall_back_to_common_shipping_rules() -> None:
     rag = EvidenceRag()
-    service = _service(rag)
+    unknown_item = ItemService().get_item_info("TEST_UNKNOWN_STATUS_CAMERA")
+    service = _service(rag, AsyncMock(return_value=unknown_item))
 
     result = asyncio.run(
         service.chat_async(
             "现在还在售吗？一般多久发货？",
             "stage3_unknown_status",
-            item_id="DEMO_ITEM_003",
+            item_id="TEST_UNKNOWN_STATUS_CAMERA",
         )
     )
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["answer"] == ""
     assert result["sources"] == [
-        {"source": "mcp:get_item_info", "index": "DEMO_ITEM_003"}
+        {"source": "mcp:get_item_info", "index": "TEST_UNKNOWN_STATUS_CAMERA"}
     ]
     assert rag.item_ids == []
 
@@ -280,11 +289,11 @@ def test_mismatched_mcp_item_is_rejected_and_not_saved() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["answer"] == "商品信息暂时无法确认。"
     assert service.session_manager.get_current_item_id("stage3_mismatch") is None
 
 
-def test_knowledge_without_a_valid_source_cannot_make_a_positive_promise() -> None:
+def test_knowledge_without_a_valid_source_still_reaches_the_expert() -> None:
     rag = EvidenceRag()
     original_prepare = rag.prepare
 
@@ -302,9 +311,8 @@ def test_knowledge_without_a_valid_source_cannot_make_a_positive_promise() -> No
 
     result = asyncio.run(service.chat_async("你们店一般多久发货？", "stage3_no_source"))
 
-    assert result["can_answer"] is False
-    assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["can_answer"] is True
+    assert result["answer"] == "根据卖家规则，已确认付款后通常会在 48 小时内安排发出。"
 
 
 def test_common_generation_failure_keeps_retrieved_evidence() -> None:
@@ -318,9 +326,41 @@ def test_common_generation_failure_keeps_retrieved_evidence() -> None:
 
     assert result["can_answer"] is False
     assert result["next_step"] != "human_handoff"
-    assert result["answer"] == "该问题目前暂无足够信息确认。"
+    assert result["answer"] == ""
     assert result["sources"] == [{"source": "seller_rules.md", "index": 0}]
     service.generator.generate_xianyu.assert_not_called()
+
+
+def test_after_sale_damage_uses_local_common_rules_when_index_is_unavailable() -> None:
+    rag = UnavailableCommonRulesRag()
+    service = _service(rag)
+    service.generator.generate_xianyu_expert.return_value = (
+        "如果到手发现镜头裂了，可以按商品问题/到货损坏申请平台售后；"
+        "先保留包装、面单和照片视频证据，再按平台流程协商退货退款。"
+    )
+
+    result = asyncio.run(
+        service.chat_async(
+            "如果到手镜头裂了能退吗？",
+            "stage3_after_sale_damage_fallback",
+            item_id="DEMO_ITEM_001",
+        )
+    )
+
+    assert result["action"] == "reply"
+    assert result["can_answer"] is True
+    assert "镜头裂了" in str(result["answer"])
+    assert {"source": "seller_rules.md", "index": 0} in result["sources"]
+    assert {"source": "mcp:get_item_info", "index": "DEMO_ITEM_001"} in result["sources"]
+    assert service.generator.generate_xianyu_expert.call_count == 1
+    expert, question, item, evidence = service.generator.generate_xianyu_expert.call_args.args
+    assert expert == "service"
+    assert question == "如果到手镜头裂了能退吗"
+    assert item is not None
+    assert "到货即损坏" in evidence
+    assert "破损" in evidence
+    assert "照片/视频" in evidence
+    assert rag.queries == []
 
 
 def test_explicit_item_routes_unlisted_damage_question_to_item_knowledge() -> None:

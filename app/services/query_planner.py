@@ -32,9 +32,11 @@ class QuestionPlan(TypedDict):
 
 
 _PRICE_TERMS = (
-    "价格", "多少钱", "标价", "售价", "多少元", "什么价", "拍的话", "price", "cost",
+    "价格", "多少钱", "标价", "售价", "多少元", "什么价", "什么价格",
+    "价格多少", "怎么卖", "卖多少钱", "卖多少", "拍的话", "price", "cost",
 )
 _BARGAIN_TERMS = ("最低", "便宜", "少一点", "少点", "优惠", "小刀", "刀吗", "还价", "报价")
+_PRICE_CONFIRM_TERMS = ("就按", "刚才那个价", "刚才说的", "这个价")
 _BUYER_PAYS_TERMS = ("不包邮", "不用包邮", "出邮费", "出运费", "自付运费", "承担运费")
 _SHIPPING_PRICE_TERMS = ("运费", "邮费", "快递费", "shipping fee")
 _NON_ITEM_STATUS_TERMS = ("订单状态", "物流状态", "快递状态", "发货状态")
@@ -215,7 +217,13 @@ def _rule_drafts(query: str, context: Mapping[str, object] | None) -> list[_Draf
     price_conditions = _price_conditions(query, context)
     if _is_price_question(query, context):
         kind = str(price_conditions.get("request_kind", "listed_price"))
-        question = {"minimum": "最低价", "offer": "买家报价", "additional_discount": "继续优惠", "listed_price": "商品标价"}[kind]
+        question = {
+            "minimum": "最低价",
+            "offer": "买家报价",
+            "additional_discount": "继续优惠",
+            "confirm": "确认当前报价",
+            "listed_price": "商品标价",
+        }[kind]
         add("price", _price_fragment(query), question, "item_fact", price_conditions)
 
     # With an explicit/current item, shipping and after-sale facts belong to
@@ -311,6 +319,11 @@ def _validated_model_drafts(payload: object | None, query: str) -> list[_Draft]:
         normalized = raw.get("normalized_question", raw.get("question"))
         scope = raw.get("knowledge_scope", raw.get("scope"))
         target = raw.get("query_target")
+        if isinstance(fragment, str) and expert == "product" and _is_seller_inspection_question(fragment):
+            scope = "item_fact"
+            target = "function.inspection_record"
+            if not isinstance(normalized, str) or not normalized.strip() or normalized.strip() == "商品专项知识":
+                normalized = "实物检测记录"
         # ``product/model_knowledge`` has exactly one valid query target.  Older
         # planner responses did not emit it, so retain that evidence-bound task
         # instead of silently reducing a compound buyer turn to its other facts.
@@ -513,6 +526,7 @@ def _rule_query_target(
             "minimum": "price.minimum",
             "offer": "price.offer",
             "additional_discount": "price.additional_discount",
+            "confirm": "price.confirm",
             "listed_price": "price.listed_price",
         }.get(request_kind, "price.listed_price")
     if expert == "service":
@@ -543,6 +557,8 @@ def _rule_query_target(
         return "history.repair_history"
     if normalized_question == "功能是否正常":
         return "function.shutter" if "快门" in lowered else "function.overall"
+    if normalized_question in {"测光对比记录", "实物检测记录"}:
+        return "function.inspection_record"
     if normalized_question == "商品瑕疵情况":
         if "划痕" in lowered:
             return "condition.scratches"
@@ -616,7 +632,7 @@ def _validate_model_conditions(raw: object, query: str, fragment: str, expert: o
     if shipping is not None and shipping not in {"buyer_pays", "seller_pays"}:
         return None
     kind = conditions.get("request_kind")
-    if kind is not None and kind not in {"minimum", "offer", "additional_discount", "listed_price"}:
+    if kind is not None and kind not in {"minimum", "offer", "additional_discount", "confirm", "listed_price"}:
         return None
     if kind == "minimum" and "最低" not in lowered:
         return None
@@ -651,6 +667,8 @@ def _price_conditions(query: str, context: Mapping[str, object] | None) -> dict[
         conditions.update({"request_kind": "offer", "offer_cents": offers[0]})
     elif any(term in lowered for term in ("再少", "再便宜", "再优惠", "再刀")):
         conditions.update({"request_kind": "additional_discount", "follow_up": True})
+    elif _context_price_topic(context) and any(term in lowered for term in _PRICE_CONFIRM_TERMS):
+        conditions.update({"request_kind": "confirm", "follow_up": True})
     elif (
         "最低" in lowered
         or any(term in lowered for term in _BARGAIN_TERMS)
@@ -665,6 +683,8 @@ def _price_conditions(query: str, context: Mapping[str, object] | None) -> dict[
 def _is_price_question(query: str, context: Mapping[str, object] | None) -> bool:
     lowered = query.casefold()
     if any(term in lowered for term in _BARGAIN_TERMS):
+        return True
+    if _context_price_topic(context) and any(term in lowered for term in _PRICE_CONFIRM_TERMS):
         return True
     if _offer_cents(query) and any(term in lowered for term in ("可以", "行吗", "我就买", "我出")):
         return True
@@ -765,6 +785,13 @@ def _position(query: str, fragment: str) -> int:
     return found if found >= 0 else len(query)
 
 
+def _is_seller_inspection_question(query: str) -> bool:
+    lowered = str(query or "").casefold()
+    if not any(term in lowered for term in ("对比过", "和手机", "实测", "测试过", "测过", "检测过", "校准过", "记录")):
+        return False
+    return any(term in lowered for term in ("测光", "手机", "对比", "实测", "测试", "检测", "校准"))
+
+
 def _target_terms(target: str) -> Sequence[str]:
     """Source words that can verify and position one explicit target."""
 
@@ -775,6 +802,7 @@ def _target_terms(target: str) -> Sequence[str]:
         "history.drop_history": _HISTORY_TERMS,
         "function.shutter": ("快门",),
         "function.overall": ("功能",),
+        "function.inspection_record": ("测光", "对比", "检测", "测试", "校准", "记录"),
         "condition.summary": _CONDITION_TERMS,
         "condition.scratches": ("划痕",),
         "condition.dents": ("磕碰",),
@@ -794,6 +822,7 @@ def _target_terms(target: str) -> Sequence[str]:
         "price.minimum": (*_BARGAIN_TERMS, *_BUYER_PAYS_TERMS),
         "price.offer": (*_BARGAIN_TERMS, *_BUYER_PAYS_TERMS),
         "price.additional_discount": _BARGAIN_TERMS,
+        "price.confirm": _PRICE_CONFIRM_TERMS,
         "shipping.dispatch_time": _DISPATCH_TERMS,
         "shipping.ship_from": ("从哪里发",),
         "shipping.carrier": _CARRIER_TERMS,
@@ -820,10 +849,6 @@ def _in_query(fragment: str, query: str) -> bool:
 
 def is_seller_scoped_query(query: str) -> bool:
     return any(term in str(query or "").casefold() for term in _SELLER_SCOPE_TERMS)
-
-
-def common_knowledge_query(plan: QuestionPlan, fallback: str) -> str:
-    return "；".join(need["question"] for need in plan["knowledge_questions"] if need["scope"] == "common") or fallback
 
 
 def xianyu_context_updates(

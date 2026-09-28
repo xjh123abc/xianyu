@@ -76,6 +76,21 @@ def test_planner_classifies_each_delimited_clause_with_the_single_question_rules
     )] == ["product", "price", "service"]
 
 
+def test_planner_falls_back_to_product_model_knowledge_when_item_context_exists() -> None:
+    query = "Canon FTb 的测光系统原本使用什么电池供电？"
+    tasks = _planner().plan(
+        query,
+        SessionContext(current_item_id="TEST_CORE_ALIGNMENT_CAMERA"),
+    )
+
+    assert len(tasks) == 1
+    assert tasks[0].task_type == "product"
+    assert tasks[0].query_target == "product.model_knowledge"
+    assert tasks[0].metadata["knowledge_scope"] == "model_knowledge"
+    assert tasks[0].metadata["normalized_question"] == query.rstrip("？")
+    assert tasks[0].metadata["normalized_question"] != "商品专项知识"
+
+
 def test_planner_keeps_the_existing_order_route_as_one_order_task() -> None:
     tasks = _planner().plan("TEST1001 \u5230\u54ea\u4e86\uff1f", SessionContext())
 
@@ -102,6 +117,8 @@ def test_planner_builds_each_clause_once_before_deduplicating_tasks(monkeypatch)
 def test_chat_service_uses_the_planner_boundary_instead_of_direct_router_calls() -> None:
     source = inspect.getsource(ChatService._chat_async_locked)
 
+    assert 'getattr(self.planner, "plan_async", None)' in source
+    assert "await plan_async(query, context, item_id=item_id)" in source
     assert "self.planner.plan(query, context, item_id=item_id)" in source
     for legacy_entrypoint in (
         "self.intent_router.route",
